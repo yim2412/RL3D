@@ -17,6 +17,7 @@ let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상�
 let tracking = false;       // 추적 모드(지도 중심을 위성에 고정)
 let trackTimer = null;      // 지상궤적선 주기적 재계산 타이머
 
+let satPanelId = null;      // 상세 패널이 열려 있는 위성 norad(매 초 값 갱신용)
 let observer = null;        // 관측 위치 { lat, lng } — 통과 예측 기준(settings.json 저장)
 let observerMarker = null;  // 지도 위 관측 위치 마커
 let settingObserver = false;  // 지도 클릭으로 관측 위치 지정 중인지
@@ -473,6 +474,13 @@ function row(k, v) {
   return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
+/** 실패/지연 사유처럼 강조가 필요한 긴 텍스트 블록. */
+function reasonBlock(label, text, kind) {
+  return `<div class="reason reason-${kind}">` +
+    `<div class="reason-k">${escapeHtml(label)}</div>` +
+    `<div class="reason-v">${escapeHtml(text)}</div></div>`;
+}
+
 function openPanel(d) {
   const panel = document.getElementById("panel");
   const body = document.getElementById("panel-body");
@@ -483,6 +491,8 @@ function openPanel(d) {
     <h2>${escapeHtml(d.name)}</h2>
     <span class="badge m-${d.outcome}">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}</span>
     ${cd}
+    ${d.fail_reason ? reasonBlock("실패 사유", d.fail_reason, "fail") : ""}
+    ${d.hold_reason ? reasonBlock("지연·보류 사유", d.hold_reason, "warn") : ""}
     ${row("발사 시각", fmtDate(d.net))}
     ${row("로켓", d.rocket)}
     ${row("기관", d.provider)}
@@ -492,14 +502,59 @@ function openPanel(d) {
     ${row("궤도", tr(ORBIT_KO, d.orbit))}
     ${row("발사장", d.location_name)}
     ${row("패드", d.pad_name)}
+    ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
   `;
+  satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panel.classList.remove("hidden");
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
   if (typeof d.lng === "number" && typeof d.lat === "number")
     map.flyTo({ center: [d.lng, d.lat], zoom: 4.5, speed: 1.2 });
 }
 
-function closePanel() { document.getElementById("panel").classList.add("hidden"); }
+function closePanel() {
+  document.getElementById("panel").classList.add("hidden");
+  satPanelId = null;
+}
+
+// ── 위성 상세 패널 ────────────────────────────────────────────────────────────
+/** satrec + 현재 시각으로 위성의 실시간 궤도 값을 계산. */
+function satDetails(rec) {
+  const now = new Date();
+  let pv;
+  try { pv = satellite.propagate(rec, now); } catch (_) { return null; }
+  if (!pv || !pv.position) return null;
+  const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(now));
+  const v = pv.velocity;
+  return {
+    lat: satellite.degreesLat(geo.latitude),
+    lng: satellite.degreesLong(geo.longitude),
+    alt: geo.height,  // km
+    vel: v ? Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) : null,  // km/s
+    periodMin: rec.no > 0 ? (2 * Math.PI) / rec.no : null,
+    incl: rec.inclo != null ? rec.inclo / DEG : null,   // 경사각(deg)
+    ecc: rec.ecco,
+  };
+}
+
+function openSatPanel(s) {
+  satPanelId = s.norad;  // 이 위성이 열려 있는 동안 매 초 값 갱신
+  const d = satDetails(s.rec);
+  const body = document.getElementById("panel-body");
+  const rows = d
+    ? row("NORAD ID", String(s.norad)) +
+      row("고도", d.alt != null ? Math.round(d.alt).toLocaleString() + " km" : null) +
+      row("속도", d.vel != null ? d.vel.toFixed(2) + " km/s" : null) +
+      row("현재 위치", `${d.lat.toFixed(2)}°, ${d.lng.toFixed(2)}°`) +
+      row("궤도 주기", d.periodMin != null ? d.periodMin.toFixed(1) + "분" : null) +
+      row("경사각", d.incl != null ? d.incl.toFixed(2) + "°" : null) +
+      row("이심률", d.ecc != null ? d.ecc.toFixed(4) : null)
+    : `<div class="pass-empty">궤도 정보를 계산할 수 없습니다.</div>`;
+  body.innerHTML =
+    `<h2>🛰 ${escapeHtml(s.name)}</h2>` +
+    `<span class="badge m-upcoming">위성</span>` +
+    `<div class="st-note">값은 실시간으로 갱신됩니다.</div>` + rows;
+  document.getElementById("panel").classList.remove("hidden");
+}
 
 // ── 발사 자동 갱신 ────────────────────────────────────────────────────────────
 function startAutoRefresh() {
@@ -592,31 +647,32 @@ function setupSatelliteLayer() {
     source: "satellites",
     layout: { visibility: "none" },  // 기본 OFF — 발사 지도에 집중, 필요 시 토글
     paint: {
-      "circle-radius": 2.6,
+      "circle-radius": 2.8,
       "circle-color": "#e8ecff",
       "circle-opacity": 0.9,
       "circle-stroke-width": 0.6,
       "circle-stroke-color": "#9fb0ff",
     },
   });
-  // 위성 클릭 → 이름 팝업 + 선택(지상궤적 표시)
-  map.on("click", "sat-layer", (e) => {
+  // 넓은 투명 클릭 영역 — 위성 점이 작고 계속 움직여 클릭이 빗나가지 않게(보이지 않음)
+  map.addLayer({
+    id: "sat-hit",
+    type: "circle",
+    source: "satellites",
+    layout: { visibility: "none" },
+    paint: { "circle-radius": 10, "circle-color": "#000000", "circle-opacity": 0 },
+  });
+  // 위성 클릭 → 상세 정보 패널 + 선택(지상궤적 표시)
+  map.on("click", "sat-hit", (e) => {
     if (settingObserver) return;  // 관측 위치 지정 중엔 선택하지 않음
     const f = e.features && e.features[0];
     if (!f) return;
-    new maplibregl.Popup({ closeButton: false, offset: 8 })
-      .setLngLat(e.lngLat)
-      .setHTML(
-        `<div style="font:12px 'Segoe UI',sans-serif;color:#0b0f1a">` +
-        `🛰 ${escapeHtml(f.properties.name)}<br>` +
-        `<span style="color:#4a5568">NORAD ${escapeHtml(f.properties.norad)} · 고도 ${escapeHtml(f.properties.alt)}km</span></div>`
-      )
-      .addTo(map);
     const s = satrecs.find((x) => String(x.norad) === String(f.properties.norad));
-    if (s) selectSatellite(s);
+    if (s) { selectSatellite(s); openSatPanel(s); }
   });
-  map.on("mouseenter", "sat-layer", () => { map.getCanvas().style.cursor = "pointer"; });
-  map.on("mouseleave", "sat-layer", () => { map.getCanvas().style.cursor = ""; });
+  // 커서: 손 모양 대신 십자(정확한 조준) — 작은 위성 점을 겨냥하기 쉽게
+  map.on("mouseenter", "sat-hit", () => { map.getCanvas().style.cursor = "crosshair"; });
+  map.on("mouseleave", "sat-hit", () => { map.getCanvas().style.cursor = ""; });
 
   // 사용자가 지도를 직접 드래그하면 추적 모드 자동 해제(easeTo는 dragstart를 발생시키지 않음)
   map.on("dragstart", () => { if (tracking) { tracking = false; updateSatCtrl(); } });
@@ -678,6 +734,10 @@ function deselectSatellite() {
   if (src) src.setData(EMPTY_FC);
   document.getElementById("sat-ctrl").classList.add("hidden");
   document.getElementById("pass-panel").classList.add("hidden");  // 통과 예측은 위성 종속
+  if (satPanelId != null) {  // 위성 상세 패널이 이 위성 것이면 닫는다
+    document.getElementById("panel").classList.add("hidden");
+    satPanelId = null;
+  }
 }
 
 /** 선택 위성 컨트롤 박스(이름·추적 버튼) 상태 갱신 + 표시. */
@@ -851,6 +911,11 @@ function updateSatellitePositions() {
   }
   map.getSource("satellites").setData({ type: "FeatureCollection", features });
   if (tracking && selectedSat) centerOnSelected();  // 추적 모드: 매 초 지도 중심 갱신
+  // 상세 패널이 열려 있으면 고도·속도·위치를 실시간 갱신
+  if (satPanelId && selectedSat && String(selectedSat.norad) === String(satPanelId)
+      && !document.getElementById("panel").classList.contains("hidden")) {
+    openSatPanel(selectedSat);
+  }
 }
 
 function startSatelliteLoop() {
@@ -861,7 +926,9 @@ function startSatelliteLoop() {
 
 function setSatelliteVisible(on) {
   if (!map.getLayer("sat-layer")) return;
-  map.setLayoutProperty("sat-layer", "visibility", on ? "visible" : "none");
+  const vis = on ? "visible" : "none";
+  map.setLayoutProperty("sat-layer", "visibility", vis);
+  map.setLayoutProperty("sat-hit", "visibility", vis);  // 클릭 영역도 함께 토글
   if (on) {
     if (satrecs.length === 0) loadSatellites();  // 첫 켜기 때 lazy 로드
     else if (!satTimer) startSatelliteLoop();

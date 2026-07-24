@@ -162,8 +162,12 @@ def _parse_launch(item):
         "lng": float(lng),
         "mission_name": mission.get("name"),
         "mission_type": mission.get("type"),
+        "mission_desc": mission.get("description"),
         "orbit": ((mission.get("orbit") or {}).get("name")),
         "image": image,
+        # 실패/지연(홀드) 사유 — 있을 때만 채워짐(상세 모드)
+        "fail_reason": item.get("failreason"),
+        "hold_reason": item.get("holdreason"),
     }
 
 

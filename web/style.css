@@ -140,6 +140,21 @@ html, body {
 .panel .row .v { color: var(--text); flex: 1; }
 .panel .cd { font-size: 13px; color: var(--accent); margin-top: 4px; }
 
+/* 실패/지연 사유 블록 */
+.reason { border-radius: 8px; padding: 8px 10px; margin: 8px 0; border: 1px solid; }
+.reason-k { font-size: 11px; font-weight: 700; margin-bottom: 3px; }
+.reason-v { font-size: 12px; line-height: 1.45; color: var(--text); }
+.reason-fail { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.4); }
+.reason-fail .reason-k { color: #fca5a5; }
+.reason-warn { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.4); }
+.reason-warn .reason-k { color: #fcd34d; }
+
+/* 미션 설명 */
+.mission-desc {
+  font-size: 12px; line-height: 1.5; color: var(--muted);
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+
 /* 마커 호버 툴팁 */
 .tooltip {
   position: fixed;
