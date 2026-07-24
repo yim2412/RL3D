@@ -60,6 +60,9 @@ class Api:
     def get_satellites(self, force=False):
         return api_client.get_satellites(force=force)
 
+    def get_archive(self, year):
+        return api_client.get_archive(year)
+
     def ping(self):
         return "pong"
 

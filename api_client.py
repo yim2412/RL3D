@@ -16,6 +16,9 @@ import urllib.request
 LL2_BASE = "https://ll.thespacedevs.com/2.2.0"
 LL2_UPCOMING = LL2_BASE + "/launch/upcoming/?limit=50&ordering=net&mode=detailed"
 LL2_PREVIOUS = LL2_BASE + "/launch/previous/?limit=50&ordering=-net&mode=detailed"
+# 연도별 아카이브: net 범위로 한 해치를 페이지네이션 수집(P7-5)
+LL2_ARCHIVE = (LL2_BASE + "/launch/?net__gte={year}-01-01T00:00:00Z"
+               "&net__lte={year}-12-31T23:59:59Z&limit=100&ordering=net&mode=detailed")
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
 # v1 위성 그룹: 눈에 띄는 정거장 + 밝게 보이는 위성 (성능 위해 소규모)
@@ -30,6 +33,10 @@ CACHE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "RL
 # upcoming+previous 2요청 × 4회/시간 = 8요청/시간 → LL2 15회/시간 제한 내 안전.
 TTL_LAUNCHES = 15 * 60      # 발사 15분
 TTL_TLE = 2 * 60 * 60       # TLE 2시간
+# 아카이브: 지난 연도는 영구 캐시(과거 발사는 안 변함), 올해만 TTL 갱신.
+TTL_ARCHIVE_CURRENT = 6 * 60 * 60   # 올해 아카이브 6시간(연중 새 발사 추가)
+ARCHIVE_MAX_PAGES = 5               # 연도당 최대 페이지(요청 폭주 방지)
+ARCHIVE_PAGE_DELAY = 2              # 페이지 사이 딜레이(초) — 레이트리밋 보호
 
 
 # ── 저수준 HTTP / 캐시 ────────────────────────────────────────────────────────
@@ -147,6 +154,47 @@ def get_launches(force=False):
         return {"launches": [], "stale": False, "error": msg}
 
 
+# ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
+def _fetch_launch_pages(url, max_pages):
+    """`next`를 따라 최대 max_pages 페이지를 수집·정규화. 페이지 사이 딜레이로 보호."""
+    launches, pages = [], 0
+    while url and pages < max_pages:
+        payload = json.loads(_http_get(url))
+        launches.extend(_parse_launches(payload))
+        url = payload.get("next")
+        pages += 1
+        if url and pages < max_pages:
+            time.sleep(ARCHIVE_PAGE_DELAY)
+    return launches
+
+
+def get_archive(year, force=False):
+    """한 연도의 발사를 정규화해 반환.
+
+    반환: {"launches": [...], "year": int, "stale": bool, "error": str|None}
+    지난 연도는 영구 캐시(만료 없음), 올해는 6시간 TTL. 실패 시 캐시 폴백.
+    """
+    year = int(year)
+    name = "archive_{}.json".format(year)
+    cached, age = _cache_read(name)
+    is_current = year >= time.gmtime().tm_year  # 올해(및 방어적으로 미래)는 갱신 대상
+    fresh = cached is not None and (
+        not is_current or (age is not None and age < TTL_ARCHIVE_CURRENT)
+    )
+    if not force and fresh:
+        return {"launches": cached, "year": year, "stale": False, "error": None}
+
+    try:
+        launches = _fetch_launch_pages(LL2_ARCHIVE.format(year=year), ARCHIVE_MAX_PAGES)
+        _cache_write(name, launches)
+        return {"launches": launches, "year": year, "stale": False, "error": None}
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+        msg = _friendly_error(e)
+        if cached is not None:
+            return {"launches": cached, "year": year, "stale": True, "error": msg}
+        return {"launches": [], "year": year, "stale": False, "error": msg}
+
+
 # ── 위성(Celestrak TLE) ───────────────────────────────────────────────────────
 def _parse_tle(text):
     """TLE 텍스트(3줄 1세트: 이름/L1/L2) → 위성 dict 리스트."""
@@ -228,3 +276,13 @@ if __name__ == "__main__":
               + (f" (경고: {r['error']})" if r["error"] else ""))
         if r["satellites"]:
             print(f"        예: {r['satellites'][0]['name']} (NORAD {r['satellites'][0]['norad_id']})")
+
+    # 아카이브: 작년치 1개 연도만(최초 1회 API, 이후 영구 캐시라 무료 스모크)
+    last_year = time.gmtime().tm_year - 1
+    r = get_archive(last_year)
+    if r["error"] and not r["launches"]:
+        print(f"[FAIL] archive {last_year} - {r['error']}")
+    else:
+        tag = "OK(stale)" if r["stale"] else "OK"
+        print(f"[{tag}] archive {last_year} - {len(r['launches'])}건"
+              + (f" (경고: {r['error']})" if r["error"] else ""))

@@ -171,6 +171,12 @@ html, body {
   padding: 8px 14px;
 }
 .tl-cap { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+.arch-select {
+  flex: 0 0 auto;
+  background: #0e1524; border: 1px solid var(--line); color: var(--text);
+  border-radius: 7px; padding: 5px 8px; font-size: 12px; cursor: pointer; outline: none;
+}
+.arch-select:focus { border-color: var(--accent); }
 .tl-label { font-size: 12px; color: var(--accent); flex: 0 0 auto; min-width: 130px; text-align: right; }
 #tl-range {
   flex: 1;

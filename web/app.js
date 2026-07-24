@@ -4,7 +4,10 @@
 
 // ── 상태 ─────────────────────────────────────────────────────────────────────
 let map = null;
-let launches = [];          // 정규화된 발사 배열
+let launches = [];          // 라이브 발사(예정+최근 previous). 5분마다 갱신되며 통째 교체됨
+let archiveLaunches = [];   // 불러온 과거 연도 발사(P7-5). 라이브 갱신에 안 지워짐
+let loadedYears = new Set();// 이미 불러온 아카이브 연도
+let allLaunches = [];       // 라이브+아카이브 합본(id 중복 제거) — 필터/목록/타임라인이 사용
 let tickerTimer = null;
 
 let satrecs = [];           // { name, norad, rec } — satellite.js SGP4 레코드
@@ -36,6 +39,16 @@ function escapeHtml(s) {
   return String(s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/** 라이브+아카이브 합본 재계산(라이브 id 우선, 아카이브 중복 제거). */
+function rebuildAll() {
+  const seen = new Set(launches.map((d) => d.id));
+  allLaunches = launches.concat(archiveLaunches.filter((d) => !seen.has(d.id)));
+}
+
+function findLaunch(id) {
+  return allLaunches.find((x) => String(x.id) === String(id));
 }
 
 function showStatus(msg) {
@@ -179,9 +192,10 @@ async function loadLaunches(force = false, silent = false) {
     const prev = launches;  // 변화 감지용 직전 스냅샷
     const res = await window.pywebview.api.get_launches(force);
     launches = res.launches || [];
+    rebuildAll();
     if (res.error) showStatus(res.stale ? `⚠ ${res.error} (저장된 데이터 표시)` : `⚠ ${res.error}`);
     else if (!silent) showStatus(null);
-    if (!timelineInited) setupTimeline();  // net 범위는 첫 로드 기준으로 고정
+    recomputeTimeline();  // 아카이브가 붙으면 범위가 과거로 늘어날 수 있어 매번 재계산
     applyFilters();
     startTicker();
     if (silent) announceChanges(prev, launches);  // 자동 갱신 때만 변화 알림
@@ -265,7 +279,7 @@ function setupLaunchLayers() {
   map.on("click", "launch-point", (e) => {
     if (settingObserver) return;
     const id = e.features[0].properties.id;
-    const d = launches.find((x) => x.id === id);
+    const d = findLaunch(id);
     if (d) openPanel(d);
   });
   // 호버 툴팁 + 커서
@@ -310,7 +324,7 @@ function applyFilters() {
     Array.from(document.querySelectorAll(".flt:checked")).map((c) => c.value)
   );
   const q = document.getElementById("search").value.trim().toLowerCase();
-  const filtered = launches.filter((d) => launchPasses(d, active, q));
+  const filtered = allLaunches.filter((d) => launchPasses(d, active, q));
   const src = map.getSource("launches");
   if (src) src.setData(launchesToFC(filtered));  // 클러스터는 자동 재계산
   renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
@@ -349,7 +363,7 @@ let tooltipEl = null;
 function showLaunchTooltip(e) {
   const f = e.features && e.features[0];
   if (!f) return;
-  const d = launches.find((x) => x.id === f.properties.id);
+  const d = findLaunch(f.properties.id);
   if (!d) return;
   if (!tooltipEl) {
     tooltipEl = document.createElement("div");
@@ -378,13 +392,56 @@ function showClusterTooltip(e) {
 function hideTooltip() { if (tooltipEl) tooltipEl.style.display = "none"; }
 
 // ── 타임라인 슬라이더 ─────────────────────────────────────────────────────────
-function setupTimeline() {
-  const times = launches
+function recomputeTimeline() {
+  const times = allLaunches
     .filter((d) => d.net).map((d) => new Date(d.net).getTime()).filter((t) => !isNaN(t));
   if (!times.length) return;
   tlMin = Math.min(...times);
   tlMax = Math.max(...times);
   timelineInited = true;
+}
+
+// ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
+function populateArchiveYears() {
+  const sel = document.getElementById("arch-year");
+  const cur = new Date().getUTCFullYear();
+  for (let y = cur; y >= cur - 4; y--) {  // 최근 5년(올해 포함)
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = y + "년";
+    sel.appendChild(opt);
+  }
+}
+
+async function loadArchive(year) {
+  if (loadedYears.has(year)) {
+    showStatus(`${year}년은 이미 불러왔습니다.`);
+    setTimeout(() => showStatus(null), 3000);
+    return;
+  }
+  const btn = document.getElementById("arch-load");
+  btn.disabled = true;
+  showStatus(`${year}년 발사 아카이브 불러오는 중… (최초 1회, 수 초 소요)`);
+  try {
+    const res = await window.pywebview.api.get_archive(year);
+    const list = res.launches || [];
+    const have = new Set(archiveLaunches.map((d) => d.id));
+    for (const d of list) if (!have.has(d.id)) archiveLaunches.push(d);
+    loadedYears.add(year);
+    rebuildAll();
+    recomputeTimeline();
+    applyFilters();
+    if (res.error) showStatus(res.stale ? `⚠ ${res.error} (저장된 데이터)` : `⚠ ${res.error}`);
+    else {
+      showStatus(`${year}년 ${list.length}건 추가됨`);
+      setTimeout(() => showStatus(null), 4000);
+    }
+  } catch (e) {
+    showStatus("아카이브를 불러오지 못했습니다.");
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function tlLabelDate(ms) {
@@ -868,10 +925,13 @@ function bindUI() {
   document.getElementById("sidebar-list").addEventListener("click", (e) => {
     const rowEl = e.target.closest(".sb-row");
     if (!rowEl) return;
-    const d = launches.find((x) => String(x.id) === rowEl.dataset.id);
+    const d = findLaunch(rowEl.dataset.id);
     if (d) openPanel(d);
   });
   document.getElementById("tl-range").addEventListener("input", onTimeline);
+  populateArchiveYears();
+  document.getElementById("arch-load").addEventListener("click", () =>
+    loadArchive(+document.getElementById("arch-year").value));
   document.getElementById("refresh").addEventListener("click", () => {
     showStatus("강제 갱신 중… (시간당 요청 제한에 주의)");
     loadLaunches(true);
