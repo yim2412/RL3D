@@ -281,11 +281,13 @@ def get_satellites(force=False, groups=None):
     """지정 그룹의 TLE를 합쳐 반환(norad_id 중복 제거).
 
     반환: {"satellites": [...], "stale": bool, "error": str|None, "groups": [...]}
-    groups 미지정 시 기본 그룹. 카탈로그에 없는 키는 무시.
+    groups=None(미지정)이면 기본 그룹, groups=[](명시적 빈 선택)이면 위성 없음.
+    카탈로그에 없는 키는 무시.
     """
-    groups = [g for g in (groups or DEFAULT_SATELLITE_GROUPS) if g in SATELLITE_GROUP_CATALOG]
-    if not groups:
+    if groups is None:
         groups = list(DEFAULT_SATELLITE_GROUPS)
+    else:
+        groups = [g for g in groups if g in SATELLITE_GROUP_CATALOG]
 
     combined, seen = [], set()
     stale_any, err = False, None
