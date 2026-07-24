@@ -57,11 +57,20 @@ class Api:
     def get_launches(self, force=False):
         return api_client.get_launches(force=force)
 
-    def get_satellites(self, force=False):
-        return api_client.get_satellites(force=force)
+    def get_satellites(self, force=False, groups=None):
+        return api_client.get_satellites(force=force, groups=groups)
+
+    def get_satellite_groups(self):
+        return api_client.satellite_group_catalog()
 
     def get_archive(self, year):
         return api_client.get_archive(year)
+
+    def get_settings(self):
+        return api_client.load_settings()
+
+    def save_settings(self, patch):
+        return api_client.save_settings(patch)
 
     def ping(self):
         return "pong"
@@ -70,7 +79,19 @@ class Api:
 def main():
     api = Api()
     width, height = 1280, 800
+
+    dev_mode = os.environ.get("RL3D_DEV_MONITOR") is not None
     x, y = dev_window_pos(width, height)
+
+    # 개발 모니터 지정이 없을 때만 저장된 창 상태를 복원(P8-9). dev 위치는 저장 안 함.
+    saved_win = {}
+    if not dev_mode:
+        saved_win = api_client.load_settings().get("window") or {}
+        if isinstance(saved_win.get("width"), int) and isinstance(saved_win.get("height"), int):
+            width, height = saved_win["width"], saved_win["height"]
+        if x is None and isinstance(saved_win.get("x"), int) and isinstance(saved_win.get("y"), int):
+            x, y = saved_win["x"], saved_win["y"]
+
     kwargs = dict(
         url=resource_path(os.path.join("web", "index.html")),
         js_api=api,
@@ -81,7 +102,20 @@ def main():
     )
     if x is not None and y is not None:
         kwargs["x"], kwargs["y"] = x, y
-    webview.create_window("RL3D — 로켓 발사 & 위성 추적", **kwargs)
+    window = webview.create_window("RL3D — 로켓 발사 & 위성 추적", **kwargs)
+
+    # 종료 시 창 위치·크기 저장(개발 모드 제외 — dev 모니터 위치가 배포에 새지 않게).
+    if not dev_mode:
+        def _save_geometry(*_):
+            try:
+                api_client.save_settings({"window": {
+                    "x": window.x, "y": window.y,
+                    "width": window.width, "height": window.height,
+                }})
+            except Exception:
+                pass  # 창 상태 저장 실패는 종료를 막지 않는다
+        window.events.closing += _save_geometry
+
     webview.start()
 
 

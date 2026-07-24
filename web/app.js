@@ -17,7 +17,7 @@ let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상�
 let tracking = false;       // 추적 모드(지도 중심을 위성에 고정)
 let trackTimer = null;      // 지상궤적선 주기적 재계산 타이머
 
-let observer = null;        // 관측 위치 { lat, lng } — 통과 예측 기준(localStorage 저장)
+let observer = null;        // 관측 위치 { lat, lng } — 통과 예측 기준(settings.json 저장)
 let observerMarker = null;  // 지도 위 관측 위치 마커
 let settingObserver = false;  // 지도 클릭으로 관측 위치 지정 중인지
 
@@ -28,6 +28,9 @@ let terminatorTimer = null;  // 낮/밤 오버레이 분 단위 갱신 타이머
 
 let autoTimer = null;       // 발사 자동 갱신 타이머
 const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐시 TTL이 제어)
+
+let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀
+let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — "N분 전 갱신"(P7-7)
 
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
@@ -178,7 +181,8 @@ function initMap() {
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
     setupLaunchLayers();    // 발사 클러스터/포인트 레이어(빈 소스로 먼저 생성)
     setupSatelliteLayer();  // 빈 레이어만(기본 숨김). 위성은 토글 켤 때 로드
-    loadObserver();         // 저장된 관측 위치 복원(있으면 마커 표시)
+    if (observer) showObserverMarker();          // 저장된 관측 위치 복원(P8-9)
+    if (document.getElementById("toggle-sat").checked) setSatelliteVisible(true);  // 설정에 켜져 있었으면 로드
     loadLaunches();
     startAutoRefresh();
   });
@@ -193,6 +197,7 @@ async function loadLaunches(force = false, silent = false) {
     const res = await window.pywebview.api.get_launches(force);
     launches = res.launches || [];
     rebuildAll();
+    if (res.age != null) { lastLaunchLoad = Date.now() - res.age * 1000; updateFreshness(); }
     if (res.error) showStatus(res.stale ? `⚠ ${res.error} (저장된 데이터 표시)` : `⚠ ${res.error}`);
     else if (!silent) showStatus(null);
     recomputeTimeline();  // 아카이브가 붙으면 범위가 과거로 늘어날 수 있어 매번 재계산
@@ -715,14 +720,6 @@ function azToCompass(azDeg) {
   return DIRS8[Math.round((((azDeg % 360) + 360) % 360) / 45) % 8];
 }
 
-/** localStorage에서 관측 위치 복원 + 마커 표시. */
-function loadObserver() {
-  try {
-    const raw = localStorage.getItem("rl3d_observer");
-    if (raw) { observer = JSON.parse(raw); showObserverMarker(); }
-  } catch (_) { observer = null; }
-}
-
 function showObserverMarker() {
   if (!observer) return;
   if (!observerMarker) {
@@ -744,7 +741,7 @@ function beginSetObserver() {
 function onMapClickForObserver(e) {
   if (!settingObserver) return;
   observer = { lat: +e.lngLat.lat.toFixed(4), lng: +e.lngLat.lng.toFixed(4) };
-  try { localStorage.setItem("rl3d_observer", JSON.stringify(observer)); } catch (_) {}
+  saveSettings({ observer });  // settings.json에 저장(P8-9)
   showObserverMarker();
   settingObserver = false;
   map.getCanvas().style.cursor = "";
@@ -812,7 +809,7 @@ function showPasses() {
 async function loadSatellites() {
   try {
     deselectSatellite();  // 재로드로 satrec이 갈리므로 이전 선택/궤적은 해제
-    const res = await window.pywebview.api.get_satellites(false);
+    const res = await window.pywebview.api.get_satellites(false, satGroups);
     const sats = res.satellites || [];
     // TLE → SGP4 레코드. 파싱 실패한 위성 1개가 전체를 막지 않게 개별 try.
     satrecs = [];
@@ -908,13 +905,138 @@ function startTicker() {
   }, 1000);
 }
 
+// ── 마지막 갱신 시각 (P7-7) ───────────────────────────────────────────────────
+function updateFreshness() {
+  const el = document.getElementById("freshness");
+  if (!el) return;
+  if (lastLaunchLoad == null) { el.textContent = ""; return; }
+  const mins = Math.floor((Date.now() - lastLaunchLoad) / 60000);
+  el.textContent = "🕒 " + (mins <= 0 ? "방금 갱신" : `${mins}분 전 갱신`);
+}
+
+// ── 설정 저장/복원 (P8-9) ─────────────────────────────────────────────────────
+function saveSettings(patch) {
+  try { window.pywebview.api.save_settings(patch); } catch (_) { /* 저장 실패는 무시 */ }
+}
+
+function currentFilters() {
+  const o = {};
+  document.querySelectorAll(".flt").forEach((c) => { o[c.value] = c.checked; });
+  return o;
+}
+
+/** 저장된 설정을 UI 상태로 반영(지도 초기화 전에 호출). */
+function applySettings(s) {
+  if (!s) return;
+  if (s.filters) {
+    document.querySelectorAll(".flt").forEach((c) => {
+      if (s.filters[c.value] != null) c.checked = !!s.filters[c.value];
+    });
+  }
+  if (typeof s.terminator === "boolean") document.getElementById("toggle-terminator").checked = s.terminator;
+  if (s.satellites) {
+    if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
+    if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;
+  }
+  if (s.observer && typeof s.observer.lat === "number" && typeof s.observer.lng === "number") {
+    observer = s.observer;
+  }
+}
+
+// ── 위성 그룹 선택 UI (P7-6) ──────────────────────────────────────────────────
+async function initSatGroups() {
+  try {
+    const cat = await window.pywebview.api.get_satellite_groups();
+    const box = document.getElementById("sat-groups");
+    box.innerHTML = (cat || []).map((g) => {
+      const checked = satGroups.includes(g.key) ? "checked" : "";
+      const cap = g.cap ? ` <span class="muted">(최대 ${g.cap})</span>` : "";
+      return `<label><input type="checkbox" class="satg" value="${escapeHtml(g.key)}" ${checked}/> ${escapeHtml(g.label)}${cap}</label>`;
+    }).join("");
+    box.querySelectorAll(".satg").forEach((c) => c.addEventListener("change", onSatGroupChange));
+  } catch (e) { console.error("위성 그룹 로드 실패", e); }
+}
+
+function onSatGroupChange() {
+  satGroups = Array.from(document.querySelectorAll(".satg:checked")).map((c) => c.value);
+  const enabled = document.getElementById("toggle-sat").checked;
+  saveSettings({ satellites: { enabled, groups: satGroups } });
+  if (enabled) { satrecs = []; loadSatellites(); }  // 그룹이 바뀌었으니 재로드
+}
+
+function toggleSatGroups() {
+  document.getElementById("sat-groups").classList.toggle("hidden");
+}
+
+// ── 발사 통계 패널 (P8-10) ────────────────────────────────────────────────────
+function computeStats(list) {
+  const byOutcome = { success: 0, failure: 0, partial: 0, upcoming: 0 };
+  const byProvider = {}, byCountry = {}, byYear = {};
+  for (const d of list) {
+    if (byOutcome[d.outcome] != null) byOutcome[d.outcome]++;
+    if (d.provider) byProvider[d.provider] = (byProvider[d.provider] || 0) + 1;
+    const c = countryKo(d.provider_country);
+    if (c) byCountry[c] = (byCountry[c] || 0) + 1;
+    if (d.net) { const y = new Date(d.net).getFullYear(); if (!isNaN(y)) byYear[y] = (byYear[y] || 0) + 1; }
+  }
+  return { byOutcome, byProvider, byCountry, byYear, total: list.length };
+}
+
+/** {키:수} → 가로 막대 HTML. entries는 미리 정렬해 넘긴다. */
+function statBars(entries, color) {
+  const max = Math.max(1, ...entries.map((e) => e[1]));
+  return entries.map(([k, v]) =>
+    `<div class="st-row"><span class="st-k">${escapeHtml(String(k))}</span>` +
+    `<span class="st-bar"><span style="width:${(v / max * 100).toFixed(1)}%;background:${color}"></span></span>` +
+    `<span class="st-v">${v}</span></div>`
+  ).join("");
+}
+
+function showStats() {
+  const s = computeStats(allLaunches);
+  const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
+  const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
+  const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const countries = Object.entries(s.byCountry).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const years = Object.entries(s.byYear).sort((a, b) => a[0] - b[0]);
+
+  document.getElementById("stats-body").innerHTML =
+    `<h2>📊 발사 통계</h2>` +
+    `<div class="st-note">현재 불러온 ${s.total}건 기준 · 과거 연도를 불러오면 더 정확해집니다.</div>` +
+    `<div class="st-tiles">` +
+      `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
+      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div><div class="st-lab">성공률</div></div>` +
+      `<div class="st-tile"><div class="st-num">${s.byOutcome.upcoming}</div><div class="st-lab">예정</div></div>` +
+    `</div>` +
+    `<div class="st-sec">결과별</div>` +
+    statBars([["성공", s.byOutcome.success], ["실패", s.byOutcome.failure],
+              ["부분 실패", s.byOutcome.partial], ["예정", s.byOutcome.upcoming]], "var(--accent)") +
+    (years.length ? `<div class="st-sec">연도별</div>` + statBars(years, "#7dd3fc") : "") +
+    (providers.length ? `<div class="st-sec">기관 (상위 8)</div>` + statBars(providers, "#a78bfa") : "") +
+    (countries.length ? `<div class="st-sec">국가 (상위 8)</div>` + statBars(countries, "#34d399") : "");
+  document.getElementById("stats-panel").classList.remove("hidden");
+}
+
 // ── 이벤트 바인딩 ─────────────────────────────────────────────────────────────
 function bindUI() {
   document.getElementById("search").addEventListener("input", applyFilters);
-  document.querySelectorAll(".flt").forEach((c) => c.addEventListener("change", applyFilters));
+  document.querySelectorAll(".flt").forEach((c) => c.addEventListener("change", () => {
+    applyFilters();
+    saveSettings({ filters: currentFilters() });
+  }));
   document.getElementById("panel-close").addEventListener("click", closePanel);
-  document.getElementById("toggle-terminator").addEventListener("change", updateTerminator);
-  document.getElementById("toggle-sat").addEventListener("change", (e) => setSatelliteVisible(e.target.checked));
+  document.getElementById("toggle-terminator").addEventListener("change", (e) => {
+    updateTerminator();
+    saveSettings({ terminator: e.target.checked });
+  });
+  document.getElementById("toggle-sat").addEventListener("change", (e) => {
+    setSatelliteVisible(e.target.checked);
+    saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups } });
+  });
+  document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
+  document.getElementById("stats-btn").addEventListener("click", showStats);
+  document.getElementById("stats-close").addEventListener("click", () =>
+    document.getElementById("stats-panel").classList.add("hidden"));
   document.getElementById("sat-track-btn").addEventListener("click", toggleTracking);
   document.getElementById("sat-obs-btn").addEventListener("click", beginSetObserver);
   document.getElementById("sat-pass-btn").addEventListener("click", showPasses);
@@ -940,7 +1062,11 @@ function bindUI() {
 }
 
 // pywebview 브릿지가 준비된 뒤 시작
-window.addEventListener("pywebviewready", () => {
+window.addEventListener("pywebviewready", async () => {
   bindUI();
+  const settings = await window.pywebview.api.get_settings().catch(() => null);
+  applySettings(settings);       // 필터·토글·그룹·관측 위치 복원(지도 초기화 전)
+  await initSatGroups();         // 그룹 체크박스를 satGroups 기준으로 생성
+  setInterval(updateFreshness, 30000);  // "N분 전 갱신" 주기 갱신(P7-7)
   initMap();
 });

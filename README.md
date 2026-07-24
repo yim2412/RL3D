@@ -11,6 +11,9 @@
 - 🔍 **검색 / 필터** — 발사명·로켓·기관 검색, 결과별 on/off
 - ☰ **발사 목록 사이드바** — 필터·검색·타임라인이 적용된 발사 목록. 행 클릭 시 해당 발사장으로 이동 + 상세 패널
 - 🗄 **과거 발사 아카이브** — 타임라인 옆에서 연도(최근 5년) 선택 후 불러오면 그 해 발사가 지도·목록·타임라인에 추가됨. 지난 연도는 영구 캐시(재요청 없음)
+- 📊 **발사 통계** — 총 발사·성공률·예정 요약 + 결과별/연도별/기관/국가 막대(불러온 데이터 기준, 아카이브를 불러올수록 정확)
+- 🛰 **위성 그룹 선택** — stations·visual·Starlink·GPS·Galileo·기상·과학·GEO 토글(대형 그룹은 개수 캡)
+- 🕒 **갱신 시각 표시 / 설정 저장** — "N분 전 갱신" 상시 표시. 필터·토글·위성 그룹·관측 위치·창 위치/크기를 저장해 다음 실행에 복원
 - 🔄 **자동 갱신** — 5분마다 백그라운드 폴링, 새 발사·상태 변화(예정→성공 등)를 알림
 - 🛰 **위성 레이어(선택)** — Celestrak TLE + satellite.js(SGP4)로 위성 실시간 위치. **기본 OFF**, 툴바에서 켜기
 - 🛰 **지상궤적선 · 추적 모드** — 위성 클릭 시 약 1주기의 지상궤적선을 표시, "추적" 버튼으로 지도 중심을 위성에 고정(지도를 직접 드래그하면 해제)
@@ -41,9 +44,10 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 |---|---|---|
 | 발사 | [Launch Library 2](https://thespacedevs.com/llapi) (thespacedevs) | 15분 |
 | 과거 발사 아카이브 | Launch Library 2 (연도별) | 지난 연도 영구 · 올해 6시간 |
-| 위성 TLE | [Celestrak](https://celestrak.org/) (`stations`, `visual` 그룹) | 2시간 |
+| 위성 TLE | [Celestrak](https://celestrak.org/) (그룹 선택: stations/visual/starlink/gps 등) | 2시간 |
 
-- 캐시 위치: `%APPDATA%\RL3D\cache\` (`launches.json`, `tle.json`, `archive_<연도>.json`)
+- 캐시 위치: `%APPDATA%\RL3D\cache\` (`launches.json`, `tle_<그룹>.json`, `archive_<연도>.json`)
+- 설정 위치: `%APPDATA%\RL3D\settings.json` (필터·토글·위성 그룹·관측 위치·창 상태)
 - LL2 는 **시간당 약 15회** 제한 → 캐싱 우선. API 실패 시 오래된 캐시라도 반환(오프라인 대응)
 - **새로고침 버튼**: 캐시 무시 강제 갱신 (요청 제한 주의)
 

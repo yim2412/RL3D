@@ -21,14 +21,33 @@ LL2_ARCHIVE = (LL2_BASE + "/launch/?net__gte={year}-01-01T00:00:00Z"
                "&net__lte={year}-12-31T23:59:59Z&limit=100&ordering=net&mode=detailed")
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
-# v1 위성 그룹: 눈에 띄는 정거장 + 밝게 보이는 위성 (성능 위해 소규모)
-SATELLITE_GROUPS = ["stations", "visual"]
+# 위성 그룹 카탈로그: key=Celestrak GROUP, label=표시명, cap=개수 상한(None=무제한).
+# Starlink/GEO 등 대형 그룹은 렌더 성능을 위해 cap 필수(P7-6).
+SATELLITE_GROUP_CATALOG = {
+    "stations": {"label": "우주정거장", "cap": None},
+    "visual":   {"label": "밝게 보이는 위성", "cap": None},
+    "starlink": {"label": "Starlink", "cap": 300},
+    "gps-ops":  {"label": "GPS", "cap": None},
+    "galileo":  {"label": "Galileo", "cap": None},
+    "weather":  {"label": "기상 위성", "cap": None},
+    "science":  {"label": "과학 위성", "cap": None},
+    "geo":      {"label": "정지궤도(GEO)", "cap": 200},
+}
+DEFAULT_SATELLITE_GROUPS = ["stations", "visual"]
+
+
+def satellite_group_catalog():
+    """UI용 그룹 목록(key/label/cap)."""
+    return [{"key": k, "label": v["label"], "cap": v["cap"]}
+            for k, v in SATELLITE_GROUP_CATALOG.items()]
 
 USER_AGENT = "RL3D/0.1 (personal desktop app)"
 HTTP_TIMEOUT = 20  # 초
 
 # 캐시: onefile exe 는 실행폴더가 임시라 %APPDATA% 아래 영구 위치가 필수
-CACHE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "RL3D", "cache")
+APP_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "RL3D")
+CACHE_DIR = os.path.join(APP_DIR, "cache")
+SETTINGS_PATH = os.path.join(APP_DIR, "settings.json")  # 창 상태·필터 등(P8-9)
 # 발사 15분: 자동 갱신(5분 폴링)과 맞물려 상태 변화를 15분 내 반영.
 # upcoming+previous 2요청 × 4회/시간 = 8요청/시간 → LL2 15회/시간 제한 내 안전.
 TTL_LAUNCHES = 15 * 60      # 발사 15분
@@ -69,6 +88,35 @@ def _cache_write(name, data):
             json.dump(data, f, ensure_ascii=False)
     except OSError:
         pass  # 캐시 쓰기 실패는 치명적이지 않다
+
+
+# ── 설정 저장 (P8-9) ──────────────────────────────────────────────────────────
+def load_settings():
+    """settings.json 반환(없으면 빈 dict)."""
+    try:
+        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(patch):
+    """부분 갱신: 기존 설정 최상위 키에 patch를 병합해 저장하고 결과를 반환.
+
+    프론트(필터·토글·관측)와 파이썬(창 위치)이 서로 다른 최상위 키만 쓰므로
+    얕은 병합으로 충돌 없이 각자 값을 보존한다.
+    """
+    data = load_settings()
+    if isinstance(patch, dict):
+        data.update(patch)
+    os.makedirs(APP_DIR, exist_ok=True)
+    try:
+        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+    return data
 
 
 # ── 발사(Launch Library 2) ────────────────────────────────────────────────────
@@ -139,19 +187,19 @@ def get_launches(force=False):
     """
     cached, age = _cache_read("launches.json")
     if not force and cached is not None and age is not None and age < TTL_LAUNCHES:
-        return {"launches": cached, "stale": False, "error": None}
+        return {"launches": cached, "stale": False, "error": None, "age": age}
 
     try:
         upcoming = _parse_launches(json.loads(_http_get(LL2_UPCOMING)))
         previous = _parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
         launches = upcoming + previous
         _cache_write("launches.json", launches)
-        return {"launches": launches, "stale": False, "error": None}
+        return {"launches": launches, "stale": False, "error": None, "age": 0}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = _friendly_error(e)
         if cached is not None:
-            return {"launches": cached, "stale": True, "error": msg}
-        return {"launches": [], "stale": False, "error": msg}
+            return {"launches": cached, "stale": True, "error": msg, "age": age}
+        return {"launches": [], "stale": False, "error": msg, "age": None}
 
 
 # ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
@@ -209,34 +257,49 @@ def _parse_tle(text):
     return out
 
 
-def get_satellites(force=False):
-    """설정된 그룹의 TLE를 합쳐 반환.
-
-    반환: {"satellites": [...], "stale": bool, "error": str|None}
-    """
-    cached, age = _cache_read("tle.json")
+def _get_group_tle(group, force=False):
+    """한 그룹의 TLE(개수 캡 적용) → (list, stale, error). 그룹별로 캐시."""
+    name = "tle_{}.json".format(group)
+    cached, age = _cache_read(name)
     if not force and cached is not None and age is not None and age < TTL_TLE:
-        return {"satellites": cached, "stale": False, "error": None}
-
+        return cached, False, None
     try:
-        sats = []
-        for group in SATELLITE_GROUPS:
-            text = _http_get(CELESTRAK_GP.format(group=group))
-            sats.extend(_parse_tle(text))
-        # norad_id 중복 제거(그룹 간 겹칠 수 있음)
-        seen, deduped = set(), []
+        sats = _parse_tle(_http_get(CELESTRAK_GP.format(group=group)))
+        cap = (SATELLITE_GROUP_CATALOG.get(group) or {}).get("cap")
+        if cap:
+            sats = sats[:cap]  # 대형 그룹은 상한까지만(렌더 성능)
+        _cache_write(name, sats)
+        return sats, False, None
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+        msg = _friendly_error(e)
+        if cached is not None:
+            return cached, True, msg
+        return [], False, msg
+
+
+def get_satellites(force=False, groups=None):
+    """지정 그룹의 TLE를 합쳐 반환(norad_id 중복 제거).
+
+    반환: {"satellites": [...], "stale": bool, "error": str|None, "groups": [...]}
+    groups 미지정 시 기본 그룹. 카탈로그에 없는 키는 무시.
+    """
+    groups = [g for g in (groups or DEFAULT_SATELLITE_GROUPS) if g in SATELLITE_GROUP_CATALOG]
+    if not groups:
+        groups = list(DEFAULT_SATELLITE_GROUPS)
+
+    combined, seen = [], set()
+    stale_any, err = False, None
+    for g in groups:
+        sats, stale, msg = _get_group_tle(g, force=force)
+        stale_any = stale_any or stale
+        if msg and not err:
+            err = msg
         for s in sats:
             if s["norad_id"] in seen:
                 continue
             seen.add(s["norad_id"])
-            deduped.append(s)
-        _cache_write("tle.json", deduped)
-        return {"satellites": deduped, "stale": False, "error": None}
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
-        if cached is not None:
-            return {"satellites": cached, "stale": True, "error": msg}
-        return {"satellites": [], "stale": False, "error": msg}
+            combined.append(s)
+    return {"satellites": combined, "stale": stale_any, "error": err, "groups": groups}
 
 
 # ── 에러 메시지(사람이 읽는 말로) ─────────────────────────────────────────────

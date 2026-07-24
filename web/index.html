@@ -24,10 +24,16 @@
       <span class="sep"></span>
       <label><input type="checkbox" id="toggle-terminator" checked /> 🌓 낮/밤</label>
       <label><input type="checkbox" id="toggle-sat" /> <span class="dot d-sat"></span>위성 <span id="sat-count" class="muted"></span></label>
+      <button id="sat-groups-btn" class="btn sm" title="위성 그룹 선택">그룹 ▾</button>
     </div>
+    <button id="stats-btn" class="btn" title="발사 통계">📊 통계</button>
     <button id="toggle-list" class="btn" title="발사 목록 열기/닫기">☰ 목록</button>
     <button id="refresh" class="btn" title="캐시 무시 강제 갱신 (시간당 요청 제한 주의)">↻ 새로고침</button>
+    <span id="freshness" class="freshness"></span>
   </div>
+
+  <!-- 위성 그룹 선택 팝오버 -->
+  <div id="sat-groups" class="sat-groups hidden"></div>
 
   <!-- 지도 -->
   <div id="map"></div>
@@ -68,6 +74,12 @@
   <aside id="pass-panel" class="panel hidden">
     <button id="pass-close" class="panel-close">✕</button>
     <div id="pass-body"></div>
+  </aside>
+
+  <!-- 발사 통계 패널 -->
+  <aside id="stats-panel" class="panel hidden">
+    <button id="stats-close" class="panel-close">✕</button>
+    <div id="stats-body"></div>
   </aside>
 
   <!-- 상태 표시 -->
