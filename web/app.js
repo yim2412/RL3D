@@ -10,6 +10,15 @@ let tickerTimer = null;
 let satrecs = [];           // { name, norad, rec } — satellite.js SGP4 레코드
 let satTimer = null;        // 위성 위치 갱신 타이머(초당)
 
+let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상궤적/추적 대상
+let tracking = false;       // 추적 모드(지도 중심을 위성에 고정)
+let trackTimer = null;      // 지상궤적선 주기적 재계산 타이머
+
+const EMPTY_FC = { type: "FeatureCollection", features: [] };
+const DEG = Math.PI / 180;
+
+let terminatorTimer = null;  // 낮/밤 오버레이 분 단위 갱신 타이머
+
 let autoTimer = null;       // 발사 자동 갱신 타이머
 const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐시 TTL이 제어)
 
@@ -149,6 +158,7 @@ function initMap() {
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
   map.on("load", () => {
+    setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
     setupLaunchLayers();    // 발사 클러스터/포인트 레이어(빈 소스로 먼저 생성)
     setupSatelliteLayer();  // 빈 레이어만(기본 숨김). 위성은 토글 켤 때 로드
     loadLaunches();
@@ -296,6 +306,35 @@ function applyFilters() {
   const filtered = launches.filter((d) => launchPasses(d, active, q));
   const src = map.getSource("launches");
   if (src) src.setData(launchesToFC(filtered));  // 클러스터는 자동 재계산
+  renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
+}
+
+// ── 발사 목록 사이드바 (P6-4) ─────────────────────────────────────────────────
+// 임박한 예정 발사를 위로(오름차순), 지난 발사는 최근 순(내림차순)으로 정렬.
+function renderSidebar(list) {
+  const cont = document.getElementById("sidebar-list");
+  document.getElementById("sidebar-count").textContent = `${list.length}건`;
+  const upcoming = list.filter((d) => d.outcome === "upcoming")
+    .sort((a, b) => new Date(a.net) - new Date(b.net));
+  const rest = list.filter((d) => d.outcome !== "upcoming")
+    .sort((a, b) => new Date(b.net) - new Date(a.net));
+  cont.innerHTML = upcoming.concat(rest).map((d) => {
+    const loc = d.location_name ? " · " + escapeHtml(d.location_name) : "";
+    const sub = d.outcome === "upcoming"
+      ? escapeHtml(countdown(d.net)) + loc
+      : escapeHtml(fmtDate(d.net)) + loc;
+    return `<button class="sb-row" data-id="${escapeHtml(String(d.id))}">` +
+      `<span class="dot d-${d.outcome}"></span>` +
+      `<span class="sb-main"><span class="sb-name">${escapeHtml(d.name)}</span>` +
+      `<span class="sb-sub">${sub}</span></span></button>`;
+  }).join("");
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById("sidebar");
+  const show = sb.classList.contains("hidden");
+  sb.classList.toggle("hidden", !show);
+  document.getElementById("toggle-list").classList.toggle("active", show);
 }
 
 // ── 마커 호버 툴팁 ────────────────────────────────────────────────────────────
@@ -386,7 +425,9 @@ function openPanel(d) {
     ${row("패드", d.pad_name)}
   `;
   panel.classList.remove("hidden");
-  map.flyTo({ center: [d.lng, d.lat], zoom: 4.5, speed: 1.2 });
+  // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
+  if (typeof d.lng === "number" && typeof d.lat === "number")
+    map.flyTo({ center: [d.lng, d.lat], zoom: 4.5, speed: 1.2 });
 }
 
 function closePanel() { document.getElementById("panel").classList.add("hidden"); }
@@ -397,8 +438,81 @@ function startAutoRefresh() {
   autoTimer = setInterval(() => loadLaunches(false, true), AUTO_REFRESH_MS);
 }
 
+// ── 낮/밤 터미네이터 오버레이 (P6-3) ─────────────────────────────────────────
+// 외부 데이터 없이 현재 태양 위치(적위·적경)로 야간 반구를 반투명 폴리곤으로 음영.
+// 각 경도에서 태양 고도=0 이 되는 위도(터미네이터)를 구해 야간 쪽을 채운다.
+function julianDay(date) { return date.getTime() / 86400000 + 2440587.5; }
+
+/** 태양 황경(deg) — 저정밀 근사(오버레이 용도로 충분). */
+function sunEclipticLongitude(jd) {
+  const n = jd - 2451545.0;
+  const L = (((280.460 + 0.9856474 * n) % 360) + 360) % 360;  // 평균 황경
+  const g = ((((357.528 + 0.9856003 * n) % 360) + 360) % 360) * DEG;  // 평균 근점이각
+  return L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g);
+}
+
+/** 태양의 적경(alpha)·적위(delta) (deg). */
+function sunEquatorial(jd) {
+  const lambda = sunEclipticLongitude(jd) * DEG;
+  const eps = (23.4393 - 0.0000004 * (jd - 2451545.0)) * DEG;  // 황도경사
+  const alpha = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) / DEG;
+  const delta = Math.asin(Math.sin(eps) * Math.sin(lambda)) / DEG;
+  return { alpha, delta };
+}
+
+/** 그리니치 평균 항성시(시간 단위, 0~24). */
+function gmstHours(jd) {
+  const d = jd - 2451545.0;
+  return ((((18.697374558 + 24.06570982441908 * d) % 24) + 24) % 24);
+}
+
+/** 현재 시각의 야간 반구를 덮는 폴리곤 Feature. */
+function computeTerminator() {
+  const jd = julianDay(new Date());
+  const gst = gmstHours(jd);
+  const eq = sunEquatorial(jd);
+  const tanDelta = Math.tan(eq.delta * DEG);
+  const poleLat = eq.delta < 0 ? 90 : -90;  // 태양이 남반구(적위<0)면 북극권이 야간
+  const ring = [[-180, poleLat]];
+  for (let lng = -180; lng <= 180; lng += 1) {
+    const ha = (gst * 15 + lng - eq.alpha) * DEG;  // 시간각(rad)
+    const lat = Math.atan(-Math.cos(ha) / tanDelta) / DEG;  // 터미네이터 위도
+    ring.push([lng, lat]);
+  }
+  ring.push([180, poleLat]);
+  ring.push([-180, poleLat]);  // 링 닫기
+  return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
+}
+
+function setupTerminator() {
+  map.addSource("terminator", { type: "geojson", data: EMPTY_FC });
+  map.addLayer({
+    id: "terminator-fill", type: "fill", source: "terminator",
+    paint: { "fill-color": "#000010", "fill-opacity": 0.33 },
+  });
+  updateTerminator();
+  terminatorTimer = setInterval(updateTerminator, 60000);  // 분 단위 갱신
+}
+
+function updateTerminator() {
+  const src = map.getSource("terminator");
+  if (!src) return;
+  const on = document.getElementById("toggle-terminator").checked;
+  src.setData(on ? computeTerminator() : EMPTY_FC);
+}
+
 // ── 위성 (Celestrak TLE → satellite.js SGP4 실시간 위치) ──────────────────────
 function setupSatelliteLayer() {
+  // 지상궤적선 — 위성 소스보다 먼저 추가해 위성 점이 선 위에 렌더되게.
+  map.addSource("sat-track", { type: "geojson", data: EMPTY_FC });
+  map.addLayer({
+    id: "sat-track-line",
+    type: "line",
+    source: "sat-track",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#7dd3fc", "line-width": 1.6, "line-opacity": 0.75 },
+  });
+
   map.addSource("satellites", {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
@@ -416,7 +530,7 @@ function setupSatelliteLayer() {
       "circle-stroke-color": "#9fb0ff",
     },
   });
-  // 위성 클릭 → 이름 팝업
+  // 위성 클릭 → 이름 팝업 + 선택(지상궤적 표시)
   map.on("click", "sat-layer", (e) => {
     const f = e.features && e.features[0];
     if (!f) return;
@@ -428,13 +542,106 @@ function setupSatelliteLayer() {
         `<span style="color:#4a5568">NORAD ${escapeHtml(f.properties.norad)} · 고도 ${escapeHtml(f.properties.alt)}km</span></div>`
       )
       .addTo(map);
+    const s = satrecs.find((x) => String(x.norad) === String(f.properties.norad));
+    if (s) selectSatellite(s);
   });
   map.on("mouseenter", "sat-layer", () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", "sat-layer", () => { map.getCanvas().style.cursor = ""; });
+
+  // 사용자가 지도를 직접 드래그하면 추적 모드 자동 해제(easeTo는 dragstart를 발생시키지 않음)
+  map.on("dragstart", () => { if (tracking) { tracking = false; updateSatCtrl(); } });
+}
+
+// ── 지상궤적선 + 추적 모드 (P6-1) ─────────────────────────────────────────────
+/** 선택 위성의 지상궤적(약 1주기)을 1분 간격으로 계산해 MultiLineString Feature로.
+ *  날짜변경선(±180°) 통과 지점에서 선을 끊어 지도를 가로지르는 가짜 선을 막는다. */
+function computeGroundTrack(rec) {
+  // 평균운동(rad/min)에서 주기 산출. 비정상값이면 LEO 기본 90분으로 대체.
+  let periodMin = (rec.no && rec.no > 0) ? (2 * Math.PI) / rec.no : 90;
+  if (!isFinite(periodMin) || periodMin <= 0 || periodMin > 24 * 60) periodMin = 90;
+  const half = periodMin / 2;
+  const segments = [];
+  let cur = [];
+  let prevLng = null;
+  for (let dm = -half; dm <= half; dm += 1) {
+    const t = new Date(Date.now() + dm * 60000);
+    let pv;
+    try { pv = satellite.propagate(rec, t); } catch (_) { continue; }
+    if (!pv || !pv.position) continue;
+    const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(t));
+    const lng = satellite.degreesLong(geo.longitude);
+    const lat = satellite.degreesLat(geo.latitude);
+    if (!isFinite(lng) || !isFinite(lat)) continue;
+    if (prevLng != null && Math.abs(lng - prevLng) > 180) {
+      if (cur.length > 1) segments.push(cur);  // 날짜변경선 통과 → 세그먼트 분리
+      cur = [];
+    }
+    cur.push([lng, lat]);
+    prevLng = lng;
+  }
+  if (cur.length > 1) segments.push(cur);
+  return { type: "Feature", geometry: { type: "MultiLineString", coordinates: segments }, properties: {} };
+}
+
+function drawGroundTrack() {
+  const src = map.getSource("sat-track");
+  if (!src) return;
+  src.setData(selectedSat ? computeGroundTrack(selectedSat.rec) : EMPTY_FC);
+}
+
+function selectSatellite(s) {
+  selectedSat = s;
+  drawGroundTrack();
+  // 궤적은 지구 자전으로 서서히 이동 → 30초마다 재계산해 신선도 유지
+  if (trackTimer) clearInterval(trackTimer);
+  trackTimer = setInterval(drawGroundTrack, 30000);
+  updateSatCtrl();
+}
+
+function deselectSatellite() {
+  selectedSat = null;
+  tracking = false;
+  if (trackTimer) { clearInterval(trackTimer); trackTimer = null; }
+  const src = map.getSource("sat-track");
+  if (src) src.setData(EMPTY_FC);
+  document.getElementById("sat-ctrl").classList.add("hidden");
+}
+
+/** 선택 위성 컨트롤 박스(이름·추적 버튼) 상태 갱신 + 표시. */
+function updateSatCtrl() {
+  const box = document.getElementById("sat-ctrl");
+  if (!selectedSat) { box.classList.add("hidden"); return; }
+  document.getElementById("sat-ctrl-name").textContent = "🛰 " + selectedSat.name;
+  const btn = document.getElementById("sat-track-btn");
+  btn.textContent = tracking ? "추적 중지" : "추적";
+  btn.classList.toggle("active", tracking);
+  box.classList.remove("hidden");
+}
+
+function toggleTracking() {
+  if (!selectedSat) return;
+  tracking = !tracking;
+  updateSatCtrl();
+  if (tracking) centerOnSelected();
+}
+
+/** 선택 위성의 현재 위치로 지도 중심을 부드럽게 이동. */
+function centerOnSelected() {
+  if (!selectedSat) return;
+  const now = new Date();
+  let pv;
+  try { pv = satellite.propagate(selectedSat.rec, now); } catch (_) { return; }
+  if (!pv || !pv.position) return;
+  const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(now));
+  const lng = satellite.degreesLong(geo.longitude);
+  const lat = satellite.degreesLat(geo.latitude);
+  if (!isFinite(lng) || !isFinite(lat)) return;
+  map.easeTo({ center: [lng, lat], duration: 950 });
 }
 
 async function loadSatellites() {
   try {
+    deselectSatellite();  // 재로드로 satrec이 갈리므로 이전 선택/궤적은 해제
     const res = await window.pywebview.api.get_satellites(false);
     const sats = res.satellites || [];
     // TLE → SGP4 레코드. 파싱 실패한 위성 1개가 전체를 막지 않게 개별 try.
@@ -476,6 +683,7 @@ function updateSatellitePositions() {
     });
   }
   map.getSource("satellites").setData({ type: "FeatureCollection", features });
+  if (tracking && selectedSat) centerOnSelected();  // 추적 모드: 매 초 지도 중심 갱신
 }
 
 function startSatelliteLoop() {
@@ -490,9 +698,12 @@ function setSatelliteVisible(on) {
   if (on) {
     if (satrecs.length === 0) loadSatellites();  // 첫 켜기 때 lazy 로드
     else if (!satTimer) startSatelliteLoop();
-  } else if (satTimer) {
-    clearInterval(satTimer);
-    satTimer = null;  // 숨김 상태에선 계산도 멈춰 자원 절약
+  } else {
+    deselectSatellite();  // 레이어를 끄면 선택/궤적/추적도 함께 해제
+    if (satTimer) {
+      clearInterval(satTimer);
+      satTimer = null;  // 숨김 상태에선 계산도 멈춰 자원 절약
+    }
   }
 }
 
@@ -532,7 +743,17 @@ function bindUI() {
   document.getElementById("search").addEventListener("input", applyFilters);
   document.querySelectorAll(".flt").forEach((c) => c.addEventListener("change", applyFilters));
   document.getElementById("panel-close").addEventListener("click", closePanel);
+  document.getElementById("toggle-terminator").addEventListener("change", updateTerminator);
   document.getElementById("toggle-sat").addEventListener("change", (e) => setSatelliteVisible(e.target.checked));
+  document.getElementById("sat-track-btn").addEventListener("click", toggleTracking);
+  document.getElementById("sat-ctrl-close").addEventListener("click", deselectSatellite);
+  document.getElementById("toggle-list").addEventListener("click", toggleSidebar);
+  document.getElementById("sidebar-list").addEventListener("click", (e) => {
+    const rowEl = e.target.closest(".sb-row");
+    if (!rowEl) return;
+    const d = launches.find((x) => String(x.id) === rowEl.dataset.id);
+    if (d) openPanel(d);
+  });
   document.getElementById("tl-range").addEventListener("input", onTimeline);
   document.getElementById("refresh").addEventListener("click", () => {
     showStatus("강제 갱신 중… (시간당 요청 제한에 주의)");
