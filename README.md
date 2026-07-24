@@ -63,6 +63,13 @@ python api_client.py   # 데이터 소스별 [OK]/[FAIL]·건수 확인 (GUI 없
 본 앱의 "실시간"은 **발사 일정·상태의 자동 갱신**(위 자동 갱신 기능)으로 구현했다. 과거 발사 텔레메트리 기록은
 [Launch-Dashboard-API](https://github.com/shahar603/Launch-Dashboard-API) 같은 오픈소스가 있으나 라이브가 아니다.
 
+## 라이선스
+
+[MIT](LICENSE)
+
+번들된 서드파티 라이브러리는 각자의 라이선스를 따른다 — MapLibre GL JS(BSD-3-Clause), satellite.js(MIT).
+발사/위성 데이터는 각 제공처(thespacedevs, Celestrak)의 이용 조건을 따른다.
+
 ## 파일 구조
 
 ```
