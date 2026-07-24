@@ -14,6 +14,10 @@ let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상�
 let tracking = false;       // 추적 모드(지도 중심을 위성에 고정)
 let trackTimer = null;      // 지상궤적선 주기적 재계산 타이머
 
+let observer = null;        // 관측 위치 { lat, lng } — 통과 예측 기준(localStorage 저장)
+let observerMarker = null;  // 지도 위 관측 위치 마커
+let settingObserver = false;  // 지도 클릭으로 관측 위치 지정 중인지
+
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
 const DEG = Math.PI / 180;
 
@@ -161,6 +165,7 @@ function initMap() {
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
     setupLaunchLayers();    // 발사 클러스터/포인트 레이어(빈 소스로 먼저 생성)
     setupSatelliteLayer();  // 빈 레이어만(기본 숨김). 위성은 토글 켤 때 로드
+    loadObserver();         // 저장된 관측 위치 복원(있으면 마커 표시)
     loadLaunches();
     startAutoRefresh();
   });
@@ -250,6 +255,7 @@ function setupLaunchLayers() {
 
   // 클러스터 클릭 → 네이티브 확대(뭉친 발사장이 갈라짐)
   map.on("click", "clusters", (e) => {
+    if (settingObserver) return;
     const f = e.features[0];
     map.getSource("launches").getClusterExpansionZoom(f.properties.cluster_id)
       .then((z) => map.easeTo({ center: f.geometry.coordinates, zoom: z }))
@@ -257,6 +263,7 @@ function setupLaunchLayers() {
   });
   // 개별 발사 클릭 → 상세 패널
   map.on("click", "launch-point", (e) => {
+    if (settingObserver) return;
     const id = e.features[0].properties.id;
     const d = launches.find((x) => x.id === id);
     if (d) openPanel(d);
@@ -532,6 +539,7 @@ function setupSatelliteLayer() {
   });
   // 위성 클릭 → 이름 팝업 + 선택(지상궤적 표시)
   map.on("click", "sat-layer", (e) => {
+    if (settingObserver) return;  // 관측 위치 지정 중엔 선택하지 않음
     const f = e.features && e.features[0];
     if (!f) return;
     new maplibregl.Popup({ closeButton: false, offset: 8 })
@@ -550,6 +558,8 @@ function setupSatelliteLayer() {
 
   // 사용자가 지도를 직접 드래그하면 추적 모드 자동 해제(easeTo는 dragstart를 발생시키지 않음)
   map.on("dragstart", () => { if (tracking) { tracking = false; updateSatCtrl(); } });
+  // 관측 위치 지정 모드일 때만 지도 클릭을 소비
+  map.on("click", onMapClickForObserver);
 }
 
 // ── 지상궤적선 + 추적 모드 (P6-1) ─────────────────────────────────────────────
@@ -605,6 +615,7 @@ function deselectSatellite() {
   const src = map.getSource("sat-track");
   if (src) src.setData(EMPTY_FC);
   document.getElementById("sat-ctrl").classList.add("hidden");
+  document.getElementById("pass-panel").classList.add("hidden");  // 통과 예측은 위성 종속
 }
 
 /** 선택 위성 컨트롤 박스(이름·추적 버튼) 상태 갱신 + 표시. */
@@ -615,6 +626,8 @@ function updateSatCtrl() {
   const btn = document.getElementById("sat-track-btn");
   btn.textContent = tracking ? "추적 중지" : "추적";
   btn.classList.toggle("active", tracking);
+  document.getElementById("sat-obs-btn").classList.toggle("active", !!observer);
+  document.getElementById("sat-pass-btn").disabled = !observer;  // 관측지 없으면 예측 불가
   box.classList.remove("hidden");
 }
 
@@ -637,6 +650,106 @@ function centerOnSelected() {
   const lat = satellite.degreesLat(geo.latitude);
   if (!isFinite(lng) || !isFinite(lat)) return;
   map.easeTo({ center: [lng, lat], duration: 950 });
+}
+
+// ── 관측 위치 + 통과 예측 (P6-2) ──────────────────────────────────────────────
+const DIRS8 = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
+function azToCompass(azDeg) {
+  return DIRS8[Math.round((((azDeg % 360) + 360) % 360) / 45) % 8];
+}
+
+/** localStorage에서 관측 위치 복원 + 마커 표시. */
+function loadObserver() {
+  try {
+    const raw = localStorage.getItem("rl3d_observer");
+    if (raw) { observer = JSON.parse(raw); showObserverMarker(); }
+  } catch (_) { observer = null; }
+}
+
+function showObserverMarker() {
+  if (!observer) return;
+  if (!observerMarker) {
+    const el = document.createElement("div");
+    el.className = "obs-marker";
+    el.textContent = "📍";
+    observerMarker = new maplibregl.Marker({ element: el, anchor: "bottom" });
+  }
+  observerMarker.setLngLat([observer.lng, observer.lat]).addTo(map);
+}
+
+/** "지도를 클릭해 관측 위치 지정" 모드 진입. 다음 지도 클릭이 위치를 확정한다. */
+function beginSetObserver() {
+  settingObserver = true;
+  map.getCanvas().style.cursor = "crosshair";
+  showStatus("지도를 클릭해 관측 위치를 지정하세요");
+}
+
+function onMapClickForObserver(e) {
+  if (!settingObserver) return;
+  observer = { lat: +e.lngLat.lat.toFixed(4), lng: +e.lngLat.lng.toFixed(4) };
+  try { localStorage.setItem("rl3d_observer", JSON.stringify(observer)); } catch (_) {}
+  showObserverMarker();
+  settingObserver = false;
+  map.getCanvas().style.cursor = "";
+  showStatus(null);
+  updateSatCtrl();  // 통과 예측 버튼 활성화
+}
+
+/** 관측지 기준, 향후 hours시간의 위성 통과(고도>minEl 연속 구간)를 계산. */
+function computePasses(rec, obs, hours = 24, stepSec = 30, minEl = 10) {
+  const observerGd = { latitude: obs.lat * DEG, longitude: obs.lng * DEG, height: 0 };
+  const passes = [];
+  let cur = null;
+  const start = Date.now();
+  const end = start + hours * 3600 * 1000;
+  for (let t = start; t <= end; t += stepSec * 1000) {
+    const date = new Date(t);
+    let pv;
+    try { pv = satellite.propagate(rec, date); } catch (_) { continue; }
+    if (!pv || !pv.position) continue;
+    const ecf = satellite.eciToEcf(pv.position, satellite.gstime(date));
+    const look = satellite.ecfToLookAngles(observerGd, ecf);
+    const elDeg = look.elevation / DEG;
+    const azDeg = look.azimuth / DEG;
+    if (elDeg >= minEl) {
+      if (!cur) cur = { start: t, startAz: azDeg, maxEl: elDeg, maxAz: azDeg };
+      else if (elDeg > cur.maxEl) { cur.maxEl = elDeg; cur.maxAz = azDeg; }
+      cur.end = t; cur.endAz = azDeg;
+    } else if (cur) {
+      passes.push(cur); cur = null;
+    }
+  }
+  if (cur) passes.push(cur);  // 창 끝에서 진행 중이던 통과도 포함
+  return passes;
+}
+
+function fmtPassTime(ms) {
+  return new Date(ms).toLocaleString("ko-KR", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function showPasses() {
+  if (!selectedSat || !observer) return;
+  const passes = computePasses(selectedSat.rec, observer);
+  const panel = document.getElementById("pass-panel");
+  const body = document.getElementById("pass-body");
+  const head =
+    `<h2>🛰 ${escapeHtml(selectedSat.name)} 통과 예측</h2>` +
+    `<div class="pass-obs">관측지 ${observer.lat.toFixed(3)}, ${observer.lng.toFixed(3)} · 향후 24시간 · 최대고도 10° 이상</div>`;
+  if (passes.length === 0) {
+    body.innerHTML = head + `<div class="pass-empty">예측된 통과가 없습니다.</div>`;
+  } else {
+    body.innerHTML = head + passes.map((p) => {
+      const dir = `${azToCompass(p.startAz)}→${azToCompass(p.endAz)}`;
+      const dur = Math.max(1, Math.round((p.end - p.start) / 60000));
+      return `<div class="pass-row">` +
+        `<div class="pass-time">${escapeHtml(fmtPassTime(p.start))}</div>` +
+        `<div class="pass-meta">${escapeHtml(dir)} · 최대고도 ${Math.round(p.maxEl)}° · ${dur}분</div>` +
+        `</div>`;
+    }).join("");
+  }
+  panel.classList.remove("hidden");
 }
 
 async function loadSatellites() {
@@ -746,7 +859,11 @@ function bindUI() {
   document.getElementById("toggle-terminator").addEventListener("change", updateTerminator);
   document.getElementById("toggle-sat").addEventListener("change", (e) => setSatelliteVisible(e.target.checked));
   document.getElementById("sat-track-btn").addEventListener("click", toggleTracking);
+  document.getElementById("sat-obs-btn").addEventListener("click", beginSetObserver);
+  document.getElementById("sat-pass-btn").addEventListener("click", showPasses);
   document.getElementById("sat-ctrl-close").addEventListener("click", deselectSatellite);
+  document.getElementById("pass-close").addEventListener("click", () =>
+    document.getElementById("pass-panel").classList.add("hidden"));
   document.getElementById("toggle-list").addEventListener("click", toggleSidebar);
   document.getElementById("sidebar-list").addEventListener("click", (e) => {
     const rowEl = e.target.closest(".sb-row");

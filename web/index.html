@@ -51,12 +51,20 @@
     <span id="tl-label" class="tl-label">전체 기간</span>
   </div>
 
-  <!-- 선택 위성 컨트롤 (지상궤적/추적) -->
+  <!-- 선택 위성 컨트롤 (지상궤적/추적/통과예측) -->
   <div id="sat-ctrl" class="sat-ctrl hidden">
     <span id="sat-ctrl-name" class="sat-ctrl-name"></span>
     <button id="sat-track-btn" class="btn sm" title="지도 중심을 위성에 고정">추적</button>
+    <button id="sat-obs-btn" class="btn sm" title="지도를 클릭해 관측 위치 지정">📍 관측</button>
+    <button id="sat-pass-btn" class="btn sm" title="관측지 기준 통과 예측" disabled>통과 예측</button>
     <button id="sat-ctrl-close" class="sat-ctrl-close" title="선택 해제">✕</button>
   </div>
+
+  <!-- 통과 예측 패널 -->
+  <aside id="pass-panel" class="panel hidden">
+    <button id="pass-close" class="panel-close">✕</button>
+    <div id="pass-body"></div>
+  </aside>
 
   <!-- 상태 표시 -->
   <div id="status" class="status hidden"></div>
