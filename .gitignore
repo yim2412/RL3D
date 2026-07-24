@@ -1,0 +1,21 @@
+# 파이썬
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyInstaller 산출물
+build/
+dist/
+*.spec
+
+# 임시/작업 파일
+_build_start.txt
+_bgtask.meta
+*.log
+
+# 에디터/OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,197 @@
+/* RL3D — 다크 상황판 테마 */
+:root {
+  --bg: #0b0f1a;
+  --panel: #131a2b;
+  --line: #26304a;
+  --text: #e6ecf7;
+  --muted: #8a97b3;
+  --accent: #4da3ff;
+  --upcoming: #3b82f6;
+  --success: #22c55e;
+  --failure: #ef4444;
+  --partial: #f59e0b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+/* 속보 티커 */
+.ticker {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 34px;
+  background: linear-gradient(90deg, #1a0f14, #131a2b);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 13px;
+  letter-spacing: .3px;
+  z-index: 30;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ticker::before {
+  content: "● LIVE";
+  color: var(--failure);
+  font-weight: 700;
+  margin-right: 12px;
+  flex: 0 0 auto;
+  animation: blink 1.6s infinite;
+}
+@keyframes blink { 50% { opacity: .35; } }
+#ticker-text { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+
+/* 툴바 */
+.toolbar {
+  position: absolute;
+  top: 44px; left: 10px;
+  z-index: 25;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(19, 26, 43, .82);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 9px;
+  max-width: calc(100% - 20px);
+  flex-wrap: wrap;
+}
+.search {
+  background: #0e1524;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 6px 10px;
+  width: 240px;
+  font-size: 13px;
+  outline: none;
+}
+.search:focus { border-color: var(--accent); }
+.filters { display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.filters label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.d-upcoming { background: var(--upcoming); }
+.d-success { background: var(--success); }
+.d-failure { background: var(--failure); }
+.d-partial { background: var(--partial); }
+.d-sat { background: #e8ecff; box-shadow: 0 0 5px #cdd7ff; }
+.sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+.muted { color: var(--muted); }
+
+.btn {
+  background: #0e1524;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* 지도 */
+#map { position: absolute; inset: 0; top: 34px; }
+
+/* 발사 마커는 MapLibre circle layer(app.js)로 렌더 → 별도 마커 CSS 불필요 */
+
+/* 상세 패널 */
+.panel {
+  position: absolute;
+  top: 90px; right: 12px; bottom: 24px;
+  width: 320px;
+  background: rgba(19, 26, 43, .95);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 26;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.panel.hidden { display: none; }
+.panel-close {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; color: var(--muted);
+  font-size: 16px; cursor: pointer;
+}
+.panel-close:hover { color: var(--text); }
+.panel img { width: 100%; border-radius: 8px; margin: 6px 0 12px; }
+.panel h2 { font-size: 16px; margin: 4px 40px 10px 0; line-height: 1.35; }
+.panel .badge {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 20px; margin-bottom: 12px;
+}
+.badge.m-upcoming { background: rgba(59,130,246,.18); color: #93c5fd; }
+.badge.m-success { background: rgba(34,197,94,.18); color: #86efac; }
+.badge.m-failure { background: rgba(239,68,68,.18); color: #fca5a5; }
+.badge.m-partial { background: rgba(245,158,11,.18); color: #fcd34d; }
+.panel .row { display: flex; gap: 8px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+.panel .row .k { color: var(--muted); flex: 0 0 78px; }
+.panel .row .v { color: var(--text); flex: 1; }
+.panel .cd { font-size: 13px; color: var(--accent); margin-top: 4px; }
+
+/* 마커 호버 툴팁 */
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -100%);
+  background: rgba(19, 26, 43, .97);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0,0,0,.5);
+  display: none;
+}
+.tooltip .tt-sub { color: var(--muted); font-size: 11px; }
+
+/* 하단 타임라인 */
+.timeline {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  z-index: 25;
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(19, 26, 43, .82);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+.tl-cap { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+.tl-label { font-size: 12px; color: var(--accent); flex: 0 0 auto; min-width: 130px; text-align: right; }
+#tl-range {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 4px;
+  cursor: pointer;
+}
+
+/* 상태 토스트 */
+.status {
+  position: absolute;
+  bottom: 62px; left: 50%; transform: translateX(-50%);
+  background: rgba(19, 26, 43, .95);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  z-index: 40;
+  color: var(--partial);
+}
+.status.hidden { display: none; }
+
+/* MapLibre 기본 요소 톤 다운 */
+.maplibregl-ctrl-attrib { font-size: 10px; opacity: .6; }

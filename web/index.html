@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RL3D</title>
+  <link rel="stylesheet" href="lib/maplibre-gl.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 상단: 속보 티커 -->
+  <div id="ticker" class="ticker">
+    <span id="ticker-text">데이터를 불러오는 중…</span>
+  </div>
+
+  <!-- 툴바 -->
+  <div id="toolbar" class="toolbar">
+    <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색" />
+    <div class="filters" id="filters">
+      <label><input type="checkbox" class="flt" value="upcoming" checked /> <span class="dot d-upcoming"></span>예정</label>
+      <label><input type="checkbox" class="flt" value="success" checked /> <span class="dot d-success"></span>성공</label>
+      <label><input type="checkbox" class="flt" value="failure" checked /> <span class="dot d-failure"></span>실패</label>
+      <label><input type="checkbox" class="flt" value="partial" checked /> <span class="dot d-partial"></span>부분</label>
+      <span class="sep"></span>
+      <label><input type="checkbox" id="toggle-sat" /> <span class="dot d-sat"></span>위성 <span id="sat-count" class="muted"></span></label>
+    </div>
+    <button id="refresh" class="btn" title="캐시 무시 강제 갱신 (시간당 요청 제한 주의)">↻ 새로고침</button>
+  </div>
+
+  <!-- 지도 -->
+  <div id="map"></div>
+
+  <!-- 상세 패널 -->
+  <aside id="panel" class="panel hidden">
+    <button id="panel-close" class="panel-close">✕</button>
+    <div id="panel-body"></div>
+  </aside>
+
+  <!-- 하단 타임라인 -->
+  <div id="timeline" class="timeline">
+    <span class="tl-cap">타임라인</span>
+    <input id="tl-range" type="range" min="0" max="100" value="100" />
+    <span id="tl-label" class="tl-label">전체 기간</span>
+  </div>
+
+  <!-- 상태 표시 -->
+  <div id="status" class="status hidden"></div>
+
+  <script src="lib/maplibre-gl.js"></script>
+  <script src="lib/satellite.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
