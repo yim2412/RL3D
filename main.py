@@ -11,6 +11,11 @@ import webview
 
 import api_client
 
+try:
+    from winotify import Notification  # Windows 토스트(P8-8). 없으면 알림만 비활성.
+except Exception:
+    Notification = None
+
 
 def resource_path(rel):
     """개발/온파일 exe 양쪽에서 동작하는 리소스 경로."""
@@ -71,6 +76,17 @@ class Api:
 
     def save_settings(self, patch):
         return api_client.save_settings(patch)
+
+    def notify(self, title, message):
+        """Windows 토스트 알림(발사 임박 등). 미지원 환경이면 조용히 무시."""
+        if Notification is None:
+            return False
+        try:
+            Notification(app_id="RL3D", title=str(title), msg=str(message),
+                         duration="short").show()
+            return True
+        except Exception:
+            return False  # 알림 실패가 앱 동작을 막지 않는다
 
     def ping(self):
         return "pong"
