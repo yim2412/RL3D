@@ -62,10 +62,19 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 - 단 **지도 배경 타일(CARTO)과 발사/위성 데이터는 인터넷 연결이 필요**하다
 - 완전 오프라인(지도 배경까지)은 현재 범위 밖 — 로컬 타일 번들은 향후 과제
 
-## 터미널 스모크
+## 터미널 스모크 / 테스트
 
 ```powershell
-python api_client.py   # 데이터 소스별 [OK]/[FAIL]·건수 확인 (GUI 없이)
+python api_client.py            # 데이터 소스별 [OK]/[FAIL]·건수 확인 (GUI 없이, 네트워크 필요)
+python tests/test_parsing.py    # 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
+```
+
+회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
+외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
+
+```powershell
+python tests/capture_fixtures.py     # 픽스처 새로 받기(네트워크·LL2 요청 소모)
+python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은 뒤에만)
 ```
 
 ## 요구 사항
@@ -93,6 +102,7 @@ RL3D/
 ├── api_client.py    LL2 발사 + Celestrak TLE 호출·정규화·캐싱
 ├── build.bat        exe 빌드
 ├── requirements.txt
+├── tests/           파싱 회귀 테스트 + 픽스처/골든
 └── web/
     ├── index.html · style.css · app.js
     └── lib/         maplibre-gl(.js/.css), satellite.min.js (오프라인 번들)

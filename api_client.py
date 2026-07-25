@@ -174,9 +174,11 @@ def _parse_launch(item):
 def _parse_launches(payload):
     out = []
     for item in payload.get("results", []) or []:
+        if not isinstance(item, dict):
+            continue  # results 안에 null 이 섞여 오는 경우가 있다
         try:
             parsed = _parse_launch(item)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, AttributeError, KeyError):
             continue  # 1건 실패가 전체를 죽이지 않게
         if parsed:
             out.append(parsed)
@@ -267,12 +269,15 @@ def _parse_tle(text):
     """TLE 텍스트(3줄 1세트: 이름/L1/L2) → 위성 dict 리스트."""
     lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
     out = []
-    for i in range(0, len(lines) - 2, 3):
+    i, n = 0, len(lines)
+    while i <= n - 3:
         name, l1, l2 = lines[i], lines[i + 1], lines[i + 2]
-        if not (l1.startswith("1 ") and l2.startswith("2 ")):
-            continue  # 정렬이 어긋난 블록은 건너뛴다
-        norad = l1[2:7].strip()
-        out.append({"name": name.strip(), "norad_id": norad, "tle1": l1, "tle2": l2})
+        if l1.startswith("1 ") and l2.startswith("2 "):
+            out.append({"name": name.strip(), "norad_id": l1[2:7].strip(),
+                        "tle1": l1, "tle2": l2})
+            i += 3
+        else:
+            i += 1  # 3줄 정렬이 어긋났으면 한 줄씩 밀며 재동기화(헤더·잡음 줄 방어)
     return out
 
 

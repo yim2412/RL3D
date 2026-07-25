@@ -16,6 +16,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `web/index.html` · `style.css` · `app.js` | 지도·마커·티커·위성·필터 UI |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
+| `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든 |
 | `PLAN.md` | 개발 계획·마일스톤 |
 
 ```powershell
@@ -68,7 +69,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 
 ### 검증
 - **고쳤으면 실제로 돌려본다.** `python api_client.py` 가 기본 스모크. UI를 고쳤으면 `python main.py`로 실행 확인.
-- 파싱 로직을 고쳤으면 **가짜 응답 dict로 파싱 경로를 먼저 확인**한다(네트워크 없이 즉시 검증).
+- **파싱을 건드렸으면 `python tests/test_parsing.py`** — 실제 응답 픽스처로 정규화 결과를 골든과 비교한다
+  (네트워크 불필요). 필드를 의도적으로 바꿨을 때만 픽스처 재수집 후 `--update` 로 골든을 갱신한다.
+- 픽스처에 없는 새 파싱 경로는 **가짜 응답 dict로 먼저 확인**한다(네트워크 없이 즉시 검증).
 - **테스트는 코드·로직·프로세스 레벨로만.** GUI 검증도 마우스 포인터를 실제로 움직이는 자동화(클릭 좌표 이동 등)를
   쓰지 않는다. 창이 떴는지·오류가 없는지·데이터가 맞는지는 프로세스/로그/API 반환값으로 확인한다.
 - **GUI 창은 2번(보조) 모니터에만 띄워 테스트한다.** 개발 실행은 `RL3D_DEV_MONITOR=2 python main.py` 로 돌려
@@ -97,6 +100,5 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 | 항목 | 도입 시점 |
 |------|-----------|
 | **버전 체계 + changelog** | 남에게 배포하거나 exe 를 공유할 때. 혼자 쓰는 동안은 git log 로 충분 |
-| **회귀 검증(정규화 골든)** | 실제 API 응답을 픽스처로 저장한 뒤 — API 파싱은 회귀가 잘 어울리는 영역 |
 | **로컬 타일 번들(완전 오프라인 지도)** | 인터넷 없이 지도 배경까지 필요해질 때 |
 | **발사 실시간 텔레메트리** | 무료 데이터 소스가 확인되면 (현재는 무료 API 부재 → 범위 밖) |
