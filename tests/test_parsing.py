@@ -99,6 +99,53 @@ class LaunchParsing(unittest.TestCase):
         self.assertIsNone(d["rocket"])
         self.assertIsNone(d["orbit"])
 
+    def test_detail_fields_present(self):
+        """detailed 응답에서만 오는 확장 필드(중계·소식·맥락)가 정규화에 실려야 한다."""
+        parsed = api_client._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
+        starship = next(d for d in parsed if "Starship" in (d["name"] or ""))
+        self.assertTrue(starship["vid_urls"], "중계 링크가 비어 있다")
+        self.assertTrue(all(set(v) == {"title", "url"} for v in starship["vid_urls"]))
+        self.assertTrue(starship["patch"].startswith("http"))
+        self.assertTrue(starship["updates"])
+        self.assertEqual(starship["programs"], ["SpaceX Starship"])
+        self.assertEqual(starship["net_precision"], "Second")
+        self.assertIsInstance(starship["webcast_live"], bool)
+
+    def test_vid_urls_capped_and_cleaned(self):
+        item = {"vidURLs": [{"url": "https://e/{}".format(i), "title": "t{}".format(i),
+                             "description": "x" * 500} for i in range(10)]}
+        vids = api_client._parse_vid_urls(item)
+        self.assertEqual(len(vids), api_client.MAX_VID_URLS)
+        self.assertEqual(set(vids[0]), {"title", "url"})   # description 은 버린다(캐시 비대 방지)
+
+    def test_vid_urls_skip_broken(self):
+        item = {"vidURLs": [None, {"title": "제목만"}, {"url": "https://ok"}, "문자열"]}
+        self.assertEqual(api_client._parse_vid_urls(item), [{"title": "중계", "url": "https://ok"}])
+
+    def test_updates_newest_first_and_capped(self):
+        item = {"updates": [
+            {"comment": "old", "created_on": "2026-01-01T00:00:00Z"},
+            {"comment": "new", "created_on": "2026-07-01T00:00:00Z"},
+            {"comment": None, "created_on": "2026-08-01T00:00:00Z"},  # 본문 없는 건 제외
+        ] + [{"comment": "c{}".format(i), "created_on": "2026-06-{:02d}T00:00:00Z".format(i + 1)}
+             for i in range(10)]}
+        ups = api_client._parse_updates(item)
+        self.assertEqual(len(ups), api_client.MAX_UPDATES)
+        self.assertEqual(ups[0]["comment"], "new")
+        self.assertNotIn(None, [u["comment"] for u in ups])
+
+    def test_detail_fields_default_when_absent(self):
+        """구버전/간이 응답이라 확장 필드가 없어도 죽지 않고 빈 값이 된다."""
+        payload = {"results": [{"id": "m", "name": "Minimal",
+                                "pad": {"latitude": 1, "longitude": 2}}]}
+        d = api_client._parse_launches(payload)[0]
+        self.assertEqual(d["vid_urls"], [])
+        self.assertEqual(d["updates"], [])
+        self.assertEqual(d["programs"], [])
+        self.assertFalse(d["webcast_live"])
+        self.assertIsNone(d["patch"])
+        self.assertIsNone(d["net_precision"])
+
     def test_outcome_mapping(self):
         cases = {
             "Success": "success", "success": "success",

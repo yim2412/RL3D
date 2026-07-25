@@ -474,6 +474,12 @@ function row(k, v) {
   return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
+/** 외부 링크는 파이썬 브릿지로 기본 브라우저에서 연다(http/https만 허용됨). */
+function openExternal(url) {
+  if (!url) return;
+  try { window.pywebview.api.open_url(url); } catch (_) { /* 브릿지 없으면 무시 */ }
+}
+
 /** 실패/지연 사유처럼 강조가 필요한 긴 텍스트 블록. */
 function reasonBlock(label, text, kind) {
   return `<div class="reason reason-${kind}">` +
@@ -481,19 +487,84 @@ function reasonBlock(label, text, kind) {
     `<div class="reason-v">${escapeHtml(text)}</div></div>`;
 }
 
+/** net_precision 이 초 단위가 아니면 카운트다운을 곧이곧대로 믿으면 안 된다. */
+const NET_PRECISION_KO = {
+  Second: null, Minute: null,        // 확정에 가까움 — 따로 알리지 않음
+  Hour: "시각이 시간 단위까지만 확정",
+  Day: "날짜만 확정 (시각 미정)",
+  Week: "주 단위로만 확정",
+  Month: "월 단위로만 확정",
+  Quarter: "분기 단위로만 확정",
+  Year: "연 단위로만 확정",
+};
+
+/** 발사 윈도우가 net 과 다른 구간을 가질 때만 "22:45~00:15 (90분)" 로 보여준다. */
+function windowText(d) {
+  if (!d.window_start || !d.window_end) return null;
+  const s = new Date(d.window_start), e = new Date(d.window_end);
+  if (isNaN(s) || isNaN(e) || e <= s) return null;
+  const mins = Math.round((e - s) / 60000);
+  if (mins < 2) return null;  // 순간 발사(instantaneous)면 net 과 같아 의미 없음
+  const hhmm = (dt) => dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const dur = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60 ? (mins % 60) + "분" : ""}`.trim() : `${mins}분`;
+  return `${hhmm(s)} ~ ${hhmm(e)} (${dur})`;
+}
+
+/** 중계 링크 버튼들. 클릭 시 파이썬 브릿지로 기본 브라우저에서 연다. */
+function vidLinksBlock(d) {
+  const vids = d.vid_urls || [];
+  if (!vids.length) return "";
+  const live = d.webcast_live ? `<span class="live-badge">● 생중계 중</span>` : "";
+  const btns = vids.map((v) =>
+    `<button class="vid-btn" data-url="${escapeHtml(v.url)}" title="${escapeHtml(v.url)}">` +
+    `▶ ${escapeHtml(v.title)}</button>`).join("");
+  return `<div class="vid-block"><div class="vid-head">중계 ${live}</div>${btns}</div>`;
+}
+
+/** "이 발사대 285번째 · SpaceX 올해 90번째" — 숫자 하나로 맥락이 생긴다. */
+function contextText(d) {
+  const parts = [];
+  if (d.pad_count) parts.push(`이 발사대 ${Number(d.pad_count).toLocaleString()}번째`);
+  if (d.agency_year_count) parts.push(`${d.provider || "이 기관"} 올해 ${d.agency_year_count}번째`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function updatesBlock(d) {
+  const ups = d.updates || [];
+  if (!ups.length) return "";
+  const rows = ups.map((u) => {
+    const when = u.created_on ? fmtDate(u.created_on) : "";
+    const link = u.info_url
+      ? `<button class="up-link" data-url="${escapeHtml(u.info_url)}">원문</button>` : "";
+    return `<div class="up-row"><div class="up-when">${escapeHtml(when)}${link}</div>` +
+           `<div class="up-text">${escapeHtml(u.comment)}</div></div>`;
+  }).join("");
+  return `<div class="updates"><div class="updates-head">발사 소식</div>${rows}</div>`;
+}
+
 function openPanel(d) {
   const panel = document.getElementById("panel");
   const body = document.getElementById("panel-body");
   const cd = d.outcome === "upcoming"
     ? `<div class="cd" data-net="${escapeHtml(d.net)}">${escapeHtml(countdown(d.net))}</div>` : "";
+  const precision = NET_PRECISION_KO[d.net_precision];
+  const progs = (d.programs || []).map((p) =>
+    `<span class="prog-tag">${escapeHtml(p)}</span>`).join("");
   body.innerHTML = `
     ${d.image ? `<img src="${escapeHtml(d.image)}" alt="" onerror="this.remove()" />` : ""}
     <h2>${escapeHtml(d.name)}</h2>
+    ${d.patch ? `<img class="patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : ""}
     <span class="badge m-${d.outcome}">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}</span>
+    ${progs}
     ${cd}
+    ${precision ? `<div class="net-precision">⚠ ${escapeHtml(precision)}</div>` : ""}
+    ${vidLinksBlock(d)}
     ${d.fail_reason ? reasonBlock("실패 사유", d.fail_reason, "fail") : ""}
     ${d.hold_reason ? reasonBlock("지연·보류 사유", d.hold_reason, "warn") : ""}
+    ${d.weather_concerns ? reasonBlock("기상 우려", d.weather_concerns, "warn") : ""}
     ${row("발사 시각", fmtDate(d.net))}
+    ${row("발사 윈도우", windowText(d))}
+    ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
     ${row("로켓", d.rocket)}
     ${row("기관", d.provider)}
     ${row("국가", countryKo(d.provider_country))}
@@ -502,8 +573,13 @@ function openPanel(d) {
     ${row("궤도", tr(ORBIT_KO, d.orbit))}
     ${row("발사장", d.location_name)}
     ${row("패드", d.pad_name)}
+    ${row("기록", contextText(d))}
     ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
+    ${updatesBlock(d)}
   `;
+  // 링크는 파이썬 브릿지로만 연다(창 안에서 열리면 지도로 못 돌아온다)
+  body.querySelectorAll(".vid-btn, .up-link").forEach((b) =>
+    b.addEventListener("click", () => openExternal(b.dataset.url)));
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panel.classList.remove("hidden");
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동

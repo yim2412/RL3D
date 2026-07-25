@@ -132,6 +132,34 @@ def _outcome_from_status(status_abbrev):
     return "upcoming"  # TBD / Go / TBC / Hold 등 예정 계열
 
 
+MAX_VID_URLS = 4     # 중계 링크는 상위 몇 개만(응답에 10개 넘게 오는 건도 있다)
+MAX_UPDATES = 6      # 발사 소식도 최신 몇 건만 — 캐시 파일이 커지는 걸 막는다
+
+
+def _parse_vid_urls(item):
+    """중계 링크 → [{title, url}]. description 은 길어서 버린다."""
+    out = []
+    for v in (item.get("vidURLs") or []):
+        if not isinstance(v, dict):
+            continue
+        url = v.get("url")
+        if not url:
+            continue
+        out.append({"title": v.get("title") or "중계", "url": url})
+        if len(out) >= MAX_VID_URLS:
+            break
+    return out
+
+
+def _parse_updates(item):
+    """발사 소식 → 최신순 [{comment, created_on, info_url}]."""
+    items = [u for u in (item.get("updates") or []) if isinstance(u, dict) and u.get("comment")]
+    items.sort(key=lambda u: u.get("created_on") or "", reverse=True)
+    return [{"comment": u.get("comment"),
+             "created_on": u.get("created_on"),
+             "info_url": u.get("info_url")} for u in items[:MAX_UPDATES]]
+
+
 def _parse_launch(item):
     """LL2 발사 1건 → 정규화 dict. 좌표 없으면 None(지도에 못 찍음)."""
     pad = item.get("pad") or {}
@@ -168,6 +196,21 @@ def _parse_launch(item):
         # 실패/지연(홀드) 사유 — 있을 때만 채워짐(상세 모드)
         "fail_reason": item.get("failreason"),
         "hold_reason": item.get("holdreason"),
+        # 아래는 이미 detailed 응답에 들어오던 값들(추가 요청 없음)
+        "vid_urls": _parse_vid_urls(item),
+        "webcast_live": bool(item.get("webcast_live")),
+        "patch": ((item.get("mission_patches") or [{}])[0] or {}).get("image_url"),
+        "updates": _parse_updates(item),
+        "window_start": item.get("window_start"),
+        "window_end": item.get("window_end"),
+        # net 이 어디까지 확정인지(Second/Hour/Day/Month…) — 카운트다운의 신뢰도
+        "net_precision": (item.get("net_precision") or {}).get("name"),
+        "programs": [p.get("name") for p in (item.get("program") or [])
+                     if isinstance(p, dict) and p.get("name")],
+        "pad_count": item.get("pad_launch_attempt_count"),
+        "agency_year_count": item.get("agency_launch_attempt_count_year"),
+        "probability": item.get("probability"),
+        "weather_concerns": item.get("weather_concerns"),
     }
 
 

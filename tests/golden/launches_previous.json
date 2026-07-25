@@ -1,5 +1,6 @@
 [
  {
+  "agency_year_count": 89,
   "fail_reason": "",
   "hold_reason": "",
   "id": "ac897b9f-44d2-4ff4-8416-1a0a076e98a2",
@@ -12,15 +13,77 @@
   "mission_type": "Test Flight",
   "name": "Starship | Flight 13",
   "net": "2026-07-24T22:51:00Z",
+  "net_precision": "Second",
   "orbit": "Suborbital",
   "outcome": "success",
+  "pad_count": 2,
   "pad_name": "Orbital Launch Pad 2",
+  "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/starship2520if_mission_patch_20230414221655.png",
+  "probability": null,
+  "programs": [
+   "SpaceX Starship"
+  ],
   "provider": "SpaceX",
   "provider_country": "USA",
   "rocket": "Starship V3",
-  "status": "Launch Successful"
+  "status": "Launch Successful",
+  "updates": [
+   {
+    "comment": "Ship has splashed down.",
+    "created_on": "2026-07-25T00:00:00Z",
+    "info_url": "https://x.com/i/broadcasts/1AJEmmYdMDnJL"
+   },
+   {
+    "comment": "Liftoff.",
+    "created_on": "2026-07-24T22:51:00Z",
+    "info_url": "https://x.com/i/broadcasts/1AJEmmYdMDnJL"
+   },
+   {
+    "comment": "Unofficial Re-stream by SPACE AFFAIRS has started",
+    "created_on": "2026-07-24T22:09:00Z",
+    "info_url": "https://www.youtube.com/watch?v=0EnOQCjgq4E"
+   },
+   {
+    "comment": "Now targeting Jul 24 at 22:51 UTC",
+    "created_on": "2026-07-24T21:54:00Z",
+    "info_url": "https://www.spacex.com/launches/starship-flight-13"
+   },
+   {
+    "comment": "Rescheduled to July 24 due to launch site weather.",
+    "created_on": "2026-07-23T20:09:00Z",
+    "info_url": "https://x.com/SpaceX/status/2080384481043656948"
+   },
+   {
+    "comment": "Delayed to NET July 23.",
+    "created_on": "2026-07-19T22:20:00Z",
+    "info_url": "https://www.spacex.com/launches/starship-flight-13"
+   }
+  ],
+  "vid_urls": [
+   {
+    "title": "SpaceX Flight 13",
+    "url": "https://www.youtube.com/watch?v=7dMblISWtz8"
+   },
+   {
+    "title": "Watch Live: SpaceX Starship launches on 13th test flight",
+    "url": "https://www.youtube.com/watch?v=Ew0Xu1RT8oc"
+   },
+   {
+    "title": "SpaceX Starship Flight 13 - Launch & Landing - ATTEMPT 3 LAUNCH STREAM",
+    "url": "https://www.youtube.com/watch?v=lC3RDO7tdLc"
+   },
+   {
+    "title": "Starship's Thirteenth Flight Test",
+    "url": "https://x.com/i/broadcasts/1AJEmmYdMDnJL"
+   }
+  ],
+  "weather_concerns": null,
+  "webcast_live": false,
+  "window_end": "2026-07-25T00:15:00Z",
+  "window_start": "2026-07-24T22:45:00Z"
  },
  {
+  "agency_year_count": 5,
   "fail_reason": "",
   "hold_reason": "",
   "id": "fa42624c-1e30-4b4b-a06b-59b6153bc4e5",
@@ -33,15 +96,58 @@
   "mission_type": "Earth Science",
   "name": "Kinetica 1 | 5 satellites",
   "net": "2026-07-23T23:33:00Z",
+  "net_precision": "Minute",
   "orbit": "Sun-Synchronous Orbit",
   "outcome": "success",
+  "pad_count": 15,
   "pad_name": "Launch Area 130",
+  "patch": null,
+  "probability": null,
+  "programs": [],
   "provider": "CAS Space",
   "provider_country": "CHN",
   "rocket": "Kinetica 1",
-  "status": "Launch Successful"
+  "status": "Launch Successful",
+  "updates": [
+   {
+    "comment": "Launch success.",
+    "created_on": "2026-07-24T00:02:00Z",
+    "info_url": "https://m.weibo.cn/detail/5324113738467211"
+   },
+   {
+    "comment": "Liftoff.",
+    "created_on": "2026-07-23T23:34:00Z",
+    "info_url": "https://www.youtube.com/watch?v=n_faAgi5wZI"
+   },
+   {
+    "comment": "Updated launch time per unofficial reports.",
+    "created_on": "2026-07-23T23:19:00Z",
+    "info_url": "https://www.youtube.com/watch?v=n_faAgi5wZI"
+   },
+   {
+    "comment": "Refined launch window per new NOTAMs.",
+    "created_on": "2026-07-19T08:22:00Z",
+    "info_url": "https://forum.nasaspaceflight.com/index.php?topic=57867.msg2806735#msg2806735"
+   },
+   {
+    "comment": "Added launch per NOTAMs; Payload and launch vehicle identities uncertain.",
+    "created_on": "2026-07-17T04:36:00Z",
+    "info_url": "https://forum.nasaspaceflight.com/index.php?topic=57867.msg2806451#msg2806451"
+   }
+  ],
+  "vid_urls": [
+   {
+    "title": "Watch Kinetica-1 Launch 5 Satellites from Jiuquan, LIVE!!",
+    "url": "https://www.youtube.com/watch?v=n_faAgi5wZI"
+   }
+  ],
+  "weather_concerns": null,
+  "webcast_live": false,
+  "window_end": "2026-07-23T23:50:00Z",
+  "window_start": "2026-07-23T23:24:00Z"
  },
  {
+  "agency_year_count": 35,
   "fail_reason": "",
   "hold_reason": "",
   "id": "5421e43a-1623-40ac-9dac-201075064e24",
@@ -54,12 +160,49 @@
   "mission_type": "Communications",
   "name": "Long March 3B/E | Tianlian 2-06",
   "net": "2026-07-23T12:00:00Z",
+  "net_precision": "Minute",
   "orbit": "Geostationary Transfer Orbit",
   "outcome": "success",
+  "pad_count": 126,
   "pad_name": "Launch Complex 2 (LC-2)",
+  "patch": null,
+  "probability": null,
+  "programs": [],
   "provider": "China Aerospace Science and Technology Corporation",
   "provider_country": "CHN",
   "rocket": "Long March 3B/E",
-  "status": "Launch Successful"
+  "status": "Launch Successful",
+  "updates": [
+   {
+    "comment": "Launch success.",
+    "created_on": "2026-07-23T12:58:00Z",
+    "info_url": "https://m.weibo.cn/detail/5323945922528943"
+   },
+   {
+    "comment": "Liftoff.",
+    "created_on": "2026-07-23T12:03:00Z",
+    "info_url": "https://www.youtube.com/watch?v=H6ZqSTcsZko"
+   },
+   {
+    "comment": "Refined launch window per new NOTAMs.",
+    "created_on": "2026-07-17T04:40:00Z",
+    "info_url": "https://forum.nasaspaceflight.com/index.php?topic=57867.msg2806498#msg2806498"
+   },
+   {
+    "comment": "Added launch per NOTAMs; Payload and launch vehicle identities uncertain.",
+    "created_on": "2026-07-03T13:13:00Z",
+    "info_url": "https://forum.nasaspaceflight.com/index.php?topic=57867.msg2802432#msg2802432"
+   }
+  ],
+  "vid_urls": [
+   {
+    "title": "(ON LOCATION) Watch Long March 3B Launch Tianlian-2 06 from Xichang, LIVE!!",
+    "url": "https://www.youtube.com/watch?v=H6ZqSTcsZko"
+   }
+  ],
+  "weather_concerns": null,
+  "webcast_live": false,
+  "window_end": "2026-07-23T12:54:00Z",
+  "window_start": "2026-07-23T11:52:00Z"
  }
 ]

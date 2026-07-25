@@ -161,6 +161,56 @@ html, body {
 .reason-warn { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.4); }
 .reason-warn .reason-k { color: #fcd34d; }
 
+/* 미션 패치 — 본문 이미지와 달리 작은 배지처럼 */
+.panel img.patch {
+  width: 64px; float: right; margin: 0 0 6px 10px;
+  border-radius: 6px; background: rgba(255,255,255,.04);
+}
+
+/* 프로그램 태그(Starlink, Artemis …) */
+.prog-tag {
+  display: inline-block; font-size: 11px; padding: 2px 7px; margin-left: 4px;
+  border-radius: 9px; color: var(--muted); border: 1px solid var(--line);
+}
+
+/* 발사 시각이 확정이 아닐 때의 주의 문구 */
+.net-precision { font-size: 11px; color: var(--partial); margin-top: 4px; }
+
+/* 중계 링크 */
+.vid-block { margin: 10px 0 4px; }
+.vid-head {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  margin-bottom: 5px; display: flex; align-items: center; gap: 6px;
+}
+.live-badge {
+  color: var(--failure); font-weight: 700;
+  animation: blink 1.6s infinite;
+}
+.vid-btn {
+  display: block; width: 100%; text-align: left; margin-bottom: 4px;
+  background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.35);
+  color: #bfdbfe; border-radius: 7px; padding: 6px 9px; font-size: 12px;
+  cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vid-btn:hover { background: rgba(59,130,246,.22); }
+
+/* 발사 소식 타임라인 */
+.updates { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.updates-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.up-row { padding: 6px 0; border-top: 1px solid var(--line); }
+.up-row:first-of-type { border-top: none; }
+.up-when {
+  font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.up-text { font-size: 12px; line-height: 1.45; color: var(--text); margin-top: 2px; }
+.up-link {
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 6px; padding: 0 6px; font-size: 10px; cursor: pointer;
+}
+.up-link:hover { color: var(--text); }
+
 /* 미션 설명 */
 .mission-desc {
   font-size: 12px; line-height: 1.5; color: var(--muted);

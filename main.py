@@ -6,12 +6,14 @@
 
 import os
 import sys
+import urllib.parse
+import webbrowser
 
 import webview
 
 import api_client
 
-__version__ = "1.0.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.1.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -73,6 +75,21 @@ class Api:
 
     def save_settings(self, patch):
         return api_client.save_settings(patch)
+
+    def open_url(self, url):
+        """중계 링크 등을 기본 브라우저에서 연다.
+
+        앱 창(WebView2) 안에서 열면 지도로 돌아올 방법이 없으므로 외부 브라우저로 보낸다.
+        API가 준 URL을 그대로 실행하는 셈이라 http/https 만 허용한다(file:// 등 차단).
+        """
+        try:
+            parsed = urllib.parse.urlparse(str(url))
+        except ValueError:
+            return False
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return False
+        webbrowser.open(parsed.geturl())
+        return True
 
     def ping(self):
         return "pong"
