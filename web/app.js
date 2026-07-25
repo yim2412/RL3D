@@ -32,7 +32,6 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐�
 
 let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀
 let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — "N분 전 갱신"(P7-7)
-const notifiedIds = new Set();  // 이미 토스트 알림한 발사 id(중복 방지, P8-8)
 
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
@@ -205,7 +204,6 @@ async function loadLaunches(force = false, silent = false) {
     recomputeTimeline();  // 아카이브가 붙으면 범위가 과거로 늘어날 수 있어 매번 재계산
     applyFilters();
     startTicker();
-    checkLaunchAlerts();  // 새 데이터 들어올 때마다 임박 발사 확인(P8-8)
     if (silent) announceChanges(prev, launches);  // 자동 갱신 때만 변화 알림
   } catch (e) {
     if (!silent) showStatus("데이터를 불러오지 못했습니다.");
@@ -1025,31 +1023,6 @@ function startTicker() {
   }, 1000);
 }
 
-// ── 발사 임박 토스트 알림 (P8-8) ──────────────────────────────────────────────
-/** 예정 발사 중 T-10분 이내로 들어온 것을 Windows 토스트로 한 번씩 알린다. */
-function checkLaunchAlerts() {
-  const on = document.getElementById("toggle-notify");
-  if (!on || !on.checked) return;
-  const now = Date.now();
-  for (const d of launches) {
-    if (d.outcome !== "upcoming" || !d.net) continue;
-    const t = new Date(d.net).getTime();
-    if (isNaN(t)) continue;
-    const mins = (t - now) / 60000;
-    if (mins > 0 && mins <= 10 && !notifiedIds.has(d.id)) {
-      notifiedIds.add(d.id);
-      const when = new Date(t).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-      const loc = d.location_name ? " · " + d.location_name : "";
-      try {
-        window.pywebview.api.notify(
-          `🚀 곧 발사: ${d.name}`,
-          `약 ${Math.max(1, Math.round(mins))}분 후 (${when})${loc}`
-        );
-      } catch (_) { /* 알림 실패는 무시 */ }
-    }
-  }
-}
-
 // ── 마지막 갱신 시각 (P7-7) ───────────────────────────────────────────────────
 function updateFreshness() {
   const el = document.getElementById("freshness");
@@ -1079,7 +1052,6 @@ function applySettings(s) {
     });
   }
   if (typeof s.terminator === "boolean") document.getElementById("toggle-terminator").checked = s.terminator;
-  if (typeof s.notify === "boolean") document.getElementById("toggle-notify").checked = s.notify;
   if (s.satellites) {
     if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
     if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;
@@ -1180,8 +1152,6 @@ function bindUI() {
     saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups } });
   });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
-  document.getElementById("toggle-notify").addEventListener("change", (e) =>
-    saveSettings({ notify: e.target.checked }));
   document.getElementById("stats-btn").addEventListener("click", showStats);
   document.getElementById("stats-close").addEventListener("click", () =>
     document.getElementById("stats-panel").classList.add("hidden"));
@@ -1216,6 +1186,5 @@ window.addEventListener("pywebviewready", async () => {
   applySettings(settings);       // 필터·토글·그룹·관측 위치 복원(지도 초기화 전)
   await initSatGroups();         // 그룹 체크박스를 satGroups 기준으로 생성
   setInterval(updateFreshness, 30000);  // "N분 전 갱신" 주기 갱신(P7-7)
-  setInterval(checkLaunchAlerts, 30000);  // 발사 임박 토스트 확인(P8-8)
   initMap();
 });
