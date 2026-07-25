@@ -11,6 +11,8 @@ import webview
 
 import api_client
 
+__version__ = "1.0.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+
 
 def resource_path(rel):
     """개발/온파일 exe 양쪽에서 동작하는 리소스 경로."""
@@ -102,7 +104,8 @@ def main():
     )
     if x is not None and y is not None:
         kwargs["x"], kwargs["y"] = x, y
-    window = webview.create_window("RL3D — 로켓 발사 & 위성 추적", **kwargs)
+    window = webview.create_window(
+        "RL3D v{} — 로켓 발사 & 위성 추적".format(__version__), **kwargs)
 
     # 종료 시 창 위치·크기 저장(개발 모드 제외 — dev 모니터 위치가 배포에 새지 않게).
     if not dev_mode:
