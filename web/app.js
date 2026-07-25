@@ -170,8 +170,21 @@ function initMap() {
           maxzoom: 20,  // CARTO dark 타일은 z20까지 → 그 이상은 overzoom(배경 안 깨짐)
           attribution: "© OpenStreetMap © CARTO",
         },
+        // 위성사진 배경. 두 소스를 함께 두고 visibility 로 바꾼다
+        // (setStyle 로 갈아끼우면 마커·궤적·터미네이터 레이어를 전부 다시 만들어야 한다).
+        // 숨겨진 레이어는 타일을 받지 않으므로 평소 트래픽 부담도 없다.
+        esri: {
+          type: "raster",
+          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: "Esri, Maxar, Earthstar Geographics",
+        },
       },
-      layers: [{ id: "carto", type: "raster", source: "carto" }],
+      layers: [
+        { id: "carto", type: "raster", source: "carto" },
+        { id: "esri", type: "raster", source: "esri", layout: { visibility: "none" } },
+      ],
     },
     center: [10, 20],
     zoom: 1.6,
@@ -179,6 +192,7 @@ function initMap() {
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
   map.on("load", () => {
+    if (basemap === "satellite") setBasemap("satellite");  // 저장된 배경 복원
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
     setupLaunchLayers();    // 발사 클러스터/포인트 레이어(빈 소스로 먼저 생성)
     setupSatelliteLayer();  // 빈 레이어만(기본 숨김). 위성은 토글 켤 때 로드
@@ -338,7 +352,78 @@ function applyFilters() {
 
 // ── 발사 목록 사이드바 (P6-4) ─────────────────────────────────────────────────
 // 임박한 예정 발사를 위로(오름차순), 지난 발사는 최근 순(내림차순)으로 정렬.
+// ── 배경 지도 전환 (다크 / 위성사진) ──────────────────────────────────────────
+function setBasemap(kind) {
+  basemap = kind === "satellite" ? "satellite" : "dark";
+  if (map && map.getLayer("carto")) {
+    map.setLayoutProperty("carto", "visibility", basemap === "dark" ? "visible" : "none");
+    map.setLayoutProperty("esri", "visibility", basemap === "satellite" ? "visible" : "none");
+  }
+  const btn = document.getElementById("basemap-btn");
+  if (btn) {
+    btn.classList.toggle("active", basemap === "satellite");
+    btn.textContent = basemap === "satellite" ? "🛰 위성사진" : "🗺 다크";
+  }
+}
+
+function toggleBasemap() {
+  setBasemap(basemap === "dark" ? "satellite" : "dark");
+  saveSettings({ basemap });
+}
+
+// ── 사이드바 탭 (발사 / 위성) ─────────────────────────────────────────────────
+let basemap = "dark";       // 배경 지도: dark(CARTO) | satellite(Esri)
+let sidebarTab = "launches";
+
+function setSidebarTab(tab) {
+  sidebarTab = tab;
+  document.getElementById("tab-launches").classList.toggle("active", tab === "launches");
+  document.getElementById("tab-sats").classList.toggle("active", tab === "sats");
+  document.getElementById("sat-search").classList.toggle("hidden", tab !== "sats");
+  if (tab === "sats") renderSatList();
+  else applyFilters();   // 발사 탭은 현재 필터 결과를 다시 그린다
+}
+
+/** 위성 목록 — satrecs(로드된 TLE) 기준. 이름·NORAD 로 걸러 보여준다. */
+function renderSatList() {
+  const cont = document.getElementById("sidebar-list");
+  const countEl = document.getElementById("sidebar-count");
+  if (!satrecs.length) {
+    countEl.textContent = "0개";
+    const on = document.getElementById("toggle-sat").checked;
+    cont.innerHTML = `<div class="sb-empty">${on
+      ? "위성을 불러오는 중…"
+      : "위성 레이어가 꺼져 있습니다.<br />툴바의 <b>위성</b>을 켜면 목록이 채워집니다."}</div>`;
+    return;
+  }
+  const q = document.getElementById("sat-search").value.trim().toLowerCase();
+  const list = satrecs.filter((s) =>
+    !q || s.name.toLowerCase().includes(q) || String(s.norad).includes(q));
+  countEl.textContent = `${list.length}개`;
+  if (!list.length) {
+    cont.innerHTML = `<div class="sb-empty">검색 결과가 없습니다.</div>`;
+    return;
+  }
+  cont.innerHTML = list.slice(0, 400).map((s) =>
+    `<button class="sb-row" data-norad="${escapeHtml(String(s.norad))}">` +
+    `<span class="dot d-sat"></span>` +
+    `<span class="sb-main"><span class="sb-name">${escapeHtml(s.name)}</span>` +
+    `<span class="sb-sub">NORAD ${escapeHtml(String(s.norad))}</span></span></button>`).join("") +
+    (list.length > 400 ? `<div class="sb-empty">…외 ${list.length - 400}개. 검색으로 좁혀보세요.</div>` : "");
+}
+
+/** 목록에서 위성을 고르면 지도에서 클릭한 것과 같게 동작. */
+function pickSatellite(norad) {
+  const s = satrecs.find((x) => String(x.norad) === String(norad));
+  if (!s) return;
+  selectSatellite(s);
+  openSatPanel(s);
+  const d = satDetails(s.rec);
+  if (d) map.flyTo({ center: [d.lng, d.lat], zoom: 3.5, speed: 1.2 });
+}
+
 function renderSidebar(list) {
+  if (sidebarTab === "sats") return;  // 위성 탭이 열려 있으면 발사 목록으로 덮지 않는다
   const cont = document.getElementById("sidebar-list");
   document.getElementById("sidebar-count").textContent = `${list.length}건`;
   const upcoming = list.filter((d) => d.outcome === "upcoming")
@@ -571,7 +656,11 @@ function openPanel(d) {
     ${row("미션", d.mission_name)}
     ${row("종류", tr(MISSION_TYPE_KO, d.mission_type))}
     ${row("궤도", tr(ORBIT_KO, d.orbit))}
-    ${row("발사장", d.location_name)}
+    ${d.location_name
+      ? `<div class="row"><div class="k">발사장</div><div class="v">` +
+        `<button class="site-link" data-loc="${escapeHtml(d.location_name)}">` +
+        `${escapeHtml(d.location_name)} ›</button></div></div>`
+      : ""}
     ${row("패드", d.pad_name)}
     ${row("기록", contextText(d))}
     ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
@@ -580,6 +669,8 @@ function openPanel(d) {
   // 링크는 파이썬 브릿지로만 연다(창 안에서 열리면 지도로 못 돌아온다)
   body.querySelectorAll(".vid-btn, .up-link").forEach((b) =>
     b.addEventListener("click", () => openExternal(b.dataset.url)));
+  body.querySelectorAll(".site-link").forEach((b) =>
+    b.addEventListener("click", () => showSiteStats(b.dataset.loc)));
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panel.classList.remove("hidden");
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
@@ -724,7 +815,15 @@ function setupSatelliteLayer() {
     layout: { visibility: "none" },  // 기본 OFF — 발사 지도에 집중, 필요 시 토글
     paint: {
       "circle-radius": 2.8,
-      "circle-color": "#e8ecff",
+      // 고도(km)로 색을 나눈다 — LEO(하늘색) → MEO(보라) → GEO(주황).
+      // 점 하나하나가 어느 궤도 대역인지 눈으로 구분된다.
+      "circle-color": [
+        "interpolate", ["linear"], ["coalesce", ["get", "alt"], 500],
+        300, "#7dd3fc",     // 저궤도 — ISS·Starlink 대역
+        2000, "#a78bfa",    // 중궤도 진입
+        20000, "#f472b6",   // GPS·Galileo 대역
+        35786, "#fbbf24",   // 정지궤도
+      ],
       "circle-opacity": 0.9,
       "circle-stroke-width": 0.6,
       "circle-stroke-color": "#9fb0ff",
@@ -956,6 +1055,7 @@ async function loadSatellites() {
       } catch (_) { /* 이 위성만 건너뜀 */ }
     }
     document.getElementById("sat-count").textContent = satrecs.length ? `(${satrecs.length})` : "";
+    if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
     if (res.error && !res.stale) showStatus(`⚠ 위성: ${res.error}`);
     // 토글이 켜져 있을 때만 계산 루프 시작(기본 OFF)
     if (document.getElementById("toggle-sat").checked) startSatelliteLoop();
@@ -1005,6 +1105,7 @@ function setSatelliteVisible(on) {
   const vis = on ? "visible" : "none";
   map.setLayoutProperty("sat-layer", "visibility", vis);
   map.setLayoutProperty("sat-hit", "visibility", vis);  // 클릭 영역도 함께 토글
+  if (sidebarTab === "sats") renderSatList();           // 목록 탭의 안내 문구도 함께 갱신
   if (on) {
     if (satrecs.length === 0) loadSatellites();  // 첫 켜기 때 lazy 로드
     else if (!satTimer) startSatelliteLoop();
@@ -1135,6 +1236,7 @@ function applySettings(s) {
   if (s.observer && typeof s.observer.lat === "number" && typeof s.observer.lng === "number") {
     observer = s.observer;
   }
+  if (s.basemap === "satellite" || s.basemap === "dark") setBasemap(s.basemap);
 }
 
 // ── 위성 그룹 선택 UI (P7-6) ──────────────────────────────────────────────────
@@ -1177,13 +1279,98 @@ function computeStats(list) {
 }
 
 /** {키:수} → 가로 막대 HTML. entries는 미리 정렬해 넘긴다. */
+/** 패드 이름은 "Space Launch Complex 4E" 처럼 길어 좁은 라벨에서 잘린다 → 통용 약어로. */
+const PAD_ABBREV = [
+  [/^Space Launch Complex\s*/i, "SLC "],
+  [/^Orbital Launch Pad\s*/i, "OLP "],
+  [/^Launch Complex\s*/i, "LC "],
+  [/^Launch Pad\s*/i, "LP "],
+  [/^Launch Area\s*/i, "LA "],
+  [/^Launch Vehicle Pad\s*/i, "LVP "],
+];
+
+function shortenPad(name) {
+  let s = String(name);
+  for (const [re, rep] of PAD_ABBREV) {
+    if (re.test(s)) return s.replace(re, rep).trim();
+  }
+  return s;
+}
+
 function statBars(entries, color) {
   const max = Math.max(1, ...entries.map((e) => e[1]));
   return entries.map(([k, v]) =>
-    `<div class="st-row"><span class="st-k">${escapeHtml(String(k))}</span>` +
+    // 축약해도 잘릴 수 있으니 원문은 title 로 남긴다
+    `<div class="st-row"><span class="st-k" title="${escapeHtml(String(k))}">${escapeHtml(String(k))}</span>` +
     `<span class="st-bar"><span style="width:${(v / max * 100).toFixed(1)}%;background:${color}"></span></span>` +
     `<span class="st-v">${v}</span></div>`
   ).join("");
+}
+
+// ── 발사장 관점 화면 ──────────────────────────────────────────────────────────
+/** 같은 발사장의 발사만 모아 성적·주요 로켓·최근/예정 목록을 낸다. */
+function showSiteStats(locationName) {
+  if (!locationName) return;
+  const list = allLaunches.filter((d) => d.location_name === locationName);
+  if (!list.length) return;
+
+  const s = computeStats(list);
+  const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
+  const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
+
+  const byRocket = {}, byPad = {};
+  for (const d of list) {
+    if (d.rocket) byRocket[d.rocket] = (byRocket[d.rocket] || 0) + 1;
+    if (d.pad_name) {
+      const p = shortenPad(d.pad_name);
+      byPad[p] = (byPad[p] || 0) + 1;
+    }
+  }
+  const rockets = Object.entries(byRocket).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const pads = Object.entries(byPad).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const dated = list.filter((d) => d.net && !isNaN(new Date(d.net)));
+  const past = dated.filter((d) => d.outcome !== "upcoming")
+    .sort((a, b) => new Date(b.net) - new Date(a.net));
+  const upcoming = dated.filter((d) => d.outcome === "upcoming")
+    .sort((a, b) => new Date(a.net) - new Date(b.net));
+  const span = dated.length
+    ? `${tlLabelDate(Math.min(...dated.map((d) => +new Date(d.net))))} ~ ` +
+      `${tlLabelDate(Math.max(...dated.map((d) => +new Date(d.net))))}`
+    : null;
+
+  const rows = (arr, n) => arr.slice(0, n).map((d) =>
+    `<button class="site-row" data-id="${escapeHtml(String(d.id))}">` +
+    `<span class="dot d-${d.outcome}"></span>` +
+    `<span class="site-row-main"><span class="site-row-name">${escapeHtml(d.name)}</span>` +
+    `<span class="site-row-sub">${escapeHtml(d.outcome === "upcoming" ? countdown(d.net) : fmtDate(d.net))}</span>` +
+    `</span></button>`).join("");
+
+  document.getElementById("stats-body").innerHTML =
+    `<h2>🛫 ${escapeHtml(locationName)}</h2>` +
+    `<div class="st-note">현재 불러온 ${s.total}건 기준 · 과거 연도를 불러오면 더 정확해집니다.` +
+      (span ? `<br />${escapeHtml(span)}` : "") + `</div>` +
+    `<div class="st-tiles">` +
+      `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
+      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div><div class="st-lab">성공률</div></div>` +
+      `<div class="st-tile"><div class="st-num">${s.byOutcome.upcoming}</div><div class="st-lab">예정</div></div>` +
+    `</div>` +
+    `<div class="st-sec">결과별</div>` +
+    statBars([["성공", s.byOutcome.success], ["실패", s.byOutcome.failure],
+              ["부분 실패", s.byOutcome.partial], ["예정", s.byOutcome.upcoming]], "var(--accent)") +
+    (rockets.length ? `<div class="st-sec">주요 로켓</div>` + statBars(rockets, "#f472b6") : "") +
+    (providers.length ? `<div class="st-sec">기관</div>` + statBars(providers, "#a78bfa") : "") +
+    (pads.length > 1 ? `<div class="st-sec">패드별</div>` + statBars(pads, "#7dd3fc") : "") +
+    (upcoming.length ? `<div class="st-sec">예정 발사</div>` + rows(upcoming, 5) : "") +
+    (past.length ? `<div class="st-sec">최근 발사</div>` + rows(past, 5) : "");
+
+  const panel = document.getElementById("stats-panel");
+  panel.querySelectorAll(".site-row").forEach((b) => b.addEventListener("click", () => {
+    const d = findLaunch(b.dataset.id);
+    if (d) { panel.classList.add("hidden"); openPanel(d); }
+  }));
+  panel.classList.remove("hidden");
 }
 
 function showStats() {
@@ -1228,6 +1415,7 @@ function bindUI() {
     saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups } });
   });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
+  document.getElementById("basemap-btn").addEventListener("click", toggleBasemap);
   document.getElementById("stats-btn").addEventListener("click", showStats);
   document.getElementById("stats-close").addEventListener("click", () =>
     document.getElementById("stats-panel").classList.add("hidden"));
@@ -1241,9 +1429,13 @@ function bindUI() {
   document.getElementById("sidebar-list").addEventListener("click", (e) => {
     const rowEl = e.target.closest(".sb-row");
     if (!rowEl) return;
+    if (rowEl.dataset.norad) { pickSatellite(rowEl.dataset.norad); return; }
     const d = findLaunch(rowEl.dataset.id);
     if (d) openPanel(d);
   });
+  document.getElementById("tab-launches").addEventListener("click", () => setSidebarTab("launches"));
+  document.getElementById("tab-sats").addEventListener("click", () => setSidebarTab("sats"));
+  document.getElementById("sat-search").addEventListener("input", renderSatList);
   document.getElementById("tl-range").addEventListener("input", onTimeline);
   populateArchiveYears();
   document.getElementById("arch-load").addEventListener("click", () =>
