@@ -183,6 +183,19 @@ def _parse_launches(payload):
     return out
 
 
+def _dedupe_launches(items):
+    """id 기준 중복 제거(먼저 온 항목 우선). id가 없는 건은 그대로 남긴다."""
+    seen, out = set(), []
+    for d in items:
+        key = d.get("id")
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(d)
+    return out
+
+
 def get_launches(force=False):
     """예정+과거 발사를 정규화해 반환.
 
@@ -196,7 +209,9 @@ def get_launches(force=False):
     try:
         upcoming = _parse_launches(json.loads(_http_get(LL2_UPCOMING)))
         previous = _parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
-        launches = upcoming + previous
+        # 막 발사된 건은 LL2가 upcoming·previous 양쪽에 내보낸다 → id로 중복 제거.
+        # (안 하면 마커·통계·티커에 같은 발사가 두 번 잡힌다. previous 쪽이 결과가 최신)
+        launches = _dedupe_launches(previous + upcoming)
         _cache_write("launches.json", launches)
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:

@@ -943,24 +943,75 @@ function setSatelliteVisible(on) {
   }
 }
 
-// ── 속보 티커 (임박한 예정 발사 순환) ─────────────────────────────────────────
+// ── 속보 티커 (임박한 예정 발사 + 최근 발사 결과 순환) ────────────────────────
+const TICKER_RESULT_MAX = 8;   // 티커에 섞을 최근 결과 개수 상한
+
+/** "3시간 전" / "2일 전" — 티커의 결과 항목이 언제 일인지 알려준다. */
+function agoText(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (!isFinite(diff)) return "";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${Math.max(mins, 0)}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.floor(hours / 24)}일 전`;
+}
+
+/** 예정 2건마다 최근 결과 1건을 끼운다 — 예정이 주(主)이되 결과도 계속 흐르게. */
+function buildTickerItems() {
+  const now = Date.now();
+  const upcoming = launches
+    .filter((d) => d.outcome === "upcoming" && d.net && new Date(d.net).getTime() >= now)
+    .sort((a, b) => new Date(a.net) - new Date(b.net));
+  const recent = launches
+    .filter((d) => d.outcome !== "upcoming" && d.net && new Date(d.net).getTime() < now)
+    .sort((a, b) => new Date(b.net) - new Date(a.net))
+    .slice(0, TICKER_RESULT_MAX);
+
+  const items = [];
+  let ri = 0;
+  upcoming.forEach((d, i) => {
+    items.push({ kind: "upcoming", d });
+    if (i % 2 === 1 && ri < recent.length) items.push({ kind: "result", d: recent[ri++] });
+  });
+  while (ri < recent.length) items.push({ kind: "result", d: recent[ri++] });  // 예정이 적어 남은 결과
+  return items;
+}
+
+function tickerHtml(item) {
+  const d = item.d;
+  const where = d.location_name ? ` · ${escapeHtml(d.location_name)}` : "";
+  if (item.kind === "upcoming") {
+    return `<span class="tk-cd">${escapeHtml(countdown(d.net))}</span> · ${escapeHtml(d.name)}${where}`;
+  }
+  const label = OUTCOME_LABEL[d.outcome] || d.outcome;
+  return `<span class="tk-res tk-${escapeHtml(d.outcome)}">${escapeHtml(label)}</span>` +
+         ` · ${escapeHtml(d.name)}${where} · <span class="tk-ago">${escapeHtml(agoText(d.net))}</span>`;
+}
+
 function startTicker() {
   if (tickerTimer) clearInterval(tickerTimer);
-  const upcoming = launches
-    .filter((d) => d.outcome === "upcoming" && d.net)
-    .sort((a, b) => new Date(a.net) - new Date(b.net));
+  const items = buildTickerItems();
   const el = document.getElementById("ticker-text");
-  if (upcoming.length === 0) {
-    el.textContent = "예정된 발사 정보가 없습니다.";
+  if (items.length === 0) {
+    el.textContent = "표시할 발사 정보가 없습니다.";
     return;
   }
   let idx = 0;
+  let shown = -1;   // 마지막으로 그린 인덱스 — 결과 항목은 매초 다시 그릴 필요가 없다
   const tick = () => {
-    // 이미 지난 발사는 건너뛴다
-    while (idx < upcoming.length && new Date(upcoming[idx].net).getTime() < Date.now()) idx++;
-    if (idx >= upcoming.length) idx = 0;
-    const d = upcoming[idx];
-    el.textContent = `${countdown(d.net)} · ${d.name}${d.location_name ? " · " + d.location_name : ""}`;
+    // 카운트다운이 끝난 예정 항목은 건너뛴다(한 바퀴까지만 탐색)
+    for (let n = 0; n < items.length; n++) {
+      const it = items[idx];
+      if (it.kind === "upcoming" && new Date(it.d.net).getTime() < Date.now()) {
+        idx = (idx + 1) % items.length;
+      } else break;
+    }
+    const item = items[idx];
+    if (item.kind === "upcoming" || idx !== shown) {
+      el.innerHTML = tickerHtml(item);
+      shown = idx;
+    }
     // 패널이 열려있으면 그 카운트다운도 갱신
     const cd = document.querySelector("#panel-body .cd");
     if (cd && cd.dataset.net) cd.textContent = countdown(cd.dataset.net);
@@ -969,7 +1020,7 @@ function startTicker() {
   let secs = 0;
   tickerTimer = setInterval(() => {
     secs++;
-    if (secs % 5 === 0) idx = (idx + 1) % upcoming.length;  // 5초마다 다음 발사
+    if (secs % 5 === 0) idx = (idx + 1) % items.length;  // 5초마다 다음 항목
     tick();
   }, 1000);
 }

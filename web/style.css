@@ -49,6 +49,18 @@ html, body {
 }
 @keyframes blink { 50% { opacity: .35; } }
 #ticker-text { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.tk-cd { font-weight: 700; letter-spacing: .5px; }
+.tk-ago { color: var(--muted); }
+/* 결과 항목은 배지로 — 예정(카운트다운)과 한눈에 구분되게 */
+.tk-res {
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.tk-success { color: var(--success); background: color-mix(in srgb, var(--success) 18%, transparent); }
+.tk-failure { color: var(--failure); background: color-mix(in srgb, var(--failure) 18%, transparent); }
+.tk-partial { color: var(--partial); background: color-mix(in srgb, var(--partial) 18%, transparent); }
 
 /* 툴바 */
 .toolbar {
