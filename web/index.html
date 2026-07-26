@@ -97,6 +97,15 @@
 
   <script src="lib/maplibre-gl.js"></script>
   <script src="lib/satellite.min.js"></script>
-  <script src="app.js"></script>
+  <!-- 클래식 스크립트라 최상위 let·function 이 파일 간에 공유된다 → 순서가 곧 의존 관계.
+       state 는 가장 먼저, 실행 진입점인 boot 는 가장 마지막(P11-5). -->
+  <script src="js/state.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/launches.js"></script>
+  <script src="js/sats.js"></script>
+  <script src="js/panels.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/boot.js"></script>
 </body>
 </html>

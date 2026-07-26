@@ -8,7 +8,19 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const APP_JS = path.join(__dirname, "..", "web", "app.js");
+/** index.html 의 <script> 순서와 같아야 한다 — 클래식 스크립트라 순서가 곧 의존 관계다.
+ *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
+const APP_FILES = [
+  "state.js", "utils.js", "map.js", "launches.js",
+  "sats.js", "panels.js", "settings.js", "boot.js",
+];
+const JS_DIR = path.join(__dirname, "..", "web", "js");
+
+/** 여러 파일을 한 스크립트로 이어 붙인다 — 브라우저에서 여러 <script> 가 같은 전역
+ *  렉시컬 스코프를 공유하는 것과 같은 상태를 vm 안에서 재현한다. */
+function readApp() {
+  return APP_FILES.map((f) => fs.readFileSync(path.join(JS_DIR, f), "utf8")).join("\n");
+}
 
 /** app.js 의 모듈 스코프 `let` 상태는 컨텍스트 객체에 노출되지 않는다(전역 프로퍼티가 아니다).
  *  테스트에서 읽고 쓰려면 같은 스코프에 접근자를 만들어 밖으로 꺼내야 한다. */
@@ -96,9 +108,9 @@ function loadApp(options = {}) {
     .map((k) => `get ${k}() { return ${k}; }, set ${k}(v) { ${k} = v; },`)
     .join("\n  ");
   vm.runInContext(
-    fs.readFileSync(APP_JS, "utf8") + `\n;globalThis.__state = {\n  ${accessors}\n};`,
+    readApp() + `\n;globalThis.__state = {\n  ${accessors}\n};`,
     ctx,
-    { filename: "app.js" },
+    { filename: "web/js/*.js" },
   );
 
   const map = {

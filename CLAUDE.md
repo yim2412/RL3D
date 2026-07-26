@@ -13,7 +13,8 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 |------|------|
 | `main.py` | pywebview 창 생성 + `Api` 브릿지 클래스(JS→파이썬 호출 창구) |
 | `api_client.py` | 외부 API 호출·정규화·디스크 캐싱. **엔드포인트 URL 상수는 전부 이 파일 상단에** |
-| `web/index.html` · `style.css` · `app.js` | 지도·마커·티커·위성·필터 UI |
+| `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
+| `web/js/*.js` | UI 로직 8개 파일: `state` → `utils` → `map` → `launches` → `sats` → `panels` → `settings` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든, 프론트 회귀 테스트(`test_frontend.js` + `harness.js`) |
@@ -71,7 +72,7 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **고쳤으면 실제로 돌려본다.** `python api_client.py` 가 기본 스모크. UI를 고쳤으면 `python main.py`로 실행 확인.
 - **파싱을 건드렸으면 `python tests/test_parsing.py`** — 실제 응답 픽스처로 정규화 결과를 골든과 비교한다
   (네트워크 불필요). 필드를 의도적으로 바꿨을 때만 픽스처 재수집 후 `--update` 로 골든을 갱신한다.
-- **`web/app.js` 를 건드렸으면 `node tests/test_frontend.js`** — 스텁 DOM 위에서 함수를 직접 호출한다
+- **`web/js/` 를 건드렸으면 `node tests/test_frontend.js`** — 스텁 DOM 위에서 함수를 직접 호출한다
   (브라우저·네트워크·마우스 불필요). 새 로직을 넣었으면 **여기에 항목을 추가**한다. 대상은
   "깨져도 화면으로는 알아채기 어려운" 것 — 분류·필터·설정 복원 방어·집계. 스텁과 로더는 `tests/harness.js` 에만 둔다.
 - 픽스처에 없는 새 파싱 경로는 **가짜 응답 dict로 먼저 확인**한다(네트워크 없이 즉시 검증).

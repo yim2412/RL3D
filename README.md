@@ -87,7 +87,8 @@ node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저
 파싱 회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
 외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
 
-프론트엔드 테스트는 `web/app.js`를 Node `vm`에 스텁 DOM과 함께 올려 함수를 직접 호출한다(마우스 자동화 없음).
+프론트엔드 테스트는 `web/js/*.js`를 로드 순서대로 이어 붙여 Node `vm`에 스텁 DOM과 함께 올리고
+함수를 직접 호출한다(마우스 자동화 없음).
 궤도 대역 분류·필터, 설정 복원 방어, 오프라인 판정, 이스케이프, 통계 집계처럼 **깨져도 화면상으로는
 알아채기 어려운** 로직이 대상이다. 로딩·스텁은 `tests/harness.js` 한 곳에 있다.
 
@@ -121,8 +122,10 @@ RL3D/
 ├── api_client.py    LL2 발사 + Celestrak TLE 호출·정규화·캐싱
 ├── build.bat        exe 빌드
 ├── requirements.txt
-├── tests/           파싱 회귀 테스트 + 픽스처/골든
+├── tests/           파싱 회귀 테스트 + 픽스처/골든, 프론트 회귀 테스트
 └── web/
-    ├── index.html · style.css · app.js
+    ├── index.html · style.css
+    ├── js/          state · utils · map · launches · sats · panels · settings · boot
+    │                (클래식 스크립트 — index.html 의 로드 순서가 곧 의존 관계)
     └── lib/         maplibre-gl(.js/.css), satellite.min.js (오프라인 번들)
 ```
