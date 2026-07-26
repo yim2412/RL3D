@@ -22,16 +22,19 @@ LL2_ARCHIVE = (LL2_BASE + "/launch/?net__gte={year}-01-01T00:00:00Z"
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
 # 위성 그룹 카탈로그: key=Celestrak GROUP, label=표시명, cap=개수 상한(None=무제한).
-# Starlink/GEO 등 대형 그룹은 렌더 성능을 위해 cap 필수(P7-6).
+# cap 은 **지도에 그릴 개수**만 줄인다 — 응답 전체를 받은 뒤 자르므로 다운로드는 줄지 않는다.
+# 값 근거(2026-07-26 실측, P11-6): 위성 8,000개에서도 초당 갱신이 동기 28ms·화면 반영 33ms 라
+# 렌더는 병목이 아니었다. 실제 제약은 Celestrak 쪽 — Starlink 전체(10,776개·1.7MB)를 거듭
+# 받으면 403 으로 막힌다. 그래서 GEO(568개·93KB)는 캡을 풀고, Starlink 만 상한을 둔다.
 SATELLITE_GROUP_CATALOG = {
     "stations": {"label": "우주정거장", "cap": None},
     "visual":   {"label": "밝게 보이는 위성", "cap": None},
-    "starlink": {"label": "Starlink", "cap": 300},
+    "starlink": {"label": "Starlink", "cap": 2000},
     "gps-ops":  {"label": "GPS", "cap": None},
     "galileo":  {"label": "Galileo", "cap": None},
     "weather":  {"label": "기상 위성", "cap": None},
     "science":  {"label": "과학 위성", "cap": None},
-    "geo":      {"label": "정지궤도(GEO)", "cap": 200},
+    "geo":      {"label": "정지궤도(GEO)", "cap": None},
 }
 DEFAULT_SATELLITE_GROUPS = ["stations", "visual"]
 
