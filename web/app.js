@@ -31,6 +31,7 @@ let autoTimer = null;       // 발사 자동 갱신 타이머
 const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐시 TTL이 제어)
 
 let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀
+let satBands = { leo: true, meo: true, geo: true };  // 궤도 대역 필터(P11-3). 설정으로 덮어씀
 let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — "N분 전 갱신"(P7-7)
 
 // 관심 목록(P11-2) — id/norad 는 항상 문자열로 넣는다(LL2 id는 문자열, NORAD는 숫자로 와 섞인다)
@@ -507,18 +508,21 @@ function renderSatList() {
     return;
   }
   const q = document.getElementById("sat-search").value.trim().toLowerCase();
-  const list = satrecs.filter((s) =>
+  const list = visibleSats().filter((s) =>
     !q || s.name.toLowerCase().includes(q) || String(s.norad).includes(q));
   countEl.textContent = `${list.length}개`;
   if (!list.length) {
-    cont.innerHTML = `<div class="sb-empty">검색 결과가 없습니다.</div>`;
+    const allBands = BANDS.every((b) => satBands[b.key] !== false);
+    cont.innerHTML = `<div class="sb-empty">${allBands
+      ? "검색 결과가 없습니다."
+      : "조건에 맞는 위성이 없습니다.<br />툴바 <b>그룹 ▾</b>의 궤도 대역 필터를 확인해 보세요."}</div>`;
     return;
   }
   cont.innerHTML = list.slice(0, 400).map((s) =>
     `<button class="sb-row" data-norad="${escapeHtml(String(s.norad))}">` +
     `<span class="dot d-sat"></span>` +
     `<span class="sb-main"><span class="sb-name">${escapeHtml(s.name)}</span>` +
-    `<span class="sb-sub">NORAD ${escapeHtml(String(s.norad))}</span></span></button>`).join("") +
+    `<span class="sb-sub">NORAD ${escapeHtml(String(s.norad))} · ${bandLabel(s.band)}</span></span></button>`).join("") +
     (list.length > 400 ? `<div class="sb-empty">…외 ${list.length - 400}개. 검색으로 좁혀보세요.</div>` : "");
 }
 
@@ -924,6 +928,35 @@ function updateTerminator() {
   src.setData(on ? computeTerminator() : EMPTY_FC);
 }
 
+// ── 궤도 대역 분류 (P11-3) ────────────────────────────────────────────────────
+// 실시간 고도(P10-5의 색)가 아니라 평균운동에서 얻은 **평균 고도**로 나눈다.
+// 전파(propagate) 없이 즉시 구할 수 있고, 타원 궤도도 한 대역에 안정적으로 머문다.
+const BANDS = [
+  { key: "leo", label: "저궤도 LEO", short: "LEO", note: "~2,000km" },
+  { key: "meo", label: "중궤도 MEO", short: "MEO", note: "~35,000km" },
+  { key: "geo", label: "정지궤도 GEO", short: "GEO", note: "35,000km~" },
+];
+
+function orbitBand(rec) {
+  const n = rec && rec.no > 0 ? rec.no / 60 : 0;   // rad/min → rad/s
+  if (!n || !isFinite(n)) return "leo";            // 값이 이상하면 다수인 LEO 로
+  const a = Math.cbrt(398600.4418 / (n * n));      // 반장축(km)
+  const alt = a - 6371;
+  if (alt < 2000) return "leo";
+  return alt < 35000 ? "meo" : "geo";
+}
+
+function bandLabel(key) {
+  const b = BANDS.find((x) => x.key === key);
+  return b ? b.short : "";
+}
+
+/** 대역 필터를 통과하는 위성만. 지도·목록이 같은 기준을 쓰게 한 곳에 둔다.
+ *  관심 위성은 필터와 무관하게 남긴다 — 관심 탭에서 골랐는데 지도에 점이 없으면 고장으로 보인다. */
+function visibleSats() {
+  return satrecs.filter((s) => satBands[s.band] !== false || isFavSat(s.norad));
+}
+
 // ── 위성 (Celestrak TLE → satellite.js SGP4 실시간 위치) ──────────────────────
 function setupSatelliteLayer() {
   // 지상궤적선 — 위성 소스보다 먼저 추가해 위성 점이 선 위에 렌더되게.
@@ -1183,10 +1216,10 @@ async function loadSatellites() {
     for (const s of sats) {
       try {
         const rec = satellite.twoline2satrec(s.tle1, s.tle2);
-        if (rec && !rec.error) satrecs.push({ name: s.name, norad: s.norad_id, rec });
+        if (rec && !rec.error) satrecs.push({ name: s.name, norad: s.norad_id, rec, band: orbitBand(rec) });
       } catch (_) { /* 이 위성만 건너뜀 */ }
     }
-    document.getElementById("sat-count").textContent = satrecs.length ? `(${satrecs.length})` : "";
+    updateSatCount();
     if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
     else if (sidebarTab === "favs") renderFavList();  // 관심 위성이 이제 붙는다
     if (res.error && !res.stale) showStatus(`⚠ 위성: ${res.error}`);
@@ -1203,7 +1236,7 @@ function updateSatellitePositions() {
   const now = new Date();
   const gmst = satellite.gstime(now);
   const features = [];
-  for (const s of satrecs) {
+  for (const s of visibleSats()) {
     let pv;
     try { pv = satellite.propagate(s.rec, now); } catch (_) { continue; }
     const eci = pv && pv.position;
@@ -1368,6 +1401,11 @@ function applySettings(s) {
   if (s.satellites) {
     if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
     if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;
+    const b = s.satellites.bands;
+    // 전부 꺼진 설정이 저장돼 있으면 위성이 하나도 안 보여 앱이 고장난 것처럼 된다 → 무시
+    if (b && BANDS.some((x) => b[x.key])) {
+      BANDS.forEach((x) => { satBands[x.key] = b[x.key] !== false; });
+    }
   }
   if (s.observer && typeof s.observer.lat === "number" && typeof s.observer.lng === "number") {
     observer = s.observer;
@@ -1393,16 +1431,46 @@ async function initSatGroups() {
       const checked = satGroups.includes(g.key) ? "checked" : "";
       const cap = g.cap ? ` <span class="muted">(최대 ${g.cap})</span>` : "";
       return `<label><input type="checkbox" class="satg" value="${escapeHtml(g.key)}" ${checked}/> ${escapeHtml(g.label)}${cap}</label>`;
-    }).join("");
+    }).join("")
+      // 궤도 대역 필터(P11-3) — 그룹은 "무엇을 받을지", 대역은 "받은 것 중 무엇을 볼지"
+      + `<div class="satg-sec">궤도 대역</div>`
+      + BANDS.map((b) =>
+        `<label><input type="checkbox" class="satb" value="${b.key}" ${satBands[b.key] !== false ? "checked" : ""}/> ` +
+        `${escapeHtml(b.label)} <span class="muted">${escapeHtml(b.note)}</span></label>`).join("");
     box.querySelectorAll(".satg").forEach((c) => c.addEventListener("change", onSatGroupChange));
+    box.querySelectorAll(".satb").forEach((c) => c.addEventListener("change", onSatBandChange));
   } catch (e) { console.error("위성 그룹 로드 실패", e); }
 }
 
 function onSatGroupChange() {
   satGroups = Array.from(document.querySelectorAll(".satg:checked")).map((c) => c.value);
   const enabled = document.getElementById("toggle-sat").checked;
-  saveSettings({ satellites: { enabled, groups: satGroups } });
+  saveSettings({ satellites: { enabled, groups: satGroups, bands: satBands } });
   if (enabled) { satrecs = []; loadSatellites(); }  // 그룹이 바뀌었으니 재로드
+}
+
+/** 대역 필터 변경 — 재로드 없이 즉시 반영(이미 받아둔 TLE만 걸러낸다). */
+function onSatBandChange() {
+  BANDS.forEach((b) => { satBands[b.key] = false; });
+  document.querySelectorAll(".satb:checked").forEach((c) => { satBands[c.value] = true; });
+  saveSettings({
+    satellites: { enabled: document.getElementById("toggle-sat").checked, groups: satGroups, bands: satBands },
+  });
+  // 선택 위성이 필터 밖으로 나가면 궤적선만 지도에 남으므로 함께 해제
+  if (selectedSat && satBands[selectedSat.band] === false && !isFavSat(selectedSat.norad)) deselectSatellite();
+  updateSatCount();
+  if (satTimer) updateSatellitePositions();  // 다음 초를 기다리지 않고 바로 반영
+  if (sidebarTab === "sats") renderSatList();
+  else if (sidebarTab === "favs") renderFavList();
+}
+
+/** 툴바 위성 개수 — 대역 필터가 걸려 있으면 "보이는 수/전체" 로 보여준다. */
+function updateSatCount() {
+  const el = document.getElementById("sat-count");
+  if (!el) return;
+  if (!satrecs.length) { el.textContent = ""; return; }
+  const shown = visibleSats().length;
+  el.textContent = shown === satrecs.length ? `(${shown})` : `(${shown}/${satrecs.length})`;
 }
 
 function toggleSatGroups() {
@@ -1583,7 +1651,7 @@ function bindUI() {
   });
   document.getElementById("toggle-sat").addEventListener("change", (e) => {
     setSatelliteVisible(e.target.checked);
-    saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups } });
+    saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups, bands: satBands } });
   });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
   document.getElementById("basemap-btn").addEventListener("click", toggleBasemap);
