@@ -211,6 +211,7 @@ function initMap() {
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
   map.on("moveend", scheduleCameraSave);  // 마지막으로 보던 위치를 다음 실행에 복원(P11-4)
+  setupOfflineBadge();
   map.on("load", () => {
     if (basemap === "satellite") setBasemap("satellite");  // 저장된 배경 복원
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
@@ -220,6 +221,44 @@ function initMap() {
     if (document.getElementById("toggle-sat").checked) setSatelliteVisible(true);  // 설정에 켜져 있었으면 로드
     loadLaunches();
     startAutoRefresh();
+  });
+}
+
+// ── 오프라인 안내 배지 (P11-7) ────────────────────────────────────────────────
+// 배경 타일만 온라인 전용이라, 오프라인이면 데이터(stale 캐시)는 뜨는데 지도만 회색으로 남는다.
+// 그 상태를 "앱이 깨진 것"으로 오해하지 않게 알려준다.
+const TILE_FAIL_LIMIT = 3;   // 타일 한두 개 실패는 흔하다 → 연속 실패만 오프라인으로 본다
+let tileFails = 0;
+let badgeDismissed = false;  // 사용자가 닫으면 이 세션에선 다시 띄우지 않는다
+
+function setOfflineBadge(on) {
+  const el = document.getElementById("offline-badge");
+  if (!el) return;
+  if (on && badgeDismissed) return;
+  el.textContent = "🌐 오프라인 — 배경 지도를 못 받았습니다 (발사·위성은 저장된 데이터)";
+  el.classList.toggle("hidden", !on);
+}
+
+function setupOfflineBadge() {
+  map.on("error", (e) => {
+    if (e && (e.sourceId === "carto" || e.sourceId === "esri")) {
+      if (++tileFails >= TILE_FAIL_LIMIT) setOfflineBadge(true);
+    }
+  });
+  // 타일이 하나라도 성공하면 연결이 살아난 것 → 카운터와 배지를 함께 되돌린다
+  map.on("data", (e) => {
+    if (e && e.dataType === "source" && e.tile && e.tile.state === "loaded"
+        && (e.sourceId === "carto" || e.sourceId === "esri")) {
+      tileFails = 0;
+      setOfflineBadge(false);
+    }
+  });
+  window.addEventListener("offline", () => setOfflineBadge(true));
+  window.addEventListener("online", () => { tileFails = 0; setOfflineBadge(false); });
+  if (navigator.onLine === false) setOfflineBadge(true);  // 시작부터 오프라인인 경우
+  document.getElementById("offline-badge").addEventListener("click", () => {
+    badgeDismissed = true;
+    setOfflineBadge(false);
   });
 }
 

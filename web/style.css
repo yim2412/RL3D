@@ -320,6 +320,26 @@ html, body {
   border-top: 1px solid var(--line);
 }
 
+/* 오프라인 안내 배지 (P11-7) — 타임라인 위, 지도 좌하단 */
+.offline-badge {
+  position: absolute;
+  left: 14px; bottom: 74px;
+  z-index: 24;
+  max-width: 520px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 12px; line-height: 1.4;
+  color: #ffd9a8;
+  background: rgba(48, 32, 14, .94);
+  border: 1px solid #6b4a1c;
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.offline-badge:hover { border-color: #a06f28; }
+.offline-badge.hidden { display: none; }
+
 /* 발사 통계 패널 */
 .st-note { font-size: 11px; color: var(--muted); margin: -4px 0 12px; }
 .st-tiles { display: flex; gap: 8px; margin-bottom: 14px; }
