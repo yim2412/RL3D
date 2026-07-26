@@ -80,11 +80,16 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 
 ```powershell
 python api_client.py            # 데이터 소스별 [OK]/[FAIL]·건수 확인 (GUI 없이, 네트워크 필요)
-python tests/test_parsing.py    # 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
+python tests/test_parsing.py    # 파이썬 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
+node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저·네트워크 불필요)
 ```
 
-회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
+파싱 회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
 외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
+
+프론트엔드 테스트는 `web/app.js`를 Node `vm`에 스텁 DOM과 함께 올려 함수를 직접 호출한다(마우스 자동화 없음).
+궤도 대역 분류·필터, 설정 복원 방어, 오프라인 판정, 이스케이프, 통계 집계처럼 **깨져도 화면상으로는
+알아채기 어려운** 로직이 대상이다. 로딩·스텁은 `tests/harness.js` 한 곳에 있다.
 
 ```powershell
 python tests/capture_fixtures.py     # 픽스처 새로 받기(네트워크·LL2 요청 소모)

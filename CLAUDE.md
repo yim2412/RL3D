@@ -16,7 +16,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `web/index.html` · `style.css` · `app.js` | 지도·마커·티커·위성·필터 UI |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
-| `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든 |
+| `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든, 프론트 회귀 테스트(`test_frontend.js` + `harness.js`) |
 | `PLAN.md` | 개발 계획·마일스톤 |
 
 ```powershell
@@ -71,6 +71,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **고쳤으면 실제로 돌려본다.** `python api_client.py` 가 기본 스모크. UI를 고쳤으면 `python main.py`로 실행 확인.
 - **파싱을 건드렸으면 `python tests/test_parsing.py`** — 실제 응답 픽스처로 정규화 결과를 골든과 비교한다
   (네트워크 불필요). 필드를 의도적으로 바꿨을 때만 픽스처 재수집 후 `--update` 로 골든을 갱신한다.
+- **`web/app.js` 를 건드렸으면 `node tests/test_frontend.js`** — 스텁 DOM 위에서 함수를 직접 호출한다
+  (브라우저·네트워크·마우스 불필요). 새 로직을 넣었으면 **여기에 항목을 추가**한다. 대상은
+  "깨져도 화면으로는 알아채기 어려운" 것 — 분류·필터·설정 복원 방어·집계. 스텁과 로더는 `tests/harness.js` 에만 둔다.
 - 픽스처에 없는 새 파싱 경로는 **가짜 응답 dict로 먼저 확인**한다(네트워크 없이 즉시 검증).
 - **테스트는 코드·로직·프로세스 레벨로만.** GUI 검증도 마우스 포인터를 실제로 움직이는 자동화(클릭 좌표 이동 등)를
   쓰지 않는다. 창이 떴는지·오류가 없는지·데이터가 맞는지는 프로세스/로그/API 반환값으로 확인한다.
