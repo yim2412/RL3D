@@ -33,6 +33,10 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐�
 let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀
 let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — "N분 전 갱신"(P7-7)
 
+// 관심 목록(P11-2) — id/norad 는 항상 문자열로 넣는다(LL2 id는 문자열, NORAD는 숫자로 와 섞인다)
+let favLaunches = new Set();
+let favSats = new Set();
+
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
 let timelineInited = false;
@@ -153,6 +157,20 @@ function countryKo(code) {
 }
 
 // ── 지도 ─────────────────────────────────────────────────────────────────────
+// ── 지도 카메라 저장/복원 (P11-4) ────────────────────────────────────────────
+let savedCamera = null;       // 설정에서 복원한 카메라 — 지도 생성 시 초기 위치로 쓴다
+let cameraSaveTimer = null;
+
+/** 지도를 움직일 때마다 파일을 쓰지 않도록, 조작이 잠잠해진 뒤 한 번만 저장한다. */
+function scheduleCameraSave() {
+  if (tracking) return;  // 추적 모드는 매 초 지도를 옮긴다 → 그 위치까지 저장할 이유는 없다
+  if (cameraSaveTimer) clearTimeout(cameraSaveTimer);
+  cameraSaveTimer = setTimeout(() => {
+    const c = map.getCenter();
+    saveSettings({ camera: { lng: c.lng, lat: c.lat, zoom: map.getZoom() } });
+  }, 1000);
+}
+
 function initMap() {
   map = new maplibregl.Map({
     container: "map",
@@ -186,11 +204,12 @@ function initMap() {
         { id: "esri", type: "raster", source: "esri", layout: { visibility: "none" } },
       ],
     },
-    center: [10, 20],
-    zoom: 1.6,
+    center: savedCamera ? [savedCamera.lng, savedCamera.lat] : [10, 20],
+    zoom: savedCamera ? savedCamera.zoom : 1.6,
     attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+  map.on("moveend", scheduleCameraSave);  // 마지막으로 보던 위치를 다음 실행에 복원(P11-4)
   map.on("load", () => {
     if (basemap === "satellite") setBasemap("satellite");  // 저장된 배경 복원
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
@@ -254,6 +273,7 @@ function announceChanges(prev, curr) {
 const LAUNCH_COLORS = {
   upcoming: "#7dd3fc", success: "#22c55e", failure: "#ef4444", partial: "#f59e0b",
 };
+const FAV_COLOR = "#fbbf24";  // 관심 항목 강조(금색) — 발사 마커·위성 점 공통
 
 function setupLaunchLayers() {
   map.addSource("launches", {
@@ -281,9 +301,14 @@ function setupLaunchLayers() {
       "circle-color": ["match", ["get", "outcome"],
         "upcoming", LAUNCH_COLORS.upcoming, "success", LAUNCH_COLORS.success,
         "failure", LAUNCH_COLORS.failure, "partial", LAUNCH_COLORS.partial, "#94a3b8"],
-      "circle-radius": ["case", ["==", ["get", "outcome"], "upcoming"], 8, 5],
-      "circle-stroke-width": ["case", ["==", ["get", "outcome"], "upcoming"], 2.5, 1.2],
-      "circle-stroke-color": "#ffffff",
+      // 관심 발사(P11-2)는 금색 테두리를 굵게 둘러 색 구분(결과)을 잃지 않고 눈에 띄게 한다
+      "circle-radius": ["case",
+        ["==", ["get", "fav"], true], 9,
+        ["==", ["get", "outcome"], "upcoming"], 8, 5],
+      "circle-stroke-width": ["case",
+        ["==", ["get", "fav"], true], 3.2,
+        ["==", ["get", "outcome"], "upcoming"], 2.5, 1.2],
+      "circle-stroke-color": ["case", ["==", ["get", "fav"], true], FAV_COLOR, "#ffffff"],
     },
   });
 
@@ -320,7 +345,7 @@ function launchesToFC(list) {
       .map((d) => ({
         type: "Feature",
         geometry: { type: "Point", coordinates: [d.lng, d.lat] },
-        properties: { id: d.id, outcome: d.outcome },
+        properties: { id: d.id, outcome: d.outcome, fav: isFavLaunch(d.id) },
       })),
   };
 }
@@ -348,6 +373,89 @@ function applyFilters() {
   const src = map.getSource("launches");
   if (src) src.setData(launchesToFC(filtered));  // 클러스터는 자동 재계산
   renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
+}
+
+// ── 관심 목록 (P11-2) ─────────────────────────────────────────────────────────
+function isFavLaunch(id) { return favLaunches.has(String(id)); }
+function isFavSat(norad) { return favSats.has(String(norad)); }
+
+function saveFavorites() {
+  saveSettings({ favorites: { launches: [...favLaunches], sats: [...favSats] } });
+}
+
+/** 관심 토글 후 영향받는 화면을 모두 갱신한다(지도 강조·목록·별 버튼). */
+function toggleFavLaunch(id) {
+  const k = String(id);
+  if (favLaunches.has(k)) favLaunches.delete(k); else favLaunches.add(k);
+  saveFavorites();
+  applyFilters();  // 지도 강조 + 목록(발사/관심 탭) 반영
+  updateFavBtn(isFavLaunch(k));
+}
+
+function toggleFavSat(norad) {
+  const k = String(norad);
+  if (favSats.has(k)) favSats.delete(k); else favSats.add(k);
+  saveFavorites();
+  updateSatellitePositions();  // 강조가 바로 보이게(다음 초를 기다리지 않음)
+  if (sidebarTab === "favs") renderFavList();
+  updateFavBtn(isFavSat(k));
+}
+
+/** 상세 패널의 ⭐ 버튼 표시 갱신. */
+function updateFavBtn(on) {
+  const b = document.getElementById("fav-btn");
+  if (!b) return;
+  b.classList.toggle("active", on);
+  b.textContent = on ? "★ 관심" : "☆ 관심";
+  b.title = on ? "관심 목록에서 빼기" : "관심 목록에 넣기";
+}
+
+/** 상세 패널 헤더의 ⭐ 버튼 HTML. kind: launch | sat */
+function favBtnHtml(kind, key) {
+  const on = kind === "launch" ? isFavLaunch(key) : isFavSat(key);
+  return `<button id="fav-btn" class="fav-btn${on ? " active" : ""}" ` +
+    `data-kind="${kind}" data-key="${escapeHtml(String(key))}" ` +
+    `title="${on ? "관심 목록에서 빼기" : "관심 목록에 넣기"}">${on ? "★" : "☆"} 관심</button>`;
+}
+
+function bindFavBtn(root) {
+  const b = root.querySelector("#fav-btn");
+  if (!b) return;
+  b.addEventListener("click", () => {
+    if (b.dataset.kind === "launch") toggleFavLaunch(b.dataset.key);
+    else toggleFavSat(b.dataset.key);
+  });
+}
+
+/** 관심 탭 — 발사와 위성을 함께 보여준다(발사 먼저). */
+function renderFavList() {
+  const cont = document.getElementById("sidebar-list");
+  const countEl = document.getElementById("sidebar-count");
+  const favL = allLaunches.filter((d) => isFavLaunch(d.id));
+  const favS = satrecs.filter((s) => isFavSat(s.norad));
+  countEl.textContent = `${favL.length + favS.length}개`;
+  if (!favL.length && !favS.length) {
+    // 저장은 돼 있는데 아직 데이터가 안 붙은 경우(위성 레이어 OFF 등)를 구분해 안내
+    const pending = favLaunches.size + favSats.size;
+    cont.innerHTML = `<div class="sb-empty">${pending
+      ? "저장된 관심 항목이 아직 불러오지 않은 데이터입니다.<br />위성 레이어를 켜거나 과거 연도를 불러와 보세요."
+      : "관심 항목이 없습니다.<br />상세 패널의 <b>☆ 관심</b>을 눌러 담아두면 여기 모입니다."}</div>`;
+    return;
+  }
+  const launchRows = favL.map((d) =>
+    `<button class="sb-row" data-id="${escapeHtml(String(d.id))}">` +
+    `<span class="dot d-${d.outcome}"></span>` +
+    `<span class="sb-main"><span class="sb-name">★ ${escapeHtml(d.name)}</span>` +
+    `<span class="sb-sub">${escapeHtml(d.outcome === "upcoming" ? countdown(d.net) : fmtDate(d.net))}</span>` +
+    `</span></button>`).join("");
+  const satRows = favS.map((s) =>
+    `<button class="sb-row" data-norad="${escapeHtml(String(s.norad))}">` +
+    `<span class="dot d-sat"></span>` +
+    `<span class="sb-main"><span class="sb-name">★ ${escapeHtml(s.name)}</span>` +
+    `<span class="sb-sub">NORAD ${escapeHtml(String(s.norad))}</span></span></button>`).join("");
+  cont.innerHTML =
+    (launchRows ? `<div class="sb-group">🚀 발사 ${favL.length}</div>` + launchRows : "") +
+    (satRows ? `<div class="sb-group">🛰 위성 ${favS.length}</div>` + satRows : "");
 }
 
 // ── 발사 목록 사이드바 (P6-4) ─────────────────────────────────────────────────
@@ -379,8 +487,10 @@ function setSidebarTab(tab) {
   sidebarTab = tab;
   document.getElementById("tab-launches").classList.toggle("active", tab === "launches");
   document.getElementById("tab-sats").classList.toggle("active", tab === "sats");
+  document.getElementById("tab-favs").classList.toggle("active", tab === "favs");
   document.getElementById("sat-search").classList.toggle("hidden", tab !== "sats");
   if (tab === "sats") renderSatList();
+  else if (tab === "favs") renderFavList();
   else applyFilters();   // 발사 탭은 현재 필터 결과를 다시 그린다
 }
 
@@ -423,7 +533,8 @@ function pickSatellite(norad) {
 }
 
 function renderSidebar(list) {
-  if (sidebarTab === "sats") return;  // 위성 탭이 열려 있으면 발사 목록으로 덮지 않는다
+  if (sidebarTab === "favs") { renderFavList(); return; }  // 관심 탭도 발사 갱신에 따라 바뀐다
+  if (sidebarTab !== "launches") return;  // 위성 탭이 열려 있으면 발사 목록으로 덮지 않는다
   const cont = document.getElementById("sidebar-list");
   document.getElementById("sidebar-count").textContent = `${list.length}건`;
   const upcoming = list.filter((d) => d.outcome === "upcoming")
@@ -435,9 +546,10 @@ function renderSidebar(list) {
     const sub = d.outcome === "upcoming"
       ? escapeHtml(countdown(d.net)) + loc
       : escapeHtml(fmtDate(d.net)) + loc;
+    const star = isFavLaunch(d.id) ? "★ " : "";
     return `<button class="sb-row" data-id="${escapeHtml(String(d.id))}">` +
       `<span class="dot d-${d.outcome}"></span>` +
-      `<span class="sb-main"><span class="sb-name">${escapeHtml(d.name)}</span>` +
+      `<span class="sb-main"><span class="sb-name">${star}${escapeHtml(d.name)}</span>` +
       `<span class="sb-sub">${sub}</span></span></button>`;
   }).join("");
 }
@@ -559,6 +671,14 @@ function row(k, v) {
   return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
+/** 클릭하면 그 대상(발사장·기관·로켓)만의 관점 화면으로 가는 행. */
+function entityRow(k, v, kind) {
+  if (!v) return "";
+  return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">` +
+    `<button class="site-link" data-kind="${kind}" data-val="${escapeHtml(v)}">` +
+    `${escapeHtml(v)} ›</button></div></div>`;
+}
+
 /** 외부 링크는 파이썬 브릿지로 기본 브라우저에서 연다(http/https만 허용됨). */
 function openExternal(url) {
   if (!url) return;
@@ -640,6 +760,7 @@ function openPanel(d) {
     <h2>${escapeHtml(d.name)}</h2>
     ${d.patch ? `<img class="patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : ""}
     <span class="badge m-${d.outcome}">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}</span>
+    ${favBtnHtml("launch", d.id)}
     ${progs}
     ${cd}
     ${precision ? `<div class="net-precision">⚠ ${escapeHtml(precision)}</div>` : ""}
@@ -650,17 +771,13 @@ function openPanel(d) {
     ${row("발사 시각", fmtDate(d.net))}
     ${row("발사 윈도우", windowText(d))}
     ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
-    ${row("로켓", d.rocket)}
-    ${row("기관", d.provider)}
+    ${entityRow("로켓", d.rocket, "rocket")}
+    ${entityRow("기관", d.provider, "provider")}
     ${row("국가", countryKo(d.provider_country))}
     ${row("미션", d.mission_name)}
     ${row("종류", tr(MISSION_TYPE_KO, d.mission_type))}
     ${row("궤도", tr(ORBIT_KO, d.orbit))}
-    ${d.location_name
-      ? `<div class="row"><div class="k">발사장</div><div class="v">` +
-        `<button class="site-link" data-loc="${escapeHtml(d.location_name)}">` +
-        `${escapeHtml(d.location_name)} ›</button></div></div>`
-      : ""}
+    ${entityRow("발사장", d.location_name, "site")}
     ${row("패드", d.pad_name)}
     ${row("기록", contextText(d))}
     ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
@@ -670,7 +787,8 @@ function openPanel(d) {
   body.querySelectorAll(".vid-btn, .up-link").forEach((b) =>
     b.addEventListener("click", () => openExternal(b.dataset.url)));
   body.querySelectorAll(".site-link").forEach((b) =>
-    b.addEventListener("click", () => showSiteStats(b.dataset.loc)));
+    b.addEventListener("click", () => showEntityStats(b.dataset.kind, b.dataset.val)));
+  bindFavBtn(body);
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panel.classList.remove("hidden");
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
@@ -703,11 +821,10 @@ function satDetails(rec) {
   };
 }
 
-function openSatPanel(s) {
-  satPanelId = s.norad;  // 이 위성이 열려 있는 동안 매 초 값 갱신
+/** 매 초 바뀌는 값만 만든다 — 헤더·⭐ 버튼은 그대로 두고 이 부분만 교체한다. */
+function satRowsHtml(s) {
   const d = satDetails(s.rec);
-  const body = document.getElementById("panel-body");
-  const rows = d
+  return d
     ? row("NORAD ID", String(s.norad)) +
       row("고도", d.alt != null ? Math.round(d.alt).toLocaleString() + " km" : null) +
       row("속도", d.vel != null ? d.vel.toFixed(2) + " km/s" : null) +
@@ -716,11 +833,26 @@ function openSatPanel(s) {
       row("경사각", d.incl != null ? d.incl.toFixed(2) + "°" : null) +
       row("이심률", d.ecc != null ? d.ecc.toFixed(4) : null)
     : `<div class="pass-empty">궤도 정보를 계산할 수 없습니다.</div>`;
+}
+
+function openSatPanel(s) {
+  satPanelId = s.norad;  // 이 위성이 열려 있는 동안 매 초 값 갱신
+  const body = document.getElementById("panel-body");
   body.innerHTML =
     `<h2>🛰 ${escapeHtml(s.name)}</h2>` +
     `<span class="badge m-upcoming">위성</span>` +
-    `<div class="st-note">값은 실시간으로 갱신됩니다.</div>` + rows;
+    favBtnHtml("sat", s.norad) +
+    `<div class="st-note">값은 실시간으로 갱신됩니다.</div>` +
+    `<div id="sat-rows">${satRowsHtml(s)}</div>`;
+  bindFavBtn(body);
   document.getElementById("panel").classList.remove("hidden");
+}
+
+/** 매 초 호출 — 값만 갈아끼운다. 패널 전체를 다시 그리면 ⭐ 버튼 클릭이 씹힌다. */
+function refreshSatPanel(s) {
+  const el = document.getElementById("sat-rows");
+  if (el) el.innerHTML = satRowsHtml(s);
+  else openSatPanel(s);
 }
 
 // ── 발사 자동 갱신 ────────────────────────────────────────────────────────────
@@ -814,7 +946,7 @@ function setupSatelliteLayer() {
     source: "satellites",
     layout: { visibility: "none" },  // 기본 OFF — 발사 지도에 집중, 필요 시 토글
     paint: {
-      "circle-radius": 2.8,
+      "circle-radius": ["case", ["==", ["get", "fav"], true], 5.5, 2.8],  // 관심 위성은 크게(P11-2)
       // 고도(km)로 색을 나눈다 — LEO(하늘색) → MEO(보라) → GEO(주황).
       // 점 하나하나가 어느 궤도 대역인지 눈으로 구분된다.
       "circle-color": [
@@ -825,8 +957,8 @@ function setupSatelliteLayer() {
         35786, "#fbbf24",   // 정지궤도
       ],
       "circle-opacity": 0.9,
-      "circle-stroke-width": 0.6,
-      "circle-stroke-color": "#9fb0ff",
+      "circle-stroke-width": ["case", ["==", ["get", "fav"], true], 2, 0.6],
+      "circle-stroke-color": ["case", ["==", ["get", "fav"], true], FAV_COLOR, "#9fb0ff"],
     },
   });
   // 넓은 투명 클릭 영역 — 위성 점이 작고 계속 움직여 클릭이 빗나가지 않게(보이지 않음)
@@ -1056,6 +1188,7 @@ async function loadSatellites() {
     }
     document.getElementById("sat-count").textContent = satrecs.length ? `(${satrecs.length})` : "";
     if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
+    else if (sidebarTab === "favs") renderFavList();  // 관심 위성이 이제 붙는다
     if (res.error && !res.stale) showStatus(`⚠ 위성: ${res.error}`);
     // 토글이 켜져 있을 때만 계산 루프 시작(기본 OFF)
     if (document.getElementById("toggle-sat").checked) startSatelliteLoop();
@@ -1082,7 +1215,9 @@ function updateSatellitePositions() {
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: [lng, lat] },
-      properties: { name: s.name, norad: s.norad, alt: Math.round(geo.height) },
+      properties: {
+        name: s.name, norad: s.norad, alt: Math.round(geo.height), fav: isFavSat(s.norad),
+      },
     });
   }
   map.getSource("satellites").setData({ type: "FeatureCollection", features });
@@ -1090,7 +1225,7 @@ function updateSatellitePositions() {
   // 상세 패널이 열려 있으면 고도·속도·위치를 실시간 갱신
   if (satPanelId && selectedSat && String(selectedSat.norad) === String(satPanelId)
       && !document.getElementById("panel").classList.contains("hidden")) {
-    openSatPanel(selectedSat);
+    refreshSatPanel(selectedSat);
   }
 }
 
@@ -1106,6 +1241,7 @@ function setSatelliteVisible(on) {
   map.setLayoutProperty("sat-layer", "visibility", vis);
   map.setLayoutProperty("sat-hit", "visibility", vis);  // 클릭 영역도 함께 토글
   if (sidebarTab === "sats") renderSatList();           // 목록 탭의 안내 문구도 함께 갱신
+  else if (sidebarTab === "favs") renderFavList();
   if (on) {
     if (satrecs.length === 0) loadSatellites();  // 첫 켜기 때 lazy 로드
     else if (!satTimer) startSatelliteLoop();
@@ -1237,6 +1373,15 @@ function applySettings(s) {
     observer = s.observer;
   }
   if (s.basemap === "satellite" || s.basemap === "dark") setBasemap(s.basemap);
+  const cam = s.camera;
+  if (cam && typeof cam.lng === "number" && typeof cam.lat === "number"
+      && typeof cam.zoom === "number" && isFinite(cam.lng) && isFinite(cam.lat)) {
+    savedCamera = { lng: cam.lng, lat: cam.lat, zoom: Math.min(Math.max(cam.zoom, 0), 20) };
+  }
+  if (s.favorites) {
+    if (Array.isArray(s.favorites.launches)) favLaunches = new Set(s.favorites.launches.map(String));
+    if (Array.isArray(s.favorites.sats)) favSats = new Set(s.favorites.sats.map(String));
+  }
 }
 
 // ── 위성 그룹 선택 UI (P7-6) ──────────────────────────────────────────────────
@@ -1307,28 +1452,51 @@ function statBars(entries, color) {
   ).join("");
 }
 
-// ── 발사장 관점 화면 ──────────────────────────────────────────────────────────
-/** 같은 발사장의 발사만 모아 성적·주요 로켓·최근/예정 목록을 낸다. */
-function showSiteStats(locationName) {
-  if (!locationName) return;
-  const list = allLaunches.filter((d) => d.location_name === locationName);
+// ── 관점 화면 (발사장 / 기관 / 로켓) — P10-3, P11-1 ───────────────────────────
+// 셋 다 "특정 대상의 발사만 모아 성적을 본다"는 같은 화면이다.
+// 뼈대(타일·결과별·예정/최근 목록)는 공유하고 중간 막대 구성만 관점별로 바꾼다.
+const ENTITY_VIEWS = {
+  site:     { icon: "🛫", field: "location_name" },
+  provider: { icon: "🏢", field: "provider" },
+  rocket:   { icon: "🚀", field: "rocket" },
+};
+
+function countBy(list, pick) {
+  const o = {};
+  for (const d of list) { const k = pick(d); if (k) o[k] = (o[k] || 0) + 1; }
+  return o;
+}
+
+const topEntries = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+
+/** 관점별 막대 구성 → [제목, entries, 색, 최소개수] 목록. 최소개수 미만이면 그 절은 생략. */
+function entityBars(kind, list, s) {
+  const rockets = () => topEntries(countBy(list, (d) => d.rocket), 6);
+  const providers = () => topEntries(countBy(list, (d) => d.provider), 6);
+  const sites = () => topEntries(countBy(list, (d) => d.location_name), 6);
+  const pads = () => topEntries(countBy(list, (d) => d.pad_name && shortenPad(d.pad_name)), 6);
+  const years = () => Object.entries(s.byYear).sort((a, b) => a[0] - b[0]);
+  if (kind === "site")
+    // 패드가 하나뿐인 발사장에선 "패드별" 막대가 총합과 같아 의미 없다 → 2개 이상일 때만
+    return [["주요 로켓", rockets(), "#f472b6"], ["기관", providers(), "#a78bfa"],
+            ["패드별", pads(), "#7dd3fc", 2]];
+  if (kind === "provider")
+    return [["주요 로켓", rockets(), "#f472b6"], ["발사장", sites(), "#7dd3fc"],
+            ["연도별", years(), "#34d399"]];
+  return [["기관", providers(), "#a78bfa"], ["발사장", sites(), "#7dd3fc"],
+          ["연도별", years(), "#34d399"]];
+}
+
+/** 발사장·기관·로켓 중 하나를 기준으로 그 대상만의 성적·목록을 낸다. */
+function showEntityStats(kind, value) {
+  const view = ENTITY_VIEWS[kind];
+  if (!view || !value) return;
+  const list = allLaunches.filter((d) => d[view.field] === value);
   if (!list.length) return;
 
   const s = computeStats(list);
   const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
   const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
-
-  const byRocket = {}, byPad = {};
-  for (const d of list) {
-    if (d.rocket) byRocket[d.rocket] = (byRocket[d.rocket] || 0) + 1;
-    if (d.pad_name) {
-      const p = shortenPad(d.pad_name);
-      byPad[p] = (byPad[p] || 0) + 1;
-    }
-  }
-  const rockets = Object.entries(byRocket).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const pads = Object.entries(byPad).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   const dated = list.filter((d) => d.net && !isNaN(new Date(d.net)));
   const past = dated.filter((d) => d.outcome !== "upcoming")
@@ -1347,8 +1515,13 @@ function showSiteStats(locationName) {
     `<span class="site-row-sub">${escapeHtml(d.outcome === "upcoming" ? countdown(d.net) : fmtDate(d.net))}</span>` +
     `</span></button>`).join("");
 
+  const bars = entityBars(kind, list, s)
+    .map(([label, entries, color, min]) =>
+      entries.length >= (min || 1) ? `<div class="st-sec">${label}</div>` + statBars(entries, color) : "")
+    .join("");
+
   document.getElementById("stats-body").innerHTML =
-    `<h2>🛫 ${escapeHtml(locationName)}</h2>` +
+    `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
     `<div class="st-note">현재 불러온 ${s.total}건 기준 · 과거 연도를 불러오면 더 정확해집니다.` +
       (span ? `<br />${escapeHtml(span)}` : "") + `</div>` +
     `<div class="st-tiles">` +
@@ -1359,9 +1532,7 @@ function showSiteStats(locationName) {
     `<div class="st-sec">결과별</div>` +
     statBars([["성공", s.byOutcome.success], ["실패", s.byOutcome.failure],
               ["부분 실패", s.byOutcome.partial], ["예정", s.byOutcome.upcoming]], "var(--accent)") +
-    (rockets.length ? `<div class="st-sec">주요 로켓</div>` + statBars(rockets, "#f472b6") : "") +
-    (providers.length ? `<div class="st-sec">기관</div>` + statBars(providers, "#a78bfa") : "") +
-    (pads.length > 1 ? `<div class="st-sec">패드별</div>` + statBars(pads, "#7dd3fc") : "") +
+    bars +
     (upcoming.length ? `<div class="st-sec">예정 발사</div>` + rows(upcoming, 5) : "") +
     (past.length ? `<div class="st-sec">최근 발사</div>` + rows(past, 5) : "");
 
@@ -1435,6 +1606,7 @@ function bindUI() {
   });
   document.getElementById("tab-launches").addEventListener("click", () => setSidebarTab("launches"));
   document.getElementById("tab-sats").addEventListener("click", () => setSidebarTab("sats"));
+  document.getElementById("tab-favs").addEventListener("click", () => setSidebarTab("favs"));
   document.getElementById("sat-search").addEventListener("input", renderSatList);
   document.getElementById("tl-range").addEventListener("input", onTimeline);
   populateArchiveYears();
