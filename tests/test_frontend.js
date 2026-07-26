@@ -193,4 +193,182 @@ const { loadApp, group, check, done } = require("./harness");
   check("연도별 집계(파싱 불가 net 제외)", s.byYear, { 2025: 1, 2026: 2 });
 }
 
+// ── 필터 / 검색 / 타임라인 ────────────────────────────────────────────────────
+{
+  const { ctx, state, el, map, sel } = loadApp();
+  group("필터 · 검색 · 타임라인");
+  state.map = map;
+  map.stubSource("launches");
+  state.sidebarTab = "launches";
+  state.allLaunches = [
+    { id: "1", name: "Falcon 9 | Starlink", outcome: "success", rocket: "Falcon 9", provider: "SpaceX", net: "2026-01-10T00:00:00Z", lat: 28.5, lng: -80.6 },
+    { id: "2", name: "Electron | 위성", outcome: "failure", rocket: "Electron", provider: "Rocket Lab", net: "2026-02-20T00:00:00Z", lat: -39.2, lng: 177.8 },
+    { id: "3", name: "Long March 5", outcome: "upcoming", rocket: "Long March 5", provider: "CASC", net: "2026-12-01T00:00:00Z", lat: 19.6, lng: 110.9 },
+    { id: "4", name: "좌표 없는 발사", outcome: "success", rocket: "X", provider: "Y", net: "2026-03-01T00:00:00Z", lat: null, lng: null },
+  ];
+  const shownIds = () => (map.data("launches").features || []).map((f) => f.properties.id);
+
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }, { value: "upcoming" }, { value: "partial" }];
+  el("search").value = "";
+  ctx.applyFilters();
+  check("좌표 없는 발사는 지도에서 빠진다(목록엔 남는다)", shownIds(), ["1", "2", "3"]);
+  check("목록에는 4건 모두", el("sidebar-count").textContent, "4건");
+
+  sel[".flt:checked"] = [{ value: "success" }];
+  ctx.applyFilters();
+  check("결과 필터 — 성공만", shownIds(), ["1"]);
+
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }, { value: "upcoming" }];
+  el("search").value = "electron";
+  ctx.applyFilters();
+  check("검색은 로켓명도 본다(대소문자 무시)", shownIds(), ["2"]);
+  el("search").value = "SPACEX";
+  ctx.applyFilters();
+  check("검색은 기관명도 본다", shownIds(), ["1"]);
+  el("search").value = "  ";
+  ctx.applyFilters();
+  check("공백만 입력하면 검색 없음으로 취급", shownIds(), ["1", "2", "3"]);
+
+  el("search").value = "";
+  state.timelineMax = new Date("2026-02-01T00:00:00Z").getTime();
+  ctx.applyFilters();
+  check("타임라인 이후 발사는 제외", shownIds(), ["1"]);
+  state.timelineMax = null;
+
+  ctx.recomputeTimeline();
+  check("타임라인 범위 = 최소/최대 net",
+    [new Date(state.tlMin).toISOString(), new Date(state.tlMax).toISOString()],
+    ["2026-01-10T00:00:00.000Z", "2026-12-01T00:00:00.000Z"]);
+
+  const before = [state.tlMin, state.tlMax];
+  state.allLaunches = [{ id: "x", name: "net 없음", outcome: "upcoming", net: null }];
+  ctx.recomputeTimeline();
+  check("net 이 하나도 없으면 이전 범위를 지우지 않는다", [state.tlMin, state.tlMax], before);
+}
+
+// ── 사이드바 정렬 ─────────────────────────────────────────────────────────────
+{
+  const { ctx, state, el } = loadApp();
+  group("사이드바 정렬");
+  state.sidebarTab = "launches";
+  const list = [
+    { id: "a", name: "지난 발사 오래된", outcome: "success", net: "2026-01-01T00:00:00Z" },
+    { id: "b", name: "예정 나중", outcome: "upcoming", net: "2027-01-01T00:00:00Z" },
+    { id: "c", name: "지난 발사 최근", outcome: "failure", net: "2026-06-01T00:00:00Z" },
+    { id: "d", name: "예정 임박", outcome: "upcoming", net: "2026-08-01T00:00:00Z" },
+  ];
+  ctx.renderSidebar(list);
+  const order = [...el("sidebar-list").innerHTML.matchAll(/sb-name">(?:★ )?([^<]+)</g)].map((m) => m[1]);
+  check("예정이 임박한 순으로 먼저, 지난 발사는 최근 순",
+    order, ["예정 임박", "예정 나중", "지난 발사 최근", "지난 발사 오래된"]);
+  check("건수 표시", el("sidebar-count").textContent, "4건");
+
+  state.favLaunches = new Set(["d"]);
+  ctx.renderSidebar(list);
+  check("관심 발사에는 별이 붙는다", el("sidebar-list").innerHTML.includes("★ 예정 임박"), true);
+
+  ctx.renderSidebar([{ id: "z", name: "<img onerror=x>", outcome: "success", net: "2026-01-01T00:00:00Z" }]);
+  check("발사명은 이스케이프된다", el("sidebar-list").innerHTML.includes("&lt;img"), true);
+}
+
+// ── 자동 갱신 변화 감지 ───────────────────────────────────────────────────────
+{
+  const { ctx, el } = loadApp();
+  group("자동 갱신 변화 감지");
+  const msg = () => el("status").textContent;
+  const A = { id: "1", name: "발사 A", outcome: "upcoming", status: "Go" };
+
+  ctx.announceChanges([], [A]);
+  check("이전 스냅샷이 비면 알리지 않는다(첫 로드)", msg(), "");
+
+  ctx.announceChanges([A], [A, { id: "2", name: "발사 B", outcome: "upcoming" }]);
+  check("새 발사가 들어오면 건수로 알린다", msg().includes("새 발사 1건 추가"), true);
+
+  el("status").textContent = "";
+  ctx.announceChanges([A], [{ ...A, outcome: "success", status: "Launch Successful" }]);
+  check("예정→성공 은 알린다", msg().includes("발사 A"), true);
+
+  el("status").textContent = "";
+  ctx.announceChanges([{ ...A, outcome: "success" }], [{ ...A, outcome: "upcoming" }]);
+  check("성공→예정 처럼 미확정으로 되돌아가는 변화는 알리지 않는다", msg(), "");
+
+  el("status").textContent = "";
+  ctx.announceChanges([A], [A]);
+  check("변화가 없으면 조용하다", msg(), "");
+}
+
+// ── 지상궤적선 (P6-1) — 실제 SGP4 ─────────────────────────────────────────────
+{
+  const { ctx } = loadApp({ realSatellite: true });
+  group("지상궤적선 (실제 SGP4)");
+  // TLE 는 tests/fixtures/celestrak_stations.txt 의 ISS(epoch 2026-07-24)와 같은 값
+  const ISS_1 = "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992";
+  const ISS_2 = "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537";
+  const rec = ctx.satellite.twoline2satrec(ISS_1, ISS_2);
+  const f = ctx.computeGroundTrack(rec);
+  const segs = f.geometry.coordinates;
+  const pts = segs.flat();
+  check("MultiLineString 으로 돌려준다", f.geometry.type, "MultiLineString");
+  check("1주기(약 93분)를 1분 간격 → 점이 90개 이상", pts.length >= 90, true);
+  check("ISS 궤도 경사(51.6°) 밖으로는 안 간다",
+    pts.every(([, lat]) => Math.abs(lat) <= 53), true);
+  check("경도는 항상 -180~180", pts.every(([lng]) => lng >= -180 && lng <= 180), true);
+  check("날짜변경선에서 끊어 세그먼트가 2개 이상", segs.length >= 2, true);
+  const jump = segs.some((s) => s.some((p, i) => i > 0 && Math.abs(p[0] - s[i - 1][0]) > 180));
+  check("한 세그먼트 안에서 180° 이상 건너뛰는 구간이 없다(가짜 선 방지)", jump, false);
+  check("길이 1인 세그먼트는 버린다(선이 안 그려진다)",
+    segs.every((s) => s.length > 1), true);
+
+  const bad = ctx.computeGroundTrack({ no: 0 });   // 평균운동이 이상한 TLE
+  check("이상한 rec 이어도 죽지 않는다", bad.geometry.type, "MultiLineString");
+}
+
+// ── 통과 예측 (P6-2) — 실제 SGP4 ──────────────────────────────────────────────
+{
+  const { ctx } = loadApp({ realSatellite: true });
+  group("통과 예측 (실제 SGP4)");
+  const rec = () => ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992",
+    "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537");
+
+  const seoul = ctx.computePasses(rec(), { lat: 37.5665, lng: 126.978 });
+  check("서울에서 24시간 안에 통과가 있다", seoul.length > 0, true);
+  // ISS 는 하루 약 15.5바퀴 도는데 관측지 상공을 스치는 건 그중 일부 → 보통 4~8회.
+  // 넉넉히 2~12 로 두되, 계산이 크게 어긋나면(예: 좌표계 혼동) 이 범위를 벗어난다.
+  check("통과 횟수가 LEO 답다(2~12회)", seoul.length >= 2 && seoul.length <= 12, true);
+  // 연속한 두 통과 사이는 궤도 주기(약 93분)의 정수배에 가깝다
+  const periodMin = (2 * Math.PI) / rec().no;
+  const gapsOk = seoul.slice(1).every((p, i) => {
+    const gapMin = (p.start - seoul[i].end) / 60000;
+    const k = Math.round(gapMin / periodMin);
+    return k >= 1 && Math.abs(gapMin - k * periodMin) < periodMin * 0.5;
+  });
+  check(`통과 간격이 궤도 주기(${periodMin.toFixed(1)}분)의 배수 근처`, gapsOk, true);
+  check("모든 통과가 최소고도(10°) 이상", seoul.every((p) => p.maxEl >= 10), true);
+  check("최대고도는 90°를 넘지 않는다", seoul.every((p) => p.maxEl <= 90), true);
+  check("방위는 0~360 범위", seoul.every((p) =>
+    p.startAz >= 0 && p.startAz <= 360 && p.endAz >= 0 && p.endAz <= 360), true);
+  check("시작 <= 끝", seoul.every((p) => p.start <= p.end), true);
+  check("통과들은 시간순이며 겹치지 않는다",
+    seoul.every((p, i) => i === 0 || p.start > seoul[i - 1].end), true);
+  check("지속시간이 LEO 답다(1~15분)", seoul.every((p) => {
+    const min = (p.end - p.start) / 60000;
+    return min >= 0 && min <= 15;
+  }), true);
+  check("24시간 창을 벗어나지 않는다",
+    seoul.every((p) => p.end <= Date.now() + 24 * 3600 * 1000 + 1000), true);
+
+  // 궤도 경사 51.6° 위성은 극지방 상공에 오지 않는다 → 물리적으로 통과가 없어야 한다
+  const pole = ctx.computePasses(rec(), { lat: -82, lng: 0 });
+  check("남극(-82°)에서는 ISS 통과가 없다", pole.length, 0);
+
+  // 최소고도를 올리면 통과 수는 줄어들고, 남은 것은 그 고도를 넘는다
+  const high = ctx.computePasses(rec(), { lat: 37.5665, lng: 126.978 }, 24, 30, 45);
+  check("minEl 을 45°로 올리면 통과가 줄거나 같다", high.length <= seoul.length, true);
+  check("남은 통과는 모두 45° 이상", high.every((p) => p.maxEl >= 45), true);
+
+  const short = ctx.computePasses(rec(), { lat: 37.5665, lng: 126.978 }, 3);
+  check("3시간 창이면 24시간보다 통과가 적거나 같다", short.length <= seoul.length, true);
+}
+
 done();

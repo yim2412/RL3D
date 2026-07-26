@@ -28,6 +28,7 @@ const STATE_KEYS = [
   "map", "launches", "allLaunches", "satrecs", "satGroups", "satBands",
   "favLaunches", "favSats", "selectedSat", "sidebarTab", "basemap",
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
+  "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "tracking",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
@@ -57,14 +58,27 @@ function makeEl(id) {
   };
 }
 
+const SAT_LIB = path.join(__dirname, "..", "web", "lib", "satellite.min.js");
+
+/** 실제 satellite.js(SGP4) 를 **앱과 같은 컨텍스트**에 올린다 — 궤도 계산 검증용.
+ *  별도 컨텍스트에 올리면 안 된다: 라이브러리 내부의 `date instanceof Date` 가
+ *  realm 이 달라 false 가 되고, 좌표가 전부 NaN 으로 나온다(브라우저에선 생기지 않는 문제). */
+function injectSatelliteLib(ctx) {
+  vm.runInContext(fs.readFileSync(SAT_LIB, "utf8"), ctx, { filename: "satellite.min.js" });
+  if (!ctx.satellite) throw new Error("satellite.js 를 로드하지 못했습니다");
+}
+
 /**
- * app.js 를 스텁 위에 올려 { ctx, state, el, map, win, api } 를 돌려준다.
+ * app.js 를 스텁 위에 올려 { ctx, state, el, map, win, api, sel } 를 돌려준다.
  *   ctx   — app.js 의 전역 함수들(ctx.orbitBand(...) 처럼 직접 호출)
  *   state — 모듈 스코프 상태 읽기/쓰기(state.satrecs = [...])
  *   el    — id 로 스텁 엘리먼트 얻기(el("sat-count").textContent)
- *   map   — map.fire("error", {...}) 로 지도 이벤트 발생
+ *   map   — map.fire("error", {...}) 로 지도 이벤트 발생, map.data("launches") 로 setData 결과 확인
  *   win   — win.fire("offline") 으로 window 이벤트 발생
  *   api   — window.pywebview.api 스텁(테스트에서 함수를 갈아끼운다)
+ *   sel   — querySelectorAll 결과 지정(sel[".flt:checked"] = [{value:"success"}])
+ *
+ * options.realSatellite: true 면 실제 SGP4 라이브러리를 넣는다(궤도 계산 검증용).
  */
 function loadApp(options = {}) {
   const els = {};
@@ -72,6 +86,8 @@ function loadApp(options = {}) {
 
   const mapHandlers = {};
   const winHandlers = {};
+  const selectors = {};   // 테스트가 채우는 querySelectorAll 응답
+  const sources = {};     // 지도 소스별 마지막 setData 값
   const api = Object.assign({
     get_settings: async () => ({}),
     save_settings: () => {},
@@ -89,7 +105,7 @@ function loadApp(options = {}) {
     location: { hash: "" },
     document: {
       getElementById: el,
-      querySelectorAll: () => [],
+      querySelectorAll: (s) => selectors[s] || [],
       querySelector: () => null,
       addEventListener() {},
       createElement: () => makeEl("created"),
@@ -97,12 +113,15 @@ function loadApp(options = {}) {
     },
     addEventListener: (ev, fn) => { winHandlers[ev] = fn; },
     removeEventListener() {},
-    satellite: options.satellite || {},
+    satellite: options.satellite || {},   // realSatellite 면 라이브러리가 아래에서 덮어쓴다
     maplibregl: options.maplibregl || {},
+    performance: { now: () => Date.now() },
   };
   ctx.window = ctx;
+  ctx.self = ctx;          // satellite.min.js(UMD)가 self 에 전역을 붙인다
   ctx.pywebview = { api };
   vm.createContext(ctx);
+  if (options.realSatellite) injectSatelliteLib(ctx);
 
   const accessors = STATE_KEYS
     .map((k) => `get ${k}() { return ${k}; }, set ${k}(v) { ${k} = v; },`)
@@ -117,8 +136,26 @@ function loadApp(options = {}) {
     on: (ev, fn) => { mapHandlers[ev] = fn; },
     fire: (ev, arg) => { if (mapHandlers[ev]) mapHandlers[ev](arg); },
     has: (ev) => !!mapHandlers[ev],
+    // 앱이 쓰는 최소한의 지도 API. setData 결과는 sources 에 남겨 테스트가 검사한다.
+    addSource(id) { sources[id] = null; },
+    addLayer() {},
+    getSource: (id) => (id in sources
+      ? { setData(d) { sources[id] = d; } }
+      : undefined),
+    getLayer: () => ({}),
+    setLayoutProperty() {},
+    setPaintProperty() {},
+    getCanvas: () => ({ style: {} }),
+    flyTo() {}, easeTo() {}, addControl() {},
+    /** 마지막으로 setData 된 값 */
+    data: (id) => sources[id],
+    /** 소스를 미리 만들어 둔다(setupLaunchLayers 를 부르지 않고 applyFilters 만 볼 때) */
+    stubSource: (id) => { sources[id] = null; },
   };
-  return { ctx, state: ctx.__state, el, map, win: { fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a) }, api };
+  return {
+    ctx, state: ctx.__state, el, map, api, sel: selectors,
+    win: { fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a) },
+  };
 }
 
 // ── 아주 작은 테스트 러너 (의존성 0) ──────────────────────────────────────────
