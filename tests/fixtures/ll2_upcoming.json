@@ -844,7 +844,7 @@
    "url": "https://ll.thespacedevs.com/2.2.0/launch/ac897b9f-44d2-4ff4-8416-1a0a076e98a2/",
    "vidURLs": [
     {
-     "description": "On Friday July 24, 2026 at 22:51 UTC, SpaceX launched the Flight 13 mission with a Starship V3 from Orbital Launch Pad 2 at SpaceX Starbase, TX, USA.\n\nDescription generated from the Launch Library 2 API.\n——————————————————————\nObject in the Launch Library 2 API: https://ll.thespacedevs.com/2.3.0/launches/ac897b9f-44d2-4ff4-8416-1a0a076e98a2/?format=json\nRelated news in the Spaceflight News API: https://api.spaceflightnewsapi.net/v4/articles/?launch=ac897b9f-44d2-4ff4-8416-1a0a076e98a2\n——————————————————————\n\nRehosted on YouTube by The Space Devs.\nSupport our work on https://www.patreon.com/TheSpaceDevs\n——————————————————————\nWebsite: https://thespacedevs.com\nX: https://x.com/thespacedevs\nDiscord: https://discord.com/invite/p7ntkNA\n——————————————————————\n\nOriginal video: https://x.com/...",
+     "description": "",
      "end_time": "2026-07-25T02:25:15Z",
      "feature_image": "https://i.ytimg.com/vi/7dMblISWtz8/maxresdefault.jpg",
      "language": {
@@ -864,7 +864,7 @@
      "url": "https://www.youtube.com/watch?v=7dMblISWtz8"
     },
     {
-     "description": "Watch live as SpaceX launches its revolutionary Starship launcher for a 13th test flight. Liftoff of the Version 3 integrated Starship vehicle from Starbase in Texas is scheduled during a launch window that opens at 5:45 p.m. CDT / 6:45 p.m. EDT / 2245 UTC on Friday, July 24.\n\nThe mission will see splashdowns of the Super Heavy booster (Booster 20) in the Gulf of Mexico and the Starship upper stage (Ship 40) in the Indian Ocean.\n\nThe Starship upper stage will deploy 20 production Starlink V3 satellites for a 20-minute sub-orbital test.\n\nOur live coverage, hosted by Will Robinson-Smith, will begin about two hours before launch. He'll be joined by special guests: Stephen Clark, space reporter for Ars Technica; Jeff Foust, senior staff writer for Space News; and Joey Roulette, space repo...",
+     "description": "",
      "end_time": "2026-07-25T00:16:36Z",
      "feature_image": "https://i.ytimg.com/vi/Ew0Xu1RT8oc/maxresdefault.jpg",
      "language": {
@@ -884,7 +884,7 @@
      "url": "https://www.youtube.com/watch?v=Ew0Xu1RT8oc"
     },
     {
-     "description": "Starship launches Flight 13, the second launch of the Block 3 vehicle from Pad 2 at Starbase. This is the third attempt following a T-0 abort on July 16, and a weather scrub on July 23.\n\nLaunch Window: July 24th at 5:45PM to 7:15PM CDT (22:45-00:15 UTC)\n\nMission: Starship's 13th integrated flight test. Correcting issues from version 3's debut flight.\nLaunch location: Pad 2, Starbase, Earth. \nTarget orbit: Trans-atmospheric\nBooster: B20-1\nShip: S40-1\nBooster recovery: Expended - will attempt a water splashdown, no recovery.\nShip recovery: Expended - will attempt a water splashdown, no recovery.\nRocket trajectory: Southeast passing between Cuba and the Yucatan Peninsula.\nPayload onboard: 20 Starlink v3 satellites, 6 of them fitted with a suite of cameras for heatshield inspection.\nPaylo...",
+     "description": "",
      "end_time": "2026-07-25T01:24:46Z",
      "feature_image": "https://i.ytimg.com/vi/lC3RDO7tdLc/maxresdefault.jpg",
      "language": {
@@ -904,7 +904,7 @@
      "url": "https://www.youtube.com/watch?v=lC3RDO7tdLc"
     },
     {
-     "description": "Livestream on X",
+     "description": "",
      "end_time": "2026-07-25T00:08:11Z",
      "feature_image": "https://pbs.twimg.com/media/HN7RpkEWwAAl2LH.jpg",
      "language": {
@@ -924,7 +924,7 @@
      "url": "https://x.com/i/broadcasts/1AJEmmYdMDnJL"
     },
     {
-     "description": "SpaceX is about to launch their second V3 Starship as well as a deploying the first operational V3 Starlink satellites! It will still be a sub-orbital mission with similar objectives to Flight 12, but an important step towards orbit and full reuse.\n\nWant to learn what's new and different about Starship V3 vs V2? Check this out! - https://youtu.be/y_ecCDqTSJs\n\nWant to support what I do? Consider becoming a Patreon supporter for access to exclusive livestreams, our discord channel! - http://patreon.com/everydayastronaut\n\nOr become a YouTube member for some bonus perks as well! - https://www.youtube.com/channel/UC6uKrU_WqJ1R2HMTY3LIx5Q/join\n\nThe best place for all your space merch needs!\nhttps://everydayastronaut.com/shop/\n\nAll music is original! Check it out anywhere you listen to music...",
+     "description": "",
      "end_time": "2026-07-25T00:28:01Z",
      "feature_image": "https://i.ytimg.com/vi/-pR0eOj9hK0/maxresdefault.jpg",
      "language": {
@@ -1579,7 +1579,7 @@
    "url": "https://ll.thespacedevs.com/2.2.0/launch/5b2f05d7-9052-49fb-9bd7-2a05d4910576/",
    "vidURLs": [
     {
-     "description": "Livestream on X",
+     "description": "",
      "end_time": null,
      "feature_image": null,
      "language": {
@@ -2218,7 +2218,7 @@
    "url": "https://ll.thespacedevs.com/2.2.0/launch/e7e55b53-6f69-4c22-9fc5-df00df653a3f/",
    "vidURLs": [
     {
-     "description": "Livestream on X",
+     "description": "",
      "end_time": "2026-07-28T03:50:00Z",
      "feature_image": "https://pbs.twimg.com/media/HNX9TuyXAAA7UlA.jpg",
      "language": {
