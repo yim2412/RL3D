@@ -13,13 +13,43 @@ import webview
 
 import api_client
 
-__version__ = "1.5.1"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.5.2"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
     """개발/온파일 exe 양쪽에서 동작하는 리소스 경로."""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, rel)
+
+
+# 복원한 창이 "잡아서 옮길 수 있을" 최소 노출 크기(제목표시줄 정도).
+MIN_VISIBLE_W, MIN_VISIBLE_H = 120, 40
+
+
+def _rect_visible(x, y, width, height, areas):
+    """창 사각형이 화면 영역 중 하나와 충분히 겹치는가(순수 함수 — 테스트 대상).
+
+    areas 는 (x, y, w, h) 튜플 목록.
+    """
+    for ax, ay, aw, ah in areas:
+        if (min(x + width, ax + aw) - max(x, ax) >= MIN_VISIBLE_W
+                and min(y + height, ay + ah) - max(y, ay) >= MIN_VISIBLE_H):
+            return True
+    return False
+
+
+def _monitor_areas():
+    """모니터 작업영역 [(x, y, w, h)]. 못 읽으면 None(= 판단 불가)."""
+    try:
+        import clr  # pythonnet (win)
+        clr.AddReference("System.Windows.Forms")
+        from System.Windows.Forms import Screen
+
+        return [(s.WorkingArea.X, s.WorkingArea.Y,
+                 s.WorkingArea.Width, s.WorkingArea.Height)
+                for s in Screen.AllScreens]
+    except Exception:
+        return None
 
 
 def dev_window_pos(width, height):
@@ -99,6 +129,8 @@ def main():
     api = Api()
     width, height = 1280, 800
 
+    api_client.cleanup_legacy_cache()  # 구조가 바뀌기 전 캐시 파일 청소(있을 때만)
+
     dev_mode = os.environ.get("RL3D_DEV_MONITOR") is not None
     x, y = dev_window_pos(width, height)
 
@@ -109,7 +141,13 @@ def main():
         if isinstance(saved_win.get("width"), int) and isinstance(saved_win.get("height"), int):
             width, height = saved_win["width"], saved_win["height"]
         if x is None and isinstance(saved_win.get("x"), int) and isinstance(saved_win.get("y"), int):
-            x, y = saved_win["x"], saved_win["y"]
+            # 보조 모니터에서 창을 옮긴 뒤 그 모니터를 떼면 저장된 좌표가 어느 화면에도
+            # 없는 자리가 된다 — 그대로 복원하면 창이 보이지 않는 곳에 떠서 앱이 안 뜬
+            # 것처럼 보인다. 못 읽는 환경(areas is None)에선 판단하지 않고 그대로 쓴다.
+            areas = _monitor_areas()
+            if areas is None or _rect_visible(saved_win["x"], saved_win["y"],
+                                              width, height, areas):
+                x, y = saved_win["x"], saved_win["y"]
 
     kwargs = dict(
         url=resource_path(os.path.join("web", "index.html")),

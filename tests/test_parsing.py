@@ -8,11 +8,15 @@
 """
 import json
 import os
+import shutil
 import sys
+import tempfile
 import unittest
+import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
+import main as main_mod  # noqa: E402  (창 위치 판정 — 창을 띄우지 않는 순수 함수만 쓴다)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -197,6 +201,130 @@ class TleParsing(unittest.TestCase):
 
     def test_empty_text(self):
         self.assertEqual(api_client._parse_tle(""), [])
+
+
+class TestFriendlyError(unittest.TestCase):
+    """에러 문구 — 조용히 틀린 안내를 하던 자리(2026-08-20)."""
+
+    def _http_error(self, code, reason="err"):
+        """HTTPError 는 파일류라 닫지 않으면 ResourceWarning 이 남는다."""
+        e = urllib.error.HTTPError("u", code, reason, {}, None)
+        self.addCleanup(e.close)
+        return e
+
+    def test_timeout_wrapped_in_urlerror(self):
+        """urlopen 은 타임아웃을 URLError(reason=timeout) 으로 감싼다.
+
+        이 케이스가 없으면 "인터넷 연결을 확인하세요" 로 잘못 안내한다 —
+        실제로 그랬고, isinstance(e, TimeoutError) 분기는 죽은 코드였다.
+        """
+        e = urllib.error.URLError(TimeoutError("timed out"))
+        self.assertFalse(isinstance(e, TimeoutError))   # 막지 않았으면 아래가 틀렸을 것
+        self.assertEqual(api_client._friendly_error(e), api_client.TIMEOUT_MESSAGE)
+
+    def test_timeout_reason_as_plain_string(self):
+        """reason 이 예외가 아니라 문자열로 오는 경우도 타임아웃으로 읽는다."""
+        e = urllib.error.URLError("timed out")
+        self.assertEqual(api_client._friendly_error(e), api_client.TIMEOUT_MESSAGE)
+
+    def test_offline_is_not_timeout(self):
+        """DNS 실패는 타임아웃이 아니라 연결 문제로 안내한다."""
+        e = urllib.error.URLError(OSError(11001, "getaddrinfo failed"))
+        msg = api_client._friendly_error(e)
+        self.assertNotEqual(msg, api_client.TIMEOUT_MESSAGE)
+        self.assertIn("인터넷 연결", msg)
+
+    def test_403_has_own_message(self):
+        """Celestrak 이 실제로 돌려주는 코드 — 숫자만 보여주면 안 된다."""
+        msg = api_client._friendly_error(self._http_error(403, "Forbidden"))
+        self.assertEqual(msg, api_client.HTTP_ERROR_MESSAGES[403])
+        self.assertNotEqual(msg, "서버 응답 오류(403).")
+
+    def test_429_still_mentions_rate_limit(self):
+        msg = api_client._friendly_error(self._http_error(429, "Too Many"))
+        self.assertIn("한도", msg)
+
+    def test_unmapped_code_falls_back(self):
+        """표에 없는 코드는 코드 번호라도 알려준다."""
+        self.assertEqual(
+            api_client._friendly_error(self._http_error(418, "Teapot")),
+            "서버 응답 오류(418).")
+
+    def test_http_error_is_not_read_as_timeout(self):
+        """HTTPError 도 URLError 라 reason 을 갖는다 — 표가 먼저 이겨야 한다."""
+        e = self._http_error(503, "timed out")
+        self.assertEqual(api_client._friendly_error(e),
+                         api_client.HTTP_ERROR_MESSAGES[503])
+
+
+class TestLegacyCacheCleanup(unittest.TestCase):
+    def test_removes_only_legacy_files(self):
+        """옛 tle.json 만 지우고 현행 캐시는 건드리지 않는다."""
+        tmp = tempfile.mkdtemp()
+        orig = api_client.CACHE_DIR
+        try:
+            api_client.CACHE_DIR = tmp
+            legacy = os.path.join(tmp, "tle.json")
+            keep = os.path.join(tmp, "tle_stations.json")
+            for f in (legacy, keep):
+                with open(f, "w", encoding="utf-8") as fh:
+                    fh.write("[]")
+            self.assertEqual(api_client.cleanup_legacy_cache(), ["tle.json"])
+            self.assertFalse(os.path.exists(legacy))
+            self.assertTrue(os.path.exists(keep))
+        finally:
+            api_client.CACHE_DIR = orig
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_no_legacy_file_is_quiet(self):
+        tmp = tempfile.mkdtemp()
+        orig = api_client.CACHE_DIR
+        try:
+            api_client.CACHE_DIR = tmp
+            self.assertEqual(api_client.cleanup_legacy_cache(), [])
+        finally:
+            api_client.CACHE_DIR = orig
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestWindowVisibility(unittest.TestCase):
+    """창 위치 복원 방어 — 모니터를 떼면 창이 안 보이는 자리에 뜨던 문제."""
+
+    PRIMARY = (0, 0, 1920, 1040)          # 주 모니터 작업영역
+    SECOND = (1920, 0, 1920, 1040)        # 오른쪽 보조 모니터
+    W, H = 1280, 800
+
+    def test_inside_primary(self):
+        self.assertTrue(main_mod._rect_visible(100, 100, self.W, self.H, [self.PRIMARY]))
+
+    def test_on_second_monitor_while_attached(self):
+        self.assertTrue(main_mod._rect_visible(
+            2000, 100, self.W, self.H, [self.PRIMARY, self.SECOND]))
+
+    def test_same_coords_after_second_monitor_removed(self):
+        """이게 이 방어의 존재 이유 — 좌표는 그대로인데 화면이 사라진 경우."""
+        self.assertFalse(main_mod._rect_visible(2000, 100, self.W, self.H, [self.PRIMARY]))
+
+    def test_negative_offscreen(self):
+        self.assertFalse(main_mod._rect_visible(-1400, 100, self.W, self.H, [self.PRIMARY]))
+
+    # 경계는 좌표를 직접 적는다 — MIN_VISIBLE_* 로 계산하면 그 상수를 0 으로 바꿔도
+    # 기대값이 같이 움직여 테스트가 통과해 버린다(뮤테이션으로 확인한 실제 구멍).
+    def test_barely_visible_edge_counts(self):
+        """1920 폭 화면에 가로 120px 만 걸친 창 — 잡아서 옮길 수 있으니 허용."""
+        self.assertTrue(main_mod._rect_visible(1800, 100, self.W, self.H, [self.PRIMARY]))
+
+    def test_one_pixel_less_than_minimum_is_rejected(self):
+        """가로 119px — 임계값(120)이 실제로 쓰이는지 잰다."""
+        self.assertFalse(main_mod._rect_visible(1801, 100, self.W, self.H, [self.PRIMARY]))
+
+    def test_vertical_threshold(self):
+        """세로도 같은 기준(40px). 1040 높이 화면에 40px 걸치면 허용, 39px 이면 거부."""
+        self.assertTrue(main_mod._rect_visible(100, 1000, self.W, self.H, [self.PRIMARY]))
+        self.assertFalse(main_mod._rect_visible(100, 1001, self.W, self.H, [self.PRIMARY]))
+
+    def test_no_monitors_means_not_visible(self):
+        self.assertFalse(main_mod._rect_visible(0, 0, self.W, self.H, []))
 
 
 def main():
