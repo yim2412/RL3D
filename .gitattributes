@@ -1,1 +1,19 @@
+# GitHub 언어 통계에서 오프라인 번들을 뺀다.
+#
+# ⚠️ 이 줄은 **효과가 없다** (2026-09-05 실측). linguist 가 maplibre-gl.js 와
+#    satellite.min.js 를 이미 벤더 번들로 자동 인식하고 있어서, 명시해도 통계가
+#    바뀌지 않는다. 그래도 남기는 이유는 자동 인식 규칙이 바뀔 때를 대비한 것이고,
+#    **같은 진단을 다시 하지 않기 위해서**다.
+#
+# 실측 (`gh api repos/yim2412/RL3D/languages`):
+#   JavaScript 112,095B = web/js 82,823 + tests 29,272   ← 정확히 일치
+#   Python      46,467B
+#   web/lib 의 825,955B 는 애초에 안 세고 있었다
+#
+# 즉 이 저장소가 JavaScript 로 잡히는 것은 번들 탓이 아니라 **앱의 UI 로직이 전부
+# JS 이기 때문**이다(pywebview 로 웹 UI 를 띄우는 구조). 바이트로 세면 맞는 판정이라
+# 억지로 Python 으로 바꾸지 않는다 — `.js` 에 linguist-language=Python 을 거는 것은
+# 거짓말이고, 테스트를 빼도 82,823 vs 46,467 로 여전히 JavaScript 다.
+#
+# 이 앱이 무엇인지는 언어 배지가 아니라 저장소 설명과 프로젝트 페이지가 말한다.
 web/lib/** linguist-vendored
