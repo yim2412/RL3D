@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RL3D</title>
+<meta name="description" content="전 세계 로켓 발사를 지도에 표시하고 위성을 실시간으로 움직이는 Windows 데스크톱 앱. 통과 예측·지상궤적·낮밤 터미네이터까지 직접 계산한다.">
+<!-- 생성된 파일이다. 고칠 때는 개발노트/make_pages.py 를 고치고 다시 뽑는다.
+     이 파일을 직접 고치면 다음 생성에서 덮어쓴다. -->
+<style>
+:root{--bg:#fbfaf8;--fg:#1b1a18;--dim:#6b6862;--line:#e3dfd8;--card:#fff;
+      --accent:#8a5a2b;--mark:#f0ebe2;--code:#f4f1ec}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#151513;--fg:#e8e5df;--dim:#928d84;--line:#2c2b28;--card:#1c1b19;
+  --accent:#c99a63;--mark:#26241f;--code:#211f1c}}
+:root[data-theme=dark]{--bg:#151513;--fg:#e8e5df;--dim:#928d84;--line:#2c2b28;
+  --card:#1c1b19;--accent:#c99a63;--mark:#26241f;--code:#211f1c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.75 -apple-system,BlinkMacSystemFont,"Pretendard","Malgun Gothic",system-ui,sans-serif;
+  letter-spacing:-.005em}
+.wrap{max-width:760px;margin:0 auto;padding:0 22px}
+a{color:inherit}a:hover{color:var(--accent)}
+img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;display:block}
+header{padding:76px 0 44px;border-bottom:1px solid var(--line)}
+h1{font-size:32px;line-height:1.25;margin:0 0 14px;letter-spacing:-.02em;font-weight:700}
+.lead{font-size:17px;margin:0 0 12px;max-width:40em}
+.meta{font-size:13px;color:var(--dim);margin:0}
+.links{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px;font-size:14px}
+.links a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent}
+.links a:hover{border-bottom-color:var(--accent)}
+section{padding:44px 0;border-bottom:1px solid var(--line)}
+h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
+   margin:0 0 22px;font-weight:600}
+p{margin:0 0 15px;max-width:42em}
+p:last-child{margin-bottom:0}
+.feat{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.feat li{border-bottom:1px solid var(--line);padding:12px 0;display:flex;gap:14px;
+  align-items:baseline;font-size:15px}
+.feat b{flex:none;min-width:8.5em;font-weight:600}
+.feat span{color:var(--dim)}
+.shots{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+figure{margin:0}
+figcaption{font-size:12.5px;color:var(--dim);margin-top:7px}
+ol.notes{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+ol.notes li{border-bottom:1px solid var(--line);padding:11px 0;display:flex;gap:14px;
+  align-items:baseline}
+.n{font-size:12px;color:var(--dim);min-width:1.6em;flex:none;font-variant-numeric:tabular-nums}
+.nt{flex:1}
+.nt a{text-decoration:none;border-bottom:1px solid var(--line)}
+.nt a:hover{border-bottom-color:var(--accent)}
+.nk{display:block;font-size:12.5px;color:var(--dim);margin-top:2px}
+.note-intro{color:var(--dim);font-size:14.5px;margin-bottom:18px}
+code{font:13px/1.6 ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,monospace;
+  background:var(--code);padding:1.5px 5px;border-radius:4px}
+footer{padding:38px 0 64px;font-size:13.5px;color:var(--dim)}
+footer a{color:var(--accent);text-decoration:none}
+@media(max-width:560px){header{padding:52px 0 34px}h1{font-size:26px}
+  section{padding:34px 0}.feat li{flex-direction:column;gap:2px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>RL3D</h1>
+    <p class="lead">전 세계 <b>로켓 발사</b>를 지도에 표시하고 <b>위성을 실시간으로 움직이는</b> Windows 데스크톱 앱. 통과 예측·지상궤적·낮밤 터미네이터까지 직접 계산한다.</p>
+    <p class="meta">Python · pywebview · MapLibre GL · PyInstaller</p>
+    <div class="links">
+      <a href="https://github.com/yim2412/RL3D">저장소</a>
+      <a href="https://github.com/yim2412/RL3D/tree/main/docs/notes">개발 노트 2편</a>
+      <a href="https://github.com/yim2412/RL3D/blob/main/docs/notes/CANDIDATES.md">노트 후보 목록</a>
+      <a href="https://yim2412.github.io">다섯 프로젝트 색인</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>무엇을 하는가</h2>
+    <p>발사 정보는 Launch Library 2, 위성 궤도는 Celestrak TLE 에서 받는다. 위성 위치는 <b>satellite.js 의 SGP4</b> 로 매 초 계산해 지도에 찍는다.</p>
+    <p>관측 위치를 지도에서 찍으면 <b>향후 24시간의 통과</b>를 시각·방위·최대고도까지 낸다 — 외부 API 없이 직접 계산한다.</p>
+    <p>API 한도가 시간당 약 15회라 <b>캐싱이 설계의 출발점</b>이다. 발사 15분 · TLE 2시간 TTL 로 시간당 약 8요청에 맞춘다. 실패하면 오래된 캐시라도 반환해 화면이 비지 않게 한다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>주요 기능</h2>
+    <ul class="feat">
+    <li><b>발사 지도</b><span>예정/성공/실패 마커 · 상세 · 검색 · 타임라인 슬라이더</span></li>
+    <li><b>위성 추적</b><span>SGP4 실시간 · 그룹 선택 · 궤도 대역 필터 · 지상궤적</span></li>
+    <li><b>통과 예측</b><span>관측 위치 기준 24시간 — 시각·방위·최대고도</span></li>
+    <li><b>낮/밤 터미네이터</b><span>태양 위치로 야간 반구 음영</span></li>
+    <li><b>오프라인 대응</b><span>번들 라이브러리 + 캐시 · 타일만 온라인</span></li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>화면</h2>
+    <div class="shots">
+    <figure><img src="screenshot.png" alt="발사 지도와 위성 실시간 추적" loading="lazy"><figcaption>발사 지도와 위성 실시간 추적</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>개발 노트</h2>
+    <p class="note-intro">화면 대부분이 지도라, <b>틀리는 방식도 «아무것도 안 보인다» 쪽으로 몰렸다.</b>
+      기능 소개가 아니라 <b>판단 기록</b>이라 «이건 아직 안 쟀다» 도 그대로 적는다.</p>
+    <ol class="notes">
+    <li><span class="n">01</span><span class="nt"><a href="https://github.com/yim2412/RL3D/blob/main/docs/notes/01-not-broken-but-it-looked-broken.md">고장이 아닌데 고장으로 보였다</a><span class="nk">상태 전달 — 정상 동작의 조합이 빈 화면을 만드는 일곱 가지 경로</span></span></li>
+    <li><span class="n">02</span><span class="nt"><a href="https://github.com/yim2412/RL3D/blob/main/docs/notes/02-checks-that-passed-vacuously.md">공허하게 통과한 검사들</a><span class="nk">검증 — 골든을 만들 수 없는 계산을 물리 불변식으로 재는 법</span></span></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    노트 본문은 저장소에 있다 — 이 페이지는 링크만 건다.
+    다른 프로젝트의 기록은 <a href="https://yim2412.github.io">개발 노트 색인</a>에.
+  </div>
+</footer>
+
+</body>
+</html>
