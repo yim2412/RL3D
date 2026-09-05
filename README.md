@@ -111,6 +111,19 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 본 앱의 "실시간"은 **발사 일정·상태의 자동 갱신**(위 자동 갱신 기능)으로 구현했다. 과거 발사 텔레메트리 기록은
 [Launch-Dashboard-API](https://github.com/shahar603/Launch-Dashboard-API) 같은 오픈소스가 있으나 라이브가 아니다.
 
+## 개발 노트
+
+만들면서 **무엇이 어떻게 깨졌고 어떻게 알아냈는지**를 [`docs/notes/`](docs/notes/) 에
+두 편으로 적었다. 화면 대부분이 지도라, **틀리는 방식도 "아무것도 안 보인다" 쪽으로 몰렸다.**
+
+| | 노트 |
+|---|---|
+| 01 | [고장이 아닌데 고장으로 보였다](docs/notes/01-not-broken-but-it-looked-broken.md) — 정상 동작의 조합이 빈 화면을 만드는 일곱 가지 경로 |
+| 02 | [공허하게 통과한 검사들](docs/notes/02-checks-that-passed-vacuously.md) — 좌표가 전부 `NaN` 인데 `every()` 가 참이었다 |
+
+고르고 남은 후보 **34건**과 왜 안 골랐는지는 [`CANDIDATES.md`](docs/notes/CANDIDATES.md).
+다섯 프로젝트의 공개 색인은 <https://yim2412.github.io> 에 있다.
+
 ## 라이선스
 
 [MIT](LICENSE)
