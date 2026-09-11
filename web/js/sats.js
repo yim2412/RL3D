@@ -146,13 +146,52 @@ function splitAtDateline(points) {
   return segments;
 }
 
-function computeGroundTrack(rec) {
-  // 평균운동(rad/min)에서 주기 산출. 비정상값이면 LEO 기본 90분으로 대체.
-  let periodMin = (rec.no && rec.no > 0) ? (2 * Math.PI) / rec.no : 90;
-  if (!isFinite(periodMin) || periodMin <= 0 || periodMin > 24 * 60) periodMin = 90;
+/** 평균운동(rad/min) → 주기(분). 비정상값이면 LEO 기본 90분. */
+function orbitPeriodMin(rec) {
+  const p = (rec && rec.no > 0) ? (2 * Math.PI) / rec.no : 90;
+  return (!isFinite(p) || p <= 0 || p > 24 * 60) ? 90 : p;
+}
+
+/**
+ * 궤적을 그릴 시간 범위(분, 현재 기준) — **순수 함수** (P12-16).
+ *
+ * 기본은 ±½주기(P6-1 그대로). "앞으로 볼 시간"을 늘리면 **앞쪽만** 길어진다:
+ * 뒤쪽(지나온 길)까지 같이 늘리면 화면이 선으로 덮여 지금 어디인지가 묻힌다.
+ * 점 간격은 범위에 맞춰 성기게 잡는다 — 6시간을 1분 간격으로 그리면 360점이 되고,
+ * 그 해상도는 화면에서 구분되지도 않으면서 30초마다 다시 계산된다.
+ */
+function trackWindow(periodMin, aheadMin) {
   const half = periodMin / 2;
+  const ahead = Math.max(0, aheadMin || 0);
+  const span = half + half + ahead;
+  // ceil 이라야 점 수가 실제로 상한 아래로 들어온다(round 면 GEO+6시간에서 257점이 됐다).
+  return { from: -half, to: half + ahead, stepMin: Math.max(1, Math.ceil(span / 240)) };
+}
+
+/** 슬라이더 값 → 사람이 읽는 말. 0 은 "지금"이다(0분 뒤가 아니다). */
+function aheadLabel(min) {
+  if (!min) return "지금";
+  const h = Math.floor(min / 60), m = min % 60;
+  if (!h) return `${m}분 뒤`;
+  return m ? `${h}시간 ${m}분 뒤` : `${h}시간 뒤`;
+}
+
+/** 지정 시각(분 뒤)의 위성 위치 [lng, lat]. 계산 불가면 null. */
+function satPointAt(rec, minutesAhead) {
+  const t = new Date(Date.now() + (minutesAhead || 0) * 60000);
+  let pv;
+  try { pv = satellite.propagate(rec, t); } catch (_) { return null; }
+  if (!pv || !pv.position) return null;
+  const geo = satellite.eciToGeodetic(pv.position, satellite.gstime(t));
+  const lng = satellite.degreesLong(geo.longitude);
+  const lat = satellite.degreesLat(geo.latitude);
+  return (isFinite(lng) && isFinite(lat)) ? [lng, lat] : null;
+}
+
+function computeGroundTrack(rec, aheadMin) {
+  const win = trackWindow(orbitPeriodMin(rec), aheadMin);
   const points = [];
-  for (let dm = -half; dm <= half; dm += 1) {
+  for (let dm = win.from; dm <= win.to; dm += win.stepMin) {
     const t = new Date(Date.now() + dm * 60000);
     let pv;
     try { pv = satellite.propagate(rec, t); } catch (_) { continue; }
@@ -171,7 +210,49 @@ function computeGroundTrack(rec) {
 function drawGroundTrack() {
   const src = map.getSource("sat-track");
   if (!src) return;
-  src.setData(selectedSat ? computeGroundTrack(selectedSat.rec) : EMPTY_FC);
+  src.setData(selectedSat ? computeGroundTrack(selectedSat.rec, trackAheadMin) : EMPTY_FC);
+  drawFutureMarker();
+}
+
+/** "N분 뒤 어디" 고스트 마커 (P12-16). 슬라이더가 0이면 지우고, 아니면 그 시각 위치로.
+ *  라벨은 DOM 마커로 그린다 — **symbol text 는 쓰지 않는다**(WebView2 에서 온라인 glyphs
+ *  요청이 지도 전체 렌더를 막은 적이 있다). */
+function drawFutureMarker() {
+  const at = (selectedSat && trackAheadMin > 0)
+    ? satPointAt(selectedSat.rec, trackAheadMin) : null;
+  if (!at) {
+    if (futureMarker) { futureMarker.remove(); futureMarker = null; }
+    return;
+  }
+  if (!futureMarker) {
+    const el = document.createElement("div");
+    el.className = "future-marker";
+    futureMarker = new maplibregl.Marker({ element: el, anchor: "center" });
+  }
+  futureMarker.getElement().textContent = aheadLabel(trackAheadMin);
+  futureMarker.setLngLat(at).addTo(map);
+}
+
+/** 컨트롤에 적을 말 — 시간 + **그때 어디인지**.
+ *
+ * 좌표를 함께 적는 이유: 지도가 확대돼 있으면 2시간 뒤 위치는 **화면 밖**이다(ISS 는
+ * 지구 반대편에 가 있다). 그러면 슬라이더를 올려도 아무 일도 안 일어난 것처럼 보인다
+ * — 2026-09-11 실제 화면 확인에서 그렇게 보였다.
+ */
+function aheadStatus(min, point) {
+  const label = aheadLabel(min);
+  if (!min || !point) return label;
+  return `${label} · ${point[1].toFixed(1)}°, ${point[0].toFixed(1)}°`;
+}
+
+/** 슬라이더 변경 — 궤적과 고스트 마커를 다시 그린다(저장하지 않는다: 일시적인 상태다). */
+function onTrackAhead() {
+  const el = document.getElementById("sat-ahead");
+  trackAheadMin = +el.value || 0;
+  drawGroundTrack();
+  const at = (selectedSat && trackAheadMin > 0)
+    ? satPointAt(selectedSat.rec, trackAheadMin) : null;
+  document.getElementById("sat-ahead-label").textContent = aheadStatus(trackAheadMin, at);
 }
 
 function selectSatellite(s) {
@@ -186,6 +267,7 @@ function selectSatellite(s) {
 function deselectSatellite() {
   selectedSat = null;
   tracking = false;
+  if (futureMarker) { futureMarker.remove(); futureMarker = null; }
   if (trackTimer) { clearInterval(trackTimer); trackTimer = null; }
   const src = map.getSource("sat-track");
   if (src) src.setData(EMPTY_FC);

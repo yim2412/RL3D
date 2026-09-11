@@ -911,6 +911,128 @@ const { loadApp, group, check, done } = require("./harness");
   }
 }
 
+// ── 궤적 연장 · 미래 위치 (P12-16) ────────────────────────────────────────────
+// 조용히 깨지는 자리: 범위 계산과 점 간격. 선은 어느 쪽이든 "그럴듯하게" 그려지므로
+// 뒤쪽까지 늘어났는지, 점이 수천 개가 됐는지는 화면으로 알아채기 어렵다.
+{
+  const { ctx } = loadApp();
+  group("궤적 범위 (trackWindow)");
+  const W = (p, a) => ctx.trackWindow(p, a);
+  check("기본은 ±½주기", [W(90, 0).from, W(90, 0).to], [-45, 45]);
+  check("앞으로 볼 시간은 앞쪽만 늘린다", [W(90, 180).from, W(90, 180).to], [-45, 225]);
+  check("뒤쪽은 절대 늘어나지 않는다",
+    [0, 60, 360].every((a) => W(90, a).from === -45), true);
+  check("음수나 빈 값은 0 으로 본다",
+    [W(90, -10).to, W(90, null).to, W(90, undefined).to], [45, 45, 45]);
+
+  // 점 간격 — 6시간을 1분 간격으로 그리면 점이 400개를 넘고 30초마다 다시 계산된다.
+  const pts = (p, a) => { const w = W(p, a); return Math.floor((w.to - w.from) / w.stepMin) + 1; };
+  check("짧은 범위는 1분 간격", W(90, 0).stepMin, 1);
+  check("범위를 늘려도 점 수가 폭발하지 않는다",
+    [pts(90, 0), pts(90, 360), pts(1436, 360)].every((n) => n <= 250), true);
+  check("점 수가 의미 있게 남는다(선이 각지지 않는다)",
+    [pts(90, 0), pts(90, 360)].every((n) => n >= 90), true);
+  check("정지궤도(1436분)도 처리된다", W(1436, 0).stepMin >= 1, true);
+
+  group("앞으로 볼 시간 라벨 (aheadLabel)");
+  check("0 은 '지금'", ctx.aheadLabel(0), "지금");
+  check("분", ctx.aheadLabel(45), "45분 뒤");
+  check("정각 시간은 분을 안 붙인다", ctx.aheadLabel(120), "2시간 뒤");
+  check("시간+분", ctx.aheadLabel(150), "2시간 30분 뒤");
+
+  // 확대 상태에서는 그 시각 위치가 화면 밖이다 — 좌표를 같이 적어야 "아무 일도 안 일어난
+  // 것처럼" 보이지 않는다(실제 화면 확인에서 나온 문제).
+  check("좌표를 함께 적는다", ctx.aheadStatus(120, [-145.37, 41.4]), "2시간 뒤 · 41.4°, -145.4°");
+  check("지금이면 좌표를 적지 않는다", ctx.aheadStatus(0, [1, 2]), "지금");
+  check("위치를 못 구했으면 시간만", ctx.aheadStatus(60, null), "1시간 뒤");
+}
+
+{
+  const { ctx } = loadApp({ realSatellite: true });
+  group("미래 위치 (satPointAt) — 실제 SGP4");
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26206.50000000  .00016717  00000+0  10270-3 0  9008",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1994 15.49309963 30347");
+  const now = ctx.satPointAt(rec, 0);
+  const soon = ctx.satPointAt(rec, 10);
+  check("현재 위치가 유효한 좌표", now && Math.abs(now[1]) <= 90 && Math.abs(now[0]) <= 180, true);
+  check("10분 뒤는 지금과 다른 곳이다(오프셋이 실제로 쓰인다)",
+    now[0] !== soon[0] || now[1] !== soon[1], true);
+
+  // ISS 는 약 92.8분에 한 바퀴 → 1주기 뒤 위도가 거의 같다(경도는 지구 자전으로 밀린다).
+  // 오프셋을 분이 아니라 다른 단위로 쓰면 이 단언이 깨진다.
+  const period = ctx.orbitPeriodMin(rec);
+  const after = ctx.satPointAt(rec, period);
+  check("주기는 ISS 답게 나온다(90~95분)", period > 90 && period < 95, true);
+  check("1주기 뒤 위도가 거의 같다", Math.abs(after[1] - now[1]) < 3, true);
+  check("1주기 뒤 경도는 서쪽으로 밀린다(지구가 돌았다)",
+    Math.abs(((after[0] - now[0] + 540) % 360) - 180) > 5, true);
+
+  check("궤적 점 수가 범위와 맞는다",
+    ctx.computeGroundTrack(rec, 0).geometry.coordinates.flat().length >= 80, true);
+  check("앞으로 볼 시간을 늘리면 궤적이 길어진다",
+    ctx.computeGroundTrack(rec, 300).geometry.coordinates.flat().length >
+    ctx.computeGroundTrack(rec, 0).geometry.coordinates.flat().length * 1.5, true);
+  check("모든 궤적 점이 유효 좌표",
+    ctx.computeGroundTrack(rec, 120).geometry.coordinates.flat()
+      .every(([lng, lat]) => Math.abs(lng) <= 180 && Math.abs(lat) <= 90), true);
+}
+
+// 배선 — 위 단언들은 순수 함수를 직접 부른다. 슬라이더가 실제로 연결돼 있지 않으면
+// 계산이 다 맞아도 화면에서는 아무 일도 일어나지 않는다(변이 실험에서 안 잡혔다 —
+// v1.11.0 keydown · v1.12.0 loadArchive 에 이어 **세 번째**로 같은 구멍이 나왔다).
+{
+  const marks = { added: 0, removed: 0 };
+  const maplibregl = {
+    Marker: function (opts) {
+      this.el = opts.element;
+      this.getElement = () => this.el;
+      this.setLngLat = (v) => { this.lngLat = v; return this; };
+      this.addTo = () => { marks.added++; return this; };
+      this.remove = () => { marks.removed++; };
+    },
+  };
+  const { ctx, state, el, map } = loadApp({ realSatellite: true, maplibregl });
+  state.map = map;
+  map.stubSource("sat-track");
+  ctx.bindUI();
+
+  group("앞으로 볼 시간 배선 (슬라이더 → 궤적·마커)");
+  check("bindUI 전 기본값은 지금", state.trackAheadMin, 0);
+  el("sat-ahead").value = "120";
+  el("sat-ahead").fire("input");
+  check("슬라이더가 상태를 바꾼다", state.trackAheadMin, 120);
+  check("라벨이 함께 바뀐다", el("sat-ahead-label").textContent, "2시간 뒤");
+  // (아래에서 위성을 고른 뒤에는 좌표까지 붙는다 — 그 확인은 마커 단언 다음에 있다)
+
+  // 위성을 고르면 고스트 마커가 선다 — 슬라이더가 0 이면 서지 않는다.
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26206.50000000  .00016717  00000+0  10270-3 0  9008",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1994 15.49309963 30347");
+  state.selectedSat = { name: "ISS", norad: "25544", rec };
+  ctx.drawGroundTrack();
+  check("앞으로 볼 시간이 있으면 고스트 마커가 선다", marks.added > 0, true);
+  check("마커에 시각이 적힌다",
+    state.futureMarker && state.futureMarker.getElement().textContent, "2시간 뒤");
+  check("마커가 좌표를 받는다",
+    state.futureMarker ? state.futureMarker.lngLat.length : null, 2);
+  el("sat-ahead").fire("input");   // 위성이 선택된 상태로 다시 한 번
+  check("위성이 선택돼 있으면 라벨에 좌표가 붙는다",
+    /^2시간 뒤 · -?\d+\.\d°, -?\d+\.\d°$/.test(el("sat-ahead-label").textContent), true);
+
+  el("sat-ahead").value = "0";
+  el("sat-ahead").fire("input");
+  check("지금으로 되돌리면 마커가 사라진다", state.futureMarker, null);
+  check("실제로 remove 를 불렀다", marks.removed > 0, true);
+
+  // 선택을 풀어도 남으면 안 된다(이전 위성의 미래 위치가 지도에 남는다)
+  el("sat-ahead").value = "60";
+  el("sat-ahead").fire("input");
+  check("다시 켜면 다시 선다", state.futureMarker !== null, true);
+  ctx.deselectSatellite();
+  check("선택 해제하면 마커가 치워진다", state.futureMarker, null);
+}
+
 // ── 아카이브 잘림 배선 (P12-6) ────────────────────────────────────────────────
 // 위의 completeYears 단언들은 truncatedYears 를 **테스트가 직접 채워** 잰다.
 // 실제로 그 집합을 채우는 건 loadArchive 한 줄뿐이라, 그 줄이 빠지면 로직이 다 맞아도

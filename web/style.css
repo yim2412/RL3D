@@ -541,3 +541,21 @@ html, body {
   color: #cdd7ff;
 }
 .kh-foot { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+/* "N분 뒤 어디" 고스트 마커 + 앞으로 볼 시간 슬라이더 (P12-16) */
+.future-marker {
+  background: rgba(125, 211, 252, .16);
+  border: 1px dashed #7dd3fc;
+  color: #bae6fd;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px; white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+}
+.sat-ahead-wrap { display: inline-flex; align-items: center; gap: 6px; }
+#sat-ahead { width: 110px; accent-color: var(--accent); }
+.sat-ahead-label {
+  font-size: 11px; color: var(--muted);
+  min-width: 62px; text-align: left; white-space: nowrap;
+}

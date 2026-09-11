@@ -81,6 +81,10 @@
     <button id="sat-track-btn" class="btn sm" title="지도 중심을 위성에 고정">추적</button>
     <button id="sat-obs-btn" class="btn sm" title="지도를 클릭해 관측 위치 지정">📍 관측</button>
     <button id="sat-pass-btn" class="btn sm" title="관측지 기준 통과 예측" disabled>통과 예측</button>
+    <span class="sat-ahead-wrap" title="궤적을 앞으로 늘려 보고, 그 시각 위치를 표시">
+      <input id="sat-ahead" type="range" min="0" max="360" step="5" value="0" />
+      <span id="sat-ahead-label" class="sat-ahead-label">지금</span>
+    </span>
     <button id="sat-ctrl-close" class="sat-ctrl-close" title="선택 해제">✕</button>
   </div>
 

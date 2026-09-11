@@ -30,6 +30,7 @@ const STATE_KEYS = [
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
+  "trackAheadMin", "futureMarker",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */

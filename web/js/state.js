@@ -20,6 +20,8 @@ let satTimer = null;        // 위성 위치 갱신 타이머(초당)
 let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상궤적/추적 대상
 let tracking = false;       // 추적 모드(지도 중심을 위성에 고정)
 let trackTimer = null;      // 지상궤적선 주기적 재계산 타이머
+let trackAheadMin = 0;      // "앞으로 볼 시간"(분) — 궤적 연장 + 고스트 마커(P12-16)
+let futureMarker = null;    // "N분 뒤 어디" DOM 마커
 
 let satPanelId = null;      // 상세 패널이 열려 있는 위성 norad(매 초 값 갱신용)
 let observer = null;        // 관측 위치 { lat, lng } — 통과 예측 기준(settings.json 저장)
