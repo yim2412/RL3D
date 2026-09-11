@@ -253,6 +253,18 @@ const NET_PRECISION_KO = {
   Year: "연 단위로만 확정",
 };
 
+/** net_precision → 경고 문구(없으면 null).
+ *  LL2 는 **"Quarter 4" · "Year Half 2" 처럼 뒤에 숫자를 붙여** 보낸다 — 표에 정확히 일치하는
+ *  키가 없어 경고가 조용히 안 뜨고 있었다(2026-09-11 캐시 97건 중 8건). 앞 단어로 맞춘다. */
+function netPrecisionNote(p) {
+  if (!p) return null;
+  if (p in NET_PRECISION_KO) return NET_PRECISION_KO[p];
+  if (p.startsWith("Year Half")) return "반기 단위로만 확정";
+  if (p.startsWith("Quarter")) return "분기 단위로만 확정";
+  if (p.startsWith("Year")) return "연 단위로만 확정";
+  return `${p} 단위로만 확정`;  // 모르는 값도 알린다 — 넘어가면 정밀도를 속이게 된다
+}
+
 /** 발사 윈도우가 net 과 다른 구간을 가질 때만 "22:45~00:15 (90분)" 로 보여준다. */
 function windowText(d) {
   if (!d.window_start || !d.window_end) return null;
@@ -302,7 +314,7 @@ function openPanel(d) {
   const body = document.getElementById("panel-body");
   const cd = d.outcome === "upcoming"
     ? `<div class="cd" data-net="${escapeHtml(d.net)}">${escapeHtml(countdown(d.net))}</div>` : "";
-  const precision = NET_PRECISION_KO[d.net_precision];
+  const precision = netPrecisionNote(d.net_precision);
   const progs = (d.programs || []).map((p) =>
     `<span class="prog-tag">${escapeHtml(p)}</span>`).join("");
   body.innerHTML = `

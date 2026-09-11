@@ -472,3 +472,40 @@ html, body {
 
 /* MapLibre 기본 요소 톤 다운 */
 .maplibregl-ctrl-attrib { font-size: 10px; opacity: .6; }
+
+/* 발사 임박 집중 화면 (P12-3) — 지도 하단 중앙. 좌(사이드바)·우(상세 패널)를 피한 자리. */
+.focus {
+  position: absolute;
+  left: 50%; transform: translateX(-50%);
+  bottom: 62px;
+  z-index: 28;
+  width: 320px;
+  background: rgba(19, 26, 43, .95);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(125, 211, 252, .45);
+  border-radius: 12px;
+  padding: 12px 14px 11px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(125,211,252,.08);
+  text-align: center;
+}
+.focus.hidden { display: none; }
+.focus-close {
+  position: absolute; top: 6px; right: 8px;
+  background: none; border: none; color: var(--muted);
+  font-size: 13px; cursor: pointer; padding: 0 2px;
+}
+.focus-close:hover { color: var(--text); }
+.focus-head {
+  font-size: 11px; letter-spacing: .5px; color: #7dd3fc;
+  text-transform: uppercase; margin-bottom: 4px;
+}
+.focus-live { color: var(--failure); font-weight: 700; animation: blink 1.6s infinite; }
+.focus-patch { height: 46px; display: block; margin: 2px auto 4px; }
+.focus-cd {
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 30px; font-weight: 700; line-height: 1.15;
+  color: #7dd3fc; letter-spacing: 1px;
+}
+.focus-name { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.focus-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.focus-btns { display: flex; gap: 6px; justify-content: center; margin-top: 9px; }

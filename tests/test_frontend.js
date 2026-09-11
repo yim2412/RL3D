@@ -661,4 +661,101 @@ const { loadApp, group, check, done } = require("./harness");
       seg.every((p, i) => i === 0 || Math.abs(p[0] - seg[i-1][0]) <= 180)), true);
 }
 
+// ── 발사 임박 집중 화면 (P12-3) ───────────────────────────────────────────────
+// 조용히 깨지는 자리는 "고르는 규칙"이다 — 화면엔 카드가 하나 떠 있을 뿐이라
+// 잘못된 발사를 고르거나, 초 단위가 아닌 net 에 초 단위 카운트다운을 붙여도 눈엔 똑같다.
+{
+  const { ctx, state, el } = loadApp();
+  group("집중 화면 대상 선정 (pickFocusLaunch)");
+  const NOW = Date.UTC(2026, 8, 11, 12, 0, 0);
+  const at = (mins) => new Date(NOW + mins * 60000).toISOString();
+  const L = (id, mins, extra = {}) => Object.assign(
+    { id, name: id, net: at(mins), outcome: "upcoming", net_precision: "Minute" }, extra);
+  const pick = (list, dismissed) => ctx.pickFocusLaunch(list, NOW, dismissed || new Set());
+
+  check("T-30분은 뜬다", (pick([L("a", 30)]) || {}).id, "a");
+  check("T-61분은 아직 안 뜬다", pick([L("a", 61)]), null);
+  check("T-59분은 뜬다", (pick([L("a", 59)]) || {}).id, "a");
+  check("T+29분은 남아 있다", (pick([L("a", -29)]) || {}).id, "a");
+  check("T+31분은 사라진다", pick([L("a", -31)]), null);
+  check("둘 중 임박한 쪽", (pick([L("late", 40), L("soon", 5)]) || {}).id, "soon");
+  check("아직 안 온 것이 방금 발사한 것보다 우선",
+    (pick([L("flown", -10), L("next", 50)]) || {}).id, "next");
+  check("방금 발사한 것만 있으면 가장 최근",
+    (pick([L("older", -25), L("newer", -3)]) || {}).id, "newer");
+  check("결과가 확정된 발사는 대상이 아니다",
+    pick([L("a", -10, { outcome: "success" })]), null);
+  check("net 이 없으면 제외", pick([L("a", 10, { net: null })]), null);
+  check("net 이 깨진 문자열이면 제외", pick([L("a", 10, { net: "언젠가" })]), null);
+  check("닫은 발사는 건너뛰고 다음 후보로",
+    (pick([L("a", 5), L("b", 20)], new Set(["a"])) || {}).id, "b");
+  check("목록이 비어도 죽지 않는다", [pick([]), pick(null)], [null, null]);
+
+  // ── net_precision — 여기가 이 기능의 진짜 주장이다 ──
+  // "막지 않았으면 무엇이 일어났을 것인가": 같은 발사를 Minute 으로 바꾸면 반드시 선택된다.
+  // 그 대조가 없으면 정밀도 규칙을 통째로 지워도 위 단언들이 전부 통과한다.
+  check("Hour 정밀도는 초 단위 카운트다운을 띄우지 않는다",
+    pick([L("h", 20, { net_precision: "Hour" })]), null);
+  check("같은 발사가 Minute 이면 뜬다(규칙이 지워졌는지 가르는 대조)",
+    (pick([L("h", 20, { net_precision: "Minute" })]) || {}).id, "h");
+  check("Day/Month/Year/Quarter 4 전부 제외",
+    ["Day", "Month", "Year", "Quarter 4", "Year Half 2"].map((p) =>
+      pick([L("x", 20, { net_precision: p })])), [null, null, null, null, null]);
+  check("net_precision 이 아예 없으면 제외(모르면 안 띄운다)",
+    pick([L("a", 20, { net_precision: undefined })]), null);
+  check("Second 는 뜬다", (pick([L("a", 20, { net_precision: "Second" })]) || {}).id, "a");
+
+  // ── 화면 배선 — 고르는 규칙이 맞아도 카드가 안 뜨면 소용없다 ──
+  // updateFocus 는 **실제 Date.now()** 를 본다 — 위의 고정 NOW 로 만든 net 을 넘기면
+  // 실행 시각에 따라 결과가 달라진다(시각 의존 테스트, ⑤번에서 겪은 flaky 와 같은 모양).
+  group("집중 화면 표시 (updateFocus)");
+  const R = (id, mins, extra = {}) => Object.assign(
+    { id, name: id, net: new Date(Date.now() + mins * 60000).toISOString(),
+      outcome: "upcoming", net_precision: "Minute" }, extra);
+  state.allLaunches = [R("live", 12, { rocket: "Falcon 9", location_name: "Cape" })];
+  ctx.updateFocus();
+  check("임박 발사가 있으면 카드가 보인다", el("focus").hidden, false);
+  check("카드에 발사명이 들어간다", el("focus").innerHTML.includes("live"), true);
+  check("큰 카운트다운이 T- 로 시작", el("focus").innerHTML.includes("T-"), true);
+  state.allLaunches = [R("far", 300)];
+  state.focusShownId = null;
+  ctx.updateFocus();
+  check("임박 발사가 없어지면 카드가 숨는다", el("focus").hidden, true);
+
+  // 닫기: 그 발사는 다시 안 뜨고, 다음 후보가 있으면 이어서 뜬다
+  state.allLaunches = [R("a", 5), R("b", 20)];
+  ctx.updateFocus();
+  check("닫기 전 대상", state.focusShownId, "a");
+  el("focus-close").fire("click");
+  check("닫으면 다음 후보로 이어진다", state.focusShownId, "b");
+  check("닫은 뒤에도 카드는 보인다(다음 후보가 있으므로)", el("focus").hidden, false);
+  el("focus-close").fire("click");
+  check("둘 다 닫으면 숨는다", el("focus").hidden, true);
+  ctx.updateFocus();
+  check("닫은 발사는 다시 뜨지 않는다", el("focus").hidden, true);
+
+  // XSS — 발사명은 API 문자열이다(전역 규칙: DOM 에 넣기 전 이스케이프)
+  state.focusDismissed = new Set();
+  state.focusShownId = null;
+  state.allLaunches = [R("x", 10, { name: `<img src=x onerror="alert(1)">` })];
+  ctx.updateFocus();
+  check("발사명이 이스케이프된다", el("focus").innerHTML.includes("<img"), false);
+}
+
+// ── net_precision 경고 문구 ───────────────────────────────────────────────────
+{
+  const { ctx } = loadApp();
+  group("net_precision 경고 (netPrecisionNote)");
+  check("Second/Minute 은 알리지 않는다",
+    [ctx.netPrecisionNote("Second"), ctx.netPrecisionNote("Minute")], [null, null]);
+  check("Hour", ctx.netPrecisionNote("Hour"), "시각이 시간 단위까지만 확정");
+  // LL2 가 실제로 보내는 값 — 표에 정확히 일치하는 키가 없어 조용히 넘어가던 자리
+  check("Quarter 4 (LL2 실제 값)", ctx.netPrecisionNote("Quarter 4"), "분기 단위로만 확정");
+  check("Year Half 2 (LL2 실제 값)", ctx.netPrecisionNote("Year Half 2"), "반기 단위로만 확정");
+  check("Year 보다 Year Half 를 먼저 본다",
+    ctx.netPrecisionNote("Year") !== ctx.netPrecisionNote("Year Half 2"), true);
+  check("모르는 값도 알린다", ctx.netPrecisionNote("Decade"), "Decade 단위로만 확정");
+  check("값이 없으면 null", ctx.netPrecisionNote(null), null);
+}
+
 done();

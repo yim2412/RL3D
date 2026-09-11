@@ -29,6 +29,7 @@ const DEG = Math.PI / 180;
 let terminatorTimer = null;  // 낮/밤 오버레이 분 단위 갱신 타이머
 
 let autoTimer = null;       // 발사 자동 갱신 타이머
+let focusTimer = null;      // 발사 임박 집중 화면 갱신 타이머(P12-3, 초당)
 const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐시 TTL이 제어)
 
 let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀

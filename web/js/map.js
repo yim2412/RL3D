@@ -64,6 +64,7 @@ function initMap() {
     if (document.getElementById("toggle-sat").checked) setSatelliteVisible(true);  // 설정에 켜져 있었으면 로드
     loadLaunches();
     startAutoRefresh();
+    startFocusTimer();      // 발사 임박 집중 화면(P12-3) — 초당 카운트다운
   });
 }
 

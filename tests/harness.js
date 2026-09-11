@@ -11,7 +11,7 @@ const vm = require("vm");
 /** index.html 의 <script> 순서와 같아야 한다 — 클래식 스크립트라 순서가 곧 의존 관계다.
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
-  "state.js", "utils.js", "map.js", "launches.js",
+  "state.js", "utils.js", "map.js", "launches.js", "focus.js",
   "sats.js", "panels.js", "settings.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
@@ -29,7 +29,7 @@ const STATE_KEYS = [
   "favLaunches", "favSats", "selectedSat", "sidebarTab", "basemap",
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "tracking",
-  "satcat", "satTypesOff", "satOwnersOff",
+  "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
