@@ -16,7 +16,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `main.py` | pywebview 창 생성 + `Api` 브릿지 클래스(JS→파이썬 호출 창구) |
 | `api_client.py` | 외부 API 호출·정규화·디스크 캐싱. **엔드포인트 URL 상수는 전부 이 파일 상단에** |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 9개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `panels` → `settings` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 10개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `panels` → `keys` → `settings` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든, 프론트 회귀 테스트(`test_frontend.js` + `harness.js`) |

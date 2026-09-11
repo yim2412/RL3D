@@ -469,8 +469,18 @@ const { loadApp, group, check, done } = require("./harness");
   check("정지궤도 가시 구간의 시작은 어두울 때다(어두움 조건이 실제로 쓰인다)",
     geoVis.length > 0 && geoVis.every((p) =>
       ctx.observerSunElev(SEOUL, date(p.visStart)) < -6), true);
-  check("정지궤도 가시 구간은 통과 전체보다 짧다(낮 시간이 빠진다)",
-    geoVis.every((p) => (p.visEnd - p.visStart) < (p.end - p.start)), true);
+  // ⚠ 여기 있던 "가시 구간은 통과 전체보다 짧다"는 **시각 의존이라 저녁에 실패했다**
+  //   (2026-09-11 저녁 실측). 가시 구간은 [visStart, visEnd] **하나**라 중간의 낮을
+  //   표현하지 못한다 — 창의 시작과 끝이 모두 밤이면 구간이 창 전체와 같아진다.
+  //   주장 자체가 틀렸던 자리다. 태양표를 주입해 **시각과 무관하게** 배선만 잰다.
+  const win = { s: Date.now(), h: 24 * 3600 * 1000 };
+  const geoTable = ctx.sunTable(SEOUL, win.s, win.s + win.h, 30000);
+  const bright = geoTable.map((e) => ({ unit: e.unit, dark: false }));
+  const dark = geoTable.map((e) => ({ unit: e.unit, dark: true }));
+  check("관측자가 내내 밝으면 가시 통과가 하나도 없다",
+    ctx.computePasses(geo, SEOUL, 24, 30, 10, bright).some((p) => p.visible), false);
+  check("관측자가 내내 어두우면 정지궤도는 가시다(조명 판정은 통과)",
+    ctx.computePasses(geo, SEOUL, 24, 30, 10, dark).every((p) => p.visible), true);
 
   // ⑦ 태양표를 넘겨도 안 넘겨도 결과가 같아야 한다(P12-2 가 표를 공유한다).
   const start = Date.now(), end = start + 24 * 3600 * 1000;
@@ -756,6 +766,135 @@ const { loadApp, group, check, done } = require("./harness");
     ctx.netPrecisionNote("Year") !== ctx.netPrecisionNote("Year Half 2"), true);
   check("모르는 값도 알린다", ctx.netPrecisionNote("Decade"), "Decade 단위로만 확정");
   check("값이 없으면 null", ctx.netPrecisionNote(null), null);
+}
+
+// ── 통계의 모수 (P12-7) ───────────────────────────────────────────────────────
+// 조용한 거짓말의 전형: 라이브 데이터는 `previous` 50건뿐이라 **올해 앞부분이 통째로 없는데**
+// "연도별 2026: 98" 막대는 올해 발사가 98건이었다고 읽힌다.
+{
+  const { ctx } = loadApp();
+  group("통계 모수 (statsScope)");
+  const D = (iso, id) => ({ id, net: iso, outcome: "success" });
+  const list = [D("2025-03-01T00:00:00Z", 1), D("2025-11-01T00:00:00Z", 2),
+                D("2026-07-14T00:00:00Z", 3), D("2026-09-11T00:00:00Z", 4)];
+
+  const sc = ctx.statsScope(list, new Set([2025]), 2026);
+  check("불러온 연도는 완전으로 센다", sc.full, [2025]);
+  check("안 불러온 연도는 부분으로 센다", sc.partial, [2026]);
+  check("총 건수", sc.total, 4);
+  check("기간의 시작·끝", [new Date(sc.from).getUTCFullYear(), new Date(sc.to).getUTCMonth()], [2025, 8]);
+
+  // 막지 않았으면 무엇이 일어났을 것인가 — 아카이브를 하나도 안 불러오면 **전부 부분**이다.
+  // 이 대조가 없으면 판정을 "항상 완전"으로 바꿔도 위 단언이 통과할 수 있다.
+  const none = ctx.statsScope(list, new Set(), 2026);
+  check("아무것도 안 불러왔으면 전부 부분", [none.full, none.partial], [[], [2025, 2026]]);
+  const both = ctx.statsScope(list, new Set([2025, 2026]), 2026);
+  check("둘 다 불러왔으면 부분이 없다", [both.full, both.partial], [[2025, 2026], []]);
+
+  check("net 이 없는 발사는 연도에 안 들어간다(총계에는 남는다)",
+    (() => { const r = ctx.statsScope(list.concat([{ id: 9 }]), new Set(), 2026);
+             return [r.total, r.partial]; })(), [5, [2025, 2026]]);
+  check("깨진 net 도 연도에 안 들어간다",
+    ctx.statsScope([D("언젠가", 1)], new Set(), 2026).partial, []);
+  check("빈 목록", [ctx.statsScope([], new Set(), 2026).total,
+                    ctx.statsScope(null, new Set(), 2026).partial], [0, []]);
+
+  group("모수 안내 문구 (scopeNoteHtml)");
+  const html = ctx.scopeNoteHtml(sc);
+  check("부분 연도를 이름으로 알린다", html.includes("2026년은"), true);
+  check("불러온 연도도 알린다", html.includes("2025"), true);
+  check("부분이 없으면 경고를 띄우지 않는다", ctx.scopeNoteHtml(both).includes("일부만"), false);
+  check("연도별 막대 라벨에 (일부) 표시",
+    ctx.yearEntries([["2025", 2], ["2026", 2]], sc), [["2025", 2], ["2026 (일부)", 2]]);
+  check("완전한 해에는 표시하지 않는다",
+    ctx.yearEntries([["2025", 2]], both), [["2025", 2]]);
+}
+
+// ── 키보드 단축키 (P12-14) ────────────────────────────────────────────────────
+{
+  const { ctx } = loadApp();
+  group("단축키 판정 (keyAction)");
+  const K = (key, extra = {}) => ctx.keyAction(Object.assign({ key, target: { tagName: "BODY" } }, extra));
+
+  check("/ 는 검색", K("/"), "search");
+  check("Esc 는 닫기", K("Escape"), "escape");
+  check("s 는 사이드바", K("s"), "sidebar");
+  check("대문자 S 도 같다(Shift 를 눌러도 동작한다)", K("S"), "sidebar");
+  check("r 는 새로고침", K("r"), "refresh");
+  check("? 는 도움말", K("?"), "help");
+  check("숫자키는 토글", [K("1"), K("5"), K("6")], ["toggle:1", "toggle:5", "toggle:6"]);
+  check("정의되지 않은 키는 무시", [K("7"), K("z"), K("F5")], [null, null, null]);
+
+  // **입력 중에는 단축키가 없어야 한다.** 검색창에 "s" 를 치면 사이드바가 열리는 앱은
+  // 검색을 쓸 수 없는데, 화면으로는 "글자가 안 써진다"로만 보인다.
+  const typing = { target: { tagName: "INPUT" } };
+  check("입력 중 s 는 글자다", K("s", typing), null);
+  check("입력 중 / 도 글자다", K("/", typing), null);
+  check("입력 중 숫자도 글자다", K("3", typing), null);
+  check("입력 중 Esc 만 빠져나오기", K("Escape", typing), "blur");
+  check("textarea·select 도 같다",
+    [K("s", { target: { tagName: "TEXTAREA" } }), K("s", { target: { tagName: "SELECT" } })], [null, null]);
+
+  // 조합키는 브라우저·시스템 몫이다 — 뺏으면 Ctrl+R 같은 것이 죽는다.
+  check("Ctrl/Alt/Meta 조합은 비켜난다",
+    [K("r", { ctrlKey: true }), K("s", { altKey: true }), K("1", { metaKey: true })], [null, null, null]);
+
+  group("Esc 우선순위 (escapeTarget)");
+  const E = (o) => ctx.escapeTarget(o);
+  check("아무것도 안 열렸으면 null", E({}), null);
+  check("사이드바만", E({ sidebar: true }), "sidebar");
+  check("상세가 사이드바보다 먼저", E({ sidebar: true, panel: true }), "panel");
+  check("도움말이 가장 먼저", E({ help: true, panel: true, stats: true }), "help");
+  check("통과 패널이 통계보다 먼저", E({ pass: true, stats: true }), "pass");
+  check("위성 컨트롤이 사이드바보다 먼저", E({ satCtrl: true, sidebar: true }), "satCtrl");
+
+  group("단축키 실행 (handleKey)");
+  {
+    const { ctx, el, sel, state, map } = loadApp();
+    state.map = map;
+    map.stubSource("launches");
+    const press = (key, extra = {}) =>
+      ctx.handleKey(Object.assign({ key, target: { tagName: "BODY" }, preventDefault() {} }, extra));
+
+    // 숫자키 토글 — 체크박스를 바꾸고 원래의 change 경로를 탄다
+    const flt = { value: "success", checked: true };
+    sel['.flt[value="success"]'] = [flt];
+    sel[".flt"] = [flt];
+    state.allLaunches = [];
+    press("2");
+    check("2 는 성공 필터를 끈다", flt.checked, false);
+    press("2");
+    check("한 번 더 누르면 되돌아온다", flt.checked, true);
+
+    // 레이어 토글은 체크박스의 change 핸들러를 그대로 타야 한다(설정 저장이 거기 있다)
+    let changed = 0;
+    el("toggle-terminator").addEventListener("change", () => changed++);
+    press("6");
+    check("6 은 낮/밤 체크박스를 뒤집는다", el("toggle-terminator").checked, true);
+    check("원래의 change 경로를 탄다(설정 저장이 거기 있다)", changed, 1);
+
+    // 도움말
+    press("?");
+    check("? 로 도움말이 열린다", el("keyhelp").hidden, false);
+    check("도움말에 키 목록이 들어간다", el("keyhelp").innerHTML.includes("Esc"), true);
+    press("s");
+    check("도움말이 떠 있으면 아무 키나 먼저 닫는다", el("keyhelp").hidden, true);
+
+    // Esc — 열린 것이 없으면 아무 일도 없어야 한다(예외로 죽지 않는다)
+    press("Escape");
+    check("열린 것이 없어도 죽지 않는다", el("keyhelp").hidden, true);
+  }
+
+  // 배선 — 위 단언들은 handleKey 를 **직접** 부른다. 실제로 document 에 붙지 않으면
+  // 로직이 다 맞아도 앱에서는 아무 키도 안 먹는데, 그걸 가르는 건 이 한 줄뿐이다.
+  {
+    const { ctx, el, doc } = loadApp();
+    check("bindUI 전에는 keydown 핸들러가 없다", doc.has("keydown"), false);
+    ctx.bindUI();
+    check("bindUI 가 document 에 keydown 을 붙인다", doc.has("keydown"), true);
+    doc.fire("keydown", { key: "?", target: { tagName: "BODY" }, preventDefault() {} });
+    check("그 핸들러로 실제 동작한다(도움말이 열린다)", el("keyhelp").hidden, false);
+  }
 }
 
 done();

@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "focus.js",
-  "sats.js", "panels.js", "settings.js", "boot.js",
+  "sats.js", "panels.js", "keys.js", "settings.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -54,6 +54,8 @@ function makeEl(id) {
     addEventListener(ev, fn) { this.handlers[ev] = fn; },
     /** 테스트에서 클릭 등을 직접 발생시킨다(마우스 자동화 대신). */
     fire(ev, arg) { if (this.handlers[ev]) this.handlers[ev](arg); },
+    children: [],
+    appendChild(c) { this.children.push(c); return c; },
     querySelectorAll: () => ({ forEach() {} }),
     querySelector: () => null,
   };
@@ -87,6 +89,7 @@ function loadApp(options = {}) {
 
   const mapHandlers = {};
   const winHandlers = {};
+  const docHandlers = {};   // document 에 직접 붙는 핸들러(키보드 P12-14)
   const selectors = {};   // 테스트가 채우는 querySelectorAll 응답
   const sources = {};     // 지도 소스별 마지막 setData 값
   const api = Object.assign({
@@ -107,8 +110,9 @@ function loadApp(options = {}) {
     document: {
       getElementById: el,
       querySelectorAll: (s) => selectors[s] || [],
-      querySelector: () => null,
-      addEventListener() {},
+      // 단축키(P12-14)가 `.flt[value="success"]` 처럼 하나만 찾는다 → 같은 맵에서 첫 항목을 준다
+      querySelector: (s) => (selectors[s] && selectors[s][0]) || null,
+      addEventListener: (ev, fn) => { docHandlers[ev] = fn; },
       createElement: () => makeEl("created"),
       body: el("body"),
     },
@@ -164,6 +168,11 @@ function loadApp(options = {}) {
     /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
     date: (ms) => new RealmDate(ms),
     win: { fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a) },
+    /** document 에 붙은 핸들러 — has 로 배선 여부를, fire 로 실제 동작을 잰다. */
+    doc: {
+      has: (ev) => !!docHandlers[ev],
+      fire: (ev, a) => docHandlers[ev] && docHandlers[ev](a),
+    },
   };
 }
 

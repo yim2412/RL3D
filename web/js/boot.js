@@ -50,11 +50,16 @@ function bindUI() {
   populateArchiveYears();
   document.getElementById("arch-load").addEventListener("click", () =>
     loadArchive(+document.getElementById("arch-year").value));
-  document.getElementById("refresh").addEventListener("click", () => {
-    showStatus("강제 갱신 중… (시간당 요청 제한에 주의)");
-    loadLaunches(true);
-    if (document.getElementById("toggle-sat").checked) loadSatellites();
-  });
+  document.getElementById("refresh").addEventListener("click", forceRefresh);
+  // 단축키(P12-14) — 판정은 keys.js 의 순수 함수가 한다
+  document.addEventListener("keydown", handleKey);
+}
+
+/** 버튼과 단축키가 같은 경로를 타게 한다(둘이 갈라지면 한쪽만 고치게 된다). */
+function forceRefresh() {
+  showStatus("강제 갱신 중… (시간당 요청 제한에 주의)");
+  loadLaunches(true);
+  if (document.getElementById("toggle-sat").checked) loadSatellites();
 }
 
 // pywebview 브릿지가 준비된 뒤 시작

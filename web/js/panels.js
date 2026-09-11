@@ -458,6 +458,47 @@ function computeStats(list) {
   return { byOutcome, byProvider, byCountry, byYear, total: list.length };
 }
 
+/**
+ * 통계의 모수(P12-7) — 무엇이 들어갔고 **무엇이 빠졌는지**. 순수 함수.
+ *
+ * 라이브 데이터는 `previous` 50건 + `upcoming` 50건뿐이라 **올해 앞부분이 통째로 없다**
+ * (실측 2026-09-11: 라이브 98건이 전부 2026년이고 가장 이른 것이 7-14).
+ * 그대로 "연도별 2026: 98" 막대를 그리면 **올해 발사가 98건이었다고 읽힌다** — 조용한 거짓말.
+ * 아카이브로 연도 전체를 불러온 해만 완전하고, 나머지는 부분 표본이다.
+ */
+function statsScope(list, loaded, nowYear) {
+  const years = new Set();
+  let from = null, to = null;
+  for (const d of list || []) {
+    if (!d || !d.net) continue;
+    const t = new Date(d.net).getTime();
+    if (!isFinite(t)) continue;
+    years.add(new Date(t).getFullYear());
+    if (from == null || t < from) from = t;
+    if (to == null || t > to) to = t;
+  }
+  const full = [], partial = [];
+  for (const y of [...years].sort((a, b) => a - b)) {
+    (loaded && loaded.has(y) ? full : partial).push(y);
+  }
+  return { total: (list || []).length, from, to, full, partial, nowYear };
+}
+
+/** 모수 안내 문구 HTML. 부분 표본 연도가 있으면 그것을 **이름으로** 알린다. */
+function scopeNoteHtml(sc) {
+  const span = sc.from != null
+    ? `${escapeHtml(tlLabelDate(sc.from))} ~ ${escapeHtml(tlLabelDate(sc.to))}` : null;
+  const partialWarn = sc.partial.length
+    ? `<div class="st-warn">⚠ ${sc.partial.join("·")}년은 <b>일부만</b> 포함됐습니다` +
+      ` — 라이브 데이터는 최근 발사 50건과 예정 발사뿐입니다.` +
+      ` 연도 전체는 타임라인 옆 <b>과거 → 불러오기</b>로 채웁니다.</div>`
+    : "";
+  const fullNote = sc.full.length
+    ? `<div class="st-full">✓ 연도 전체를 불러온 해: ${sc.full.join("·")}</div>` : "";
+  return `<div class="st-note">현재 불러온 ${sc.total}건 기준` +
+    (span ? ` · ${span}` : "") + `</div>` + partialWarn + fullNote;
+}
+
 /** {키:수} → 가로 막대 HTML. entries는 미리 정렬해 넘긴다. */
 /** 패드 이름은 "Space Launch Complex 4E" 처럼 길어 좁은 라벨에서 잘린다 → 통용 약어로. */
 const PAD_ABBREV = [
@@ -538,11 +579,6 @@ function showEntityStats(kind, value) {
     .sort((a, b) => new Date(b.net) - new Date(a.net));
   const upcoming = dated.filter((d) => d.outcome === "upcoming")
     .sort((a, b) => new Date(a.net) - new Date(b.net));
-  const span = dated.length
-    ? `${tlLabelDate(Math.min(...dated.map((d) => +new Date(d.net))))} ~ ` +
-      `${tlLabelDate(Math.max(...dated.map((d) => +new Date(d.net))))}`
-    : null;
-
   const rows = (arr, n) => arr.slice(0, n).map((d) =>
     `<button class="site-row" data-id="${escapeHtml(String(d.id))}">` +
     `<span class="dot d-${d.outcome}"></span>` +
@@ -557,11 +593,11 @@ function showEntityStats(kind, value) {
 
   document.getElementById("stats-body").innerHTML =
     `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
-    `<div class="st-note">현재 불러온 ${s.total}건 기준 · 과거 연도를 불러오면 더 정확해집니다.` +
-      (span ? `<br />${escapeHtml(span)}` : "") + `</div>` +
+    scopeNoteHtml(statsScope(list, loadedYears, new Date().getFullYear())) +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
-      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div><div class="st-lab">성공률</div></div>` +
+      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +
+        `<div class="st-lab">성공률</div><div class="st-sub">확정 ${decided}건 중</div></div>` +
       `<div class="st-tile"><div class="st-num">${s.byOutcome.upcoming}</div><div class="st-lab">예정</div></div>` +
     `</div>` +
     `<div class="st-sec">결과별</div>` +
@@ -579,8 +615,15 @@ function showEntityStats(kind, value) {
   panel.classList.remove("hidden");
 }
 
+/** 연도별 막대 라벨 — 부분 표본인 해는 이름 옆에 표시한다(막대 모양만으로는 구분이 안 된다). */
+function yearEntries(years, sc) {
+  const partial = new Set(sc.partial);
+  return years.map(([y, n]) => [partial.has(+y) ? `${y} (일부)` : String(y), n]);
+}
+
 function showStats() {
   const s = computeStats(allLaunches);
+  const scope = statsScope(allLaunches, loadedYears, new Date().getFullYear());
   const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
   const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
   const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -589,16 +632,17 @@ function showStats() {
 
   document.getElementById("stats-body").innerHTML =
     `<h2>📊 발사 통계</h2>` +
-    `<div class="st-note">현재 불러온 ${s.total}건 기준 · 과거 연도를 불러오면 더 정확해집니다.</div>` +
+    scopeNoteHtml(scope) +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
-      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div><div class="st-lab">성공률</div></div>` +
+      `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +
+        `<div class="st-lab">성공률</div><div class="st-sub">확정 ${decided}건 중</div></div>` +
       `<div class="st-tile"><div class="st-num">${s.byOutcome.upcoming}</div><div class="st-lab">예정</div></div>` +
     `</div>` +
     `<div class="st-sec">결과별</div>` +
     statBars([["성공", s.byOutcome.success], ["실패", s.byOutcome.failure],
               ["부분 실패", s.byOutcome.partial], ["예정", s.byOutcome.upcoming]], "var(--accent)") +
-    (years.length ? `<div class="st-sec">연도별</div>` + statBars(years, "#7dd3fc") : "") +
+    (years.length ? `<div class="st-sec">연도별</div>` + statBars(yearEntries(years, scope), "#7dd3fc") : "") +
     (providers.length ? `<div class="st-sec">기관 (상위 8)</div>` + statBars(providers, "#a78bfa") : "") +
     (countries.length ? `<div class="st-sec">국가 (상위 8)</div>` + statBars(countries, "#34d399") : "");
   document.getElementById("stats-panel").classList.remove("hidden");

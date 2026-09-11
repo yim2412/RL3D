@@ -15,7 +15,7 @@
 
   <!-- 툴바 -->
   <div id="toolbar" class="toolbar">
-    <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색" />
+    <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색  ( / )" />
     <div class="filters" id="filters">
       <label><input type="checkbox" class="flt" value="upcoming" checked /> <span class="dot d-upcoming"></span>예정</label>
       <label><input type="checkbox" class="flt" value="success" checked /> <span class="dot d-success"></span>성공</label>
@@ -99,6 +99,9 @@
     <div id="stats-body"></div>
   </aside>
 
+  <!-- 단축키 도움말 (P12-14) — ? 로 열고 아무 키나 누르면 닫힘 -->
+  <div id="keyhelp" class="keyhelp hidden"></div>
+
   <!-- 상태 표시 -->
   <div id="status" class="status hidden"></div>
 
@@ -113,6 +116,7 @@
   <script src="js/focus.js"></script>
   <script src="js/sats.js"></script>
   <script src="js/panels.js"></script>
+  <script src="js/keys.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/boot.js"></script>
 </body>

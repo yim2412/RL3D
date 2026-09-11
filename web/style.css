@@ -509,3 +509,35 @@ html, body {
 .focus-name { font-size: 13px; font-weight: 600; margin-top: 2px; }
 .focus-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .focus-btns { display: flex; gap: 6px; justify-content: center; margin-top: 9px; }
+
+/* 통계 모수 표시 (P12-7) — 어느 연도가 부분 표본인지 */
+.st-warn {
+  font-size: 11px; line-height: 1.5; color: #fcd34d;
+  background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .3);
+  border-radius: 7px; padding: 6px 8px; margin: 0 0 6px;
+}
+.st-full { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+.st-sub { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; }
+
+/* 단축키 도움말 (P12-14) */
+.keyhelp {
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 40;
+  min-width: 280px;
+  background: rgba(19, 26, 43, .97);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 16px 50px rgba(0,0,0,.6);
+}
+.keyhelp.hidden { display: none; }
+.kh-head { font-size: 13px; font-weight: 700; margin-bottom: 10px; color: var(--accent); }
+.kh-row { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 3px 0; }
+.kh-row kbd {
+  min-width: 62px; text-align: center;
+  background: #1c2540; border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 5px; padding: 2px 6px; font-family: Consolas, monospace; font-size: 11px;
+  color: #cdd7ff;
+}
+.kh-foot { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
