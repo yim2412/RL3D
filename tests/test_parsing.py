@@ -7,6 +7,7 @@
 외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
 """
 import json
+import logging
 import os
 import shutil
 import sys
@@ -16,7 +17,9 @@ import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
+import applog  # noqa: E402
 import main as main_mod  # noqa: E402  (창 위치 판정 — 창을 띄우지 않는 순수 함수만 쓴다)
+import startup  # noqa: E402  (WebView2 감지 — 레지스트리를 주입해 판정만 잰다)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -327,8 +330,129 @@ class TestWindowVisibility(unittest.TestCase):
         self.assertFalse(main_mod._rect_visible(0, 0, self.W, self.H, []))
 
 
+class TestWebView2Detection(unittest.TestCase):
+    """WebView2 감지 (P12-11). 레지스트리 읽기를 주입해 GUI·레지스트리 없이 잰다."""
+
+    @staticmethod
+    def _reader(values):
+        """values: {(root, path): pv값} → read_value 함수"""
+        def read(root, path, name):
+            return values.get((root, path)) if name == "pv" else None
+        return read
+
+    def test_found_in_hklm(self):
+        root, path = startup.WEBVIEW2_KEYS[0]
+        v = startup.webview2_version(self._reader({(root, path): "120.0.2210.91"}))
+        self.assertEqual(v, "120.0.2210.91")
+
+    def test_found_in_hkcu_only(self):
+        """사용자 설치본만 있어도 찾는다 — HKLM 만 보면 놓친다."""
+        root, path = startup.WEBVIEW2_KEYS[-1]
+        self.assertEqual(startup.WEBVIEW2_KEYS[-1][0], "HKCU")
+        v = startup.webview2_version(self._reader({(root, path): "120.0.2210.91"}))
+        self.assertEqual(v, "120.0.2210.91")
+
+    def test_absent(self):
+        self.assertIsNone(startup.webview2_version(self._reader({})))
+
+    def test_zero_version_is_not_installed(self):
+        """EdgeUpdate 가 남기는 pv=0.0.0.0 은 '설치 안 됨' — 있다고 보면 안내가 안 뜬다."""
+        root, path = startup.WEBVIEW2_KEYS[0]
+        self.assertIsNone(startup.webview2_version(self._reader({(root, path): "0.0.0.0"})))
+
+    def test_empty_string_is_not_installed(self):
+        root, path = startup.WEBVIEW2_KEYS[0]
+        self.assertIsNone(startup.webview2_version(self._reader({(root, path): "  "})))
+
+
+class TestWebView2Notice(unittest.TestCase):
+    """안내가 '없을 때만' 뜨는가 — 막지 않았으면 무엇이 일어났을지까지 단언한다."""
+
+    def setUp(self):
+        self.shown = []
+
+    def _notify(self, title, text):
+        self.shown.append((title, text))
+        return True
+
+    def test_notifies_when_missing(self):
+        ok = startup.check_webview2(version="", notify=self._notify)
+        self.assertFalse(ok)
+        self.assertEqual(len(self.shown), 1)
+        self.assertEqual(self.shown[0][0], startup.WEBVIEW2_MISSING_TITLE)
+        # 설치 경로를 안내하지 않으면 사용자는 무엇을 해야 할지 모른다.
+        self.assertIn("webview2", self.shown[0][1].lower())
+
+    def test_silent_when_present(self):
+        ok = startup.check_webview2(version="120.0.2210.91", notify=self._notify)
+        self.assertTrue(ok)
+        self.assertEqual(self.shown, [])
+
+
+class TestCrashNotice(unittest.TestCase):
+    """크래시 안내 (P12-10) — 예외 문구와 로그 경로가 실제로 들어가는가."""
+
+    def test_message_includes_exception_and_log_path(self):
+        msg = startup.crash_message(ValueError("설정이 깨졌습니다"), os.path.join("C:", "logs", "rl3d.log"))
+        self.assertIn("ValueError", msg)
+        self.assertIn("설정이 깨졌습니다", msg)
+        self.assertIn(os.path.join("C:", "logs", "rl3d.log"), msg)
+
+    def test_message_without_log_path_says_so(self):
+        """로그를 못 만든 경우 — 경로를 안 넣는 것만으로는 사용자가 알 수 없다."""
+        msg = startup.crash_message(RuntimeError("boom"), None)
+        self.assertIn("RuntimeError", msg)
+        self.assertNotIn("rl3d.log", msg)
+        self.assertIn("기록이 남지 않았습니다", msg)
+
+    def test_report_crash_notifies(self):
+        shown = []
+        startup.report_crash(RuntimeError("boom"), "L", lambda t, x: shown.append((t, x)))
+        self.assertEqual(len(shown), 1)
+        self.assertEqual(shown[0][0], startup.CRASH_TITLE)
+
+
+class TestLogFile(unittest.TestCase):
+    """로그 파일 (P12-9) — 실제로 파일에 쓰이는가·UTF-8 인가."""
+
+    def test_writes_utf8_log_line(self):
+        tmp = tempfile.mkdtemp()
+        root = logging.getLogger()
+        before = list(root.handlers)
+        try:
+            path = applog.setup(tmp)
+            self.assertIsNotNone(path)
+            self.assertEqual(path, os.path.join(applog.log_dir(tmp), applog.LOG_FILENAME))
+            logging.getLogger("rl3d.test").warning("한글 경고 — 실패 신호")
+            logging.shutdown()
+            with open(path, encoding="utf-8") as f:   # cp949 였으면 여기서 깨진다
+                text = f.read()
+            self.assertIn("한글 경고 — 실패 신호", text)
+            self.assertIn("WARNING", text)
+        finally:
+            for h in list(root.handlers):
+                if h not in before:
+                    root.removeHandler(h)
+                    h.close()
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_setup_failure_returns_none(self):
+        """로그를 못 만들어도 앱은 떠야 한다 — 예외가 아니라 None 을 돌려준다."""
+        tmp = tempfile.mkdtemp()
+        try:
+            blocker = os.path.join(tmp, "logs")
+            with open(blocker, "w", encoding="utf-8") as f:   # 파일이 디렉터리 자리를 막는다
+                f.write("x")
+            self.assertIsNone(applog.setup(tmp))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     global UPDATE
+    # 테스트가 일부러 실패 경로를 태우므로 로그가 stderr 로 샌다(핸들러 없을 때의 기본
+    # 동작). NullHandler 를 달아 [OK]/[FAIL] 출력이 묻히지 않게 한다.
+    logging.getLogger().addHandler(logging.NullHandler())
     argv = list(sys.argv)
     if "--update" in argv:
         UPDATE = True

@@ -67,6 +67,7 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 
 - 캐시 위치: `%APPDATA%\RL3D\cache\` (`launches.json`, `tle_<그룹>.json`, `archive_<연도>.json`)
 - 설정 위치: `%APPDATA%\RL3D\settings.json` (필터·토글·위성 그룹·관측 위치·창 상태)
+- 로그 위치: `%APPDATA%\RL3D\logs\rl3d.log` (512KB×4 회전, UTF-8). 앱이 겪은 실패가 여기 남는다
 - LL2 는 **시간당 약 15회** 제한 → 캐싱 우선. API 실패 시 오래된 캐시라도 반환(오프라인 대응)
 - **새로고침 버튼**: 캐시 무시 강제 갱신 (요청 제한 주의)
 
@@ -82,6 +83,8 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 
 ```powershell
 python api_client.py            # 데이터 소스별 [OK]/[FAIL]·건수 확인 (GUI 없이, 네트워크 필요)
+python applog.py                # 로그 파일 경로·기록 확인 (네트워크 불필요)
+python startup.py               # 이 PC 의 WebView2 런타임 버전 확인 (네트워크 불필요)
 python tests/test_parsing.py    # 파이썬 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
 node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저·네트워크 불필요)
 ```
@@ -103,7 +106,8 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 
 ## 요구 사항
 
-- Windows 10/11 — WebView2 런타임 필요(대부분 기본 내장). 흰 화면이 뜨면 WebView2 Runtime 설치
+- Windows 10/11 — WebView2 런타임 필요(대부분 기본 내장). **없으면 실행 시 설치 안내가 뜬다.**
+  안내를 닫으면 창은 뜨지만 내용이 빈 화면이다 — WebView2 Runtime 설치 후 다시 실행
 
 ## 실시간 발사 텔레메트리에 대하여
 
@@ -135,8 +139,10 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 
 ```
 RL3D/
-├── main.py          pywebview 창 + Api 브릿지
+├── main.py          pywebview 창 + Api 브릿지 (로그·시작 진단 배선도 여기서만)
 ├── api_client.py    LL2 발사 + Celestrak TLE 호출·정규화·캐싱
+├── applog.py        로그 파일 설정(%APPDATA%\RL3D\logs\, 회전)
+├── startup.py       WebView2 부재 안내 · 시작 실패 안내
 ├── build.bat        exe 빌드
 ├── requirements.txt
 ├── tests/           파싱 회귀 테스트 + 픽스처/골든, 프론트 회귀 테스트

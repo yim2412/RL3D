@@ -2,8 +2,10 @@
 
 파이썬은 네트워크/캐싱을 담당(api_client)하고, JS는 받은 JSON을 지도에 그린다.
 리소스 경로는 PyInstaller onefile 대비 _MEIPASS 경유(resource_path).
+로그 설정·시작 진단은 여기(진입점)에서만 한다 — applog / startup 참조.
 """
 
+import logging
 import os
 import sys
 import urllib.parse
@@ -12,8 +14,12 @@ import webbrowser
 import webview
 
 import api_client
+import applog
+import startup
 
-__version__ = "1.5.2"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+log = logging.getLogger(__name__)
+
+__version__ = "1.6.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -125,11 +131,14 @@ class Api:
         return "pong"
 
 
-def main():
+def _run():
+    """창을 띄우는 본체. 시작 중 예외는 main() 이 잡아 안내한다."""
     api = Api()
     width, height = 1280, 800
 
-    api_client.cleanup_legacy_cache()  # 구조가 바뀌기 전 캐시 파일 청소(있을 때만)
+    removed = api_client.cleanup_legacy_cache()  # 구조가 바뀌기 전 캐시 파일 청소
+    if removed:
+        log.info("옛 캐시 정리: %s", ", ".join(removed))
 
     dev_mode = os.environ.get("RL3D_DEV_MONITOR") is not None
     x, y = dev_window_pos(width, height)
@@ -170,11 +179,28 @@ def main():
                     "x": window.x, "y": window.y,
                     "width": window.width, "height": window.height,
                 }})
-            except Exception:
-                pass  # 창 상태 저장 실패는 종료를 막지 않는다
+            except Exception as e:   # noqa: BLE001
+                log.warning("창 상태 저장 실패: %s", e)  # 저장 실패가 종료를 막진 않는다
         window.events.closing += _save_geometry
 
+    log.info("창 생성 %dx%d at (%s, %s)", width, height, x, y)
     webview.start()
+    log.info("정상 종료")
+
+
+def main():
+    """로그 설정 → 시작 진단 → 창. 시작 실패는 안내 대화상자로 알린다(P12-10)."""
+    log_file = applog.setup(api_client.APP_DIR)
+    applog.install_excepthook()
+    log.info("RL3D v%s 시작", __version__)
+
+    startup.check_webview2()  # 없어도 계속 진행 — 사용자가 상황을 보게 한다(P12-11)
+
+    try:
+        _run()
+    except Exception as e:   # noqa: BLE001 — 시작 실패를 사용자에게 알리는 마지막 자리
+        startup.report_crash(e, log_file)
+        raise
 
 
 if __name__ == "__main__":

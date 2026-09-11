@@ -7,10 +7,14 @@ Launch Library 2(발사)와 Celestrak(위성 TLE)을 호출·정규화·디스�
 """
 
 import json
+import logging
 import os
 import time
 import urllib.error
 import urllib.request
+
+# 핸들러 설정은 진입점(main.py → applog)에서만 한다 — 여기선 기록만 남긴다.
+log = logging.getLogger(__name__)
 
 # ── 엔드포인트·상수 (경로가 바뀌면 여기 한 곳만 고친다) ───────────────────────
 LL2_BASE = "https://ll.thespacedevs.com/2.2.0"
@@ -80,7 +84,9 @@ def _cache_read(name):
         age = time.time() - os.path.getmtime(path)
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f), age
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        # 캐시 없음은 정상(첫 실행) — 그 외 사유가 궁금해질 때를 위해 debug 로만.
+        log.debug("캐시 읽기 실패 %s: %s", name, e)
         return None, None
 
 
@@ -98,8 +104,8 @@ def cleanup_legacy_cache():
             if os.path.exists(path):
                 os.remove(path)
                 removed.append(name)
-        except OSError:
-            pass
+        except OSError as e:
+            log.warning("옛 캐시 삭제 실패 %s: %s", name, e)
     return removed
 
 
@@ -108,8 +114,9 @@ def _cache_write(name, data):
     try:
         with open(_cache_path(name), "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-    except OSError:
-        pass  # 캐시 쓰기 실패는 치명적이지 않다
+    except OSError as e:
+        # 치명적이지 않다(다음 호출이 다시 받는다) — 다만 매번 느려지므로 기록은 남긴다.
+        log.warning("캐시 쓰기 실패 %s: %s", name, e)
 
 
 # ── 설정 저장 (P8-9) ──────────────────────────────────────────────────────────
@@ -119,7 +126,8 @@ def load_settings():
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        log.debug("설정 읽기 실패: %s", e)
         return {}
 
 
@@ -136,8 +144,9 @@ def save_settings(patch):
     try:
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
+    except OSError as e:
+        # 설정이 저장 안 되면 창 위치·필터가 매번 초기화된다 — 사용자가 겪는 증상이다.
+        log.warning("설정 저장 실패 %s: %s", SETTINGS_PATH, e)
     return data
 
 
@@ -243,8 +252,11 @@ def _parse_launches(payload):
             continue  # results 안에 null 이 섞여 오는 경우가 있다
         try:
             parsed = _parse_launch(item)
-        except (TypeError, ValueError, AttributeError, KeyError):
-            continue  # 1건 실패가 전체를 죽이지 않게
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
+            # 1건 실패가 전체를 죽이지 않게. 다만 조용히 사라지면 API 필드 변경을
+            # 눈치채지 못한다 — id 와 사유를 남긴다.
+            log.warning("발사 1건 파싱 실패 id=%s: %s", item.get("id"), e)
+            continue
         if parsed:
             out.append(parsed)
     return out
@@ -283,6 +295,7 @@ def get_launches(force=False):
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = _friendly_error(e)
+        log.warning("발사 조회 실패(%s) — %s", e, "오래된 캐시 사용" if cached is not None else "캐시 없음")
         if cached is not None:
             return {"launches": cached, "stale": True, "error": msg, "age": age}
         return {"launches": [], "stale": False, "error": msg, "age": None}
@@ -324,6 +337,7 @@ def get_archive(year, force=False):
         return {"launches": launches, "year": year, "stale": False, "error": None}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = _friendly_error(e)
+        log.warning("아카이브 %s 조회 실패: %s", year, e)
         if cached is not None:
             return {"launches": cached, "year": year, "stale": True, "error": msg}
         return {"launches": [], "year": year, "stale": False, "error": msg}
@@ -361,6 +375,7 @@ def _get_group_tle(group, force=False):
         return sats, False, None
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = _friendly_error(e)
+        log.warning("TLE 그룹 %s 조회 실패: %s", group, e)
         if cached is not None:
             return cached, True, msg
         return [], False, msg
@@ -439,6 +454,8 @@ def _friendly_error(e):
 
 # ── 터미널 스모크 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # 스모크는 터미널에서 도니 로그를 화면으로 보낸다(파일 로그는 main.py 가 설정).
+    logging.basicConfig(level=logging.WARNING, format="[log] %(levelname)s %(message)s")
     print(f"[cache] {CACHE_DIR}")
 
     gone = cleanup_legacy_cache()
