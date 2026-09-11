@@ -411,6 +411,26 @@ function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30) {
   return rows;
 }
 
+/** 한 위성의 메타데이터. 없으면 null — 호출부는 항상 null 을 감당해야 한다. */
+function satMeta(norad) {
+  return (satcat && satcat[String(norad)]) || null;
+}
+
+/** 위성 메타데이터(P12-5)를 받아 둔다.
+ *
+ * 위성 표시와 **분리**한다: TTL 이 24시간이라 갱신 주기가 다르고, 이게 실패해도
+ * 위성은 지도에 떠야 한다. 그래서 await 하지 않고 실패도 조용히 넘긴다.
+ */
+async function loadSatcat() {
+  try {
+    const res = await window.pywebview.api.get_satcat(satGroups, false);
+    satcat = (res && res.satcat) || {};
+    // 열려 있는 상세 패널이 있으면 즉시 채운다(매 초 갱신이라 사실 자동으로 들어온다).
+  } catch (_) {
+    satcat = satcat || {};   // 실패해도 이전 값을 버리지 않는다
+  }
+}
+
 async function loadSatellites() {
   try {
     deselectSatellite();  // 재로드로 satrec이 갈리므로 이전 선택/궤적은 해제
@@ -424,6 +444,7 @@ async function loadSatellites() {
         if (rec && !rec.error) satrecs.push({ name: s.name, norad: s.norad_id, rec, band: orbitBand(rec) });
       } catch (_) { /* 이 위성만 건너뜀 */ }
     }
+    loadSatcat();   // 메타데이터는 따로·늦게 와도 된다(위성 표시를 막지 않는다)
     updateSatCount();
     if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
     else if (sidebarTab === "favs") renderFavList();  // 관심 위성이 이제 붙는다

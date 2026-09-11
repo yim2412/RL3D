@@ -6,6 +6,8 @@ Launch Library 2(발사)와 Celestrak(위성 TLE)을 호출·정규화·디스�
 터미널 스모크: `python api_client.py` → 소스별 [OK]/[FAIL]·건수 출력.
 """
 
+import csv
+import io
 import json
 import logging
 import os
@@ -13,6 +15,8 @@ import sys
 import time
 import urllib.error
 import urllib.request
+
+import satcat_codes
 
 # 핸들러 설정은 진입점(main.py → applog)에서만 한다 — 여기선 기록만 남긴다.
 log = logging.getLogger(__name__)
@@ -26,6 +30,9 @@ LL2_ARCHIVE = (LL2_BASE + "/launch/?net__gte={year}-01-01T00:00:00Z"
                "&net__lte={year}-12-31T23:59:59Z&limit=100&ordering=net&mode=detailed")
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
+# 위성 메타데이터(P12-5). TLE 와 같은 GROUP 단위로 받아 같은 단위로 캐싱한다 —
+# 전체 satcat.csv 는 6.7MB 지만 그룹별은 2KB~1MB 다(2026-09-11 실측).
+CELESTRAK_SATCAT = "https://celestrak.org/satcat/records.php?GROUP={group}&FORMAT=csv"
 # 위성 그룹 카탈로그: key=Celestrak GROUP, label=표시명, cap=개수 상한(None=무제한).
 # cap 은 **지도에 그릴 개수**만 줄인다 — 응답 전체를 받은 뒤 자르므로 다운로드는 줄지 않는다.
 # 값 근거(2026-07-26 실측, P11-6): 위성 8,000개에서도 초당 갱신이 동기 28ms·화면 반영 33ms 라
@@ -60,6 +67,9 @@ SETTINGS_PATH = os.path.join(APP_DIR, "settings.json")  # 창 상태·필터 등
 # upcoming+previous 2요청 × 4회/시간 = 8요청/시간 → LL2 15회/시간 제한 내 안전.
 TTL_LAUNCHES = 15 * 60      # 발사 15분
 TTL_TLE = 2 * 60 * 60       # TLE 2시간
+# SATCAT 은 발사일·소유국·타입처럼 거의 안 변하는 값이라 길게 잡는다. 짧게 잡을 이유가
+# 없고, Celestrak 은 같은 데이터를 짧은 간격으로 거듭 받으면 403 으로 막는다.
+TTL_SATCAT = 24 * 60 * 60   # 위성 메타데이터 24시간
 # 아카이브: 지난 연도는 영구 캐시(과거 발사는 안 변함), 올해만 TTL 갱신.
 TTL_ARCHIVE_CURRENT = 6 * 60 * 60   # 올해 아카이브 6시간(연중 새 발사 추가)
 ARCHIVE_MAX_PAGES = 5               # 연도당 최대 페이지(요청 폭주 방지)
@@ -409,6 +419,81 @@ def get_satellites(force=False, groups=None):
     return {"satellites": combined, "stale": stale_any, "error": err, "groups": groups}
 
 
+# ── 위성 메타데이터 SATCAT (P12-5) ────────────────────────────────────────────
+# TLE 는 "지금 어디 있나"만 준다 — 이름·NORAD·궤도요소가 전부다. SATCAT 은 그 물체가
+# **무엇인지**(위성체/로켓몸체/잔해)와 발사일·소유국·발사장·크기를 준다.
+# TLE 와 같은 GROUP 단위로 받아 같은 캐시 구조를 쓴다(조인은 프론트에서 NORAD 로).
+
+def _parse_satcat(text):
+    """SATCAT CSV → {norad: {...}} 정규화.
+
+    1건 파싱 실패가 나머지를 날리지 않게 행마다 감싼다(전역 규칙 7번).
+    코드는 여기서 사람 말로 바꾼다 — 프론트가 표를 또 갖지 않게.
+    """
+    out = {}
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        try:
+            norad = int((row.get("NORAD_CAT_ID") or "").strip())
+        except (TypeError, ValueError):
+            continue  # NORAD 가 없으면 조인할 수 없다 — 이 행만 버린다
+        try:
+            decay = (row.get("DECAY_DATE") or "").strip() or None
+            out[norad] = {
+                "norad_id": norad,
+                "name": (row.get("OBJECT_NAME") or "").strip() or None,
+                "intl_code": (row.get("OBJECT_ID") or "").strip() or None,
+                "type": satcat_codes.label(satcat_codes.OBJECT_TYPES, row.get("OBJECT_TYPE")),
+                "status": satcat_codes.label(satcat_codes.OPS_STATUS, row.get("OPS_STATUS_CODE")),
+                "owner": satcat_codes.label(satcat_codes.OWNERS, row.get("OWNER")),
+                "launch_date": (row.get("LAUNCH_DATE") or "").strip() or None,
+                "launch_site": satcat_codes.label(satcat_codes.LAUNCH_SITES, row.get("LAUNCH_SITE")),
+                "decay_date": decay,
+                "size": satcat_codes.rcs_size(row.get("RCS")),
+            }
+        except (TypeError, ValueError, AttributeError) as e:
+            log.warning("SATCAT 1건 파싱 실패 norad=%s: %s", norad, e)
+    return out
+
+
+def _get_group_satcat(group, force=False):
+    """한 그룹의 SATCAT → (dict, stale, error). 그룹별로 캐시."""
+    name = "satcat_{}.json".format(group)
+    cached, age = _cache_read(name)
+    if not force and cached is not None and age is not None and age < TTL_SATCAT:
+        return cached, False, None
+    try:
+        meta = _parse_satcat(_http_get(CELESTRAK_SATCAT.format(group=group)))
+        # JSON 키는 문자열이 된다 → 저장 전에 문자열로 통일해 캐시/네트워크 결과 모양을 맞춘다.
+        meta = {str(k): v for k, v in meta.items()}
+        _cache_write(name, meta)
+        return meta, False, None
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+        msg = _friendly_error(e)
+        log.warning("SATCAT 그룹 %s 조회 실패: %s", group, e)
+        if cached is not None:
+            return cached, True, msg
+        return {}, False, msg
+
+
+def get_satcat(groups=None, force=False):
+    """지정 그룹의 위성 메타데이터를 합쳐 반환.
+
+    반환: {"satcat": {norad(str): {...}}, "stale": bool, "error": str|None}
+    **메타가 없어도 위성은 그대로 보여야 한다** — 실패해도 빈 dict 로 돌려주고,
+    화면은 있는 값만 채운다(전역 규칙 7번: 1건 실패가 나머지를 날리지 않는다).
+    """
+    groups = [g for g in (groups or DEFAULT_SATELLITE_GROUPS)
+              if g in SATELLITE_GROUP_CATALOG]
+    merged, stale, error = {}, False, None
+    for g in groups:
+        meta, g_stale, g_err = _get_group_satcat(g, force=force)
+        merged.update(meta or {})
+        stale = stale or g_stale
+        error = error or g_err
+    return {"satcat": merged, "stale": stale, "error": error}
+
+
 # ── 에러 메시지(사람이 읽는 말로) ─────────────────────────────────────────────
 # HTTP 상태코드 → 사용자 문구. 새 코드를 만나면 여기에만 추가한다.
 # 403 은 이 앱이 실제로 겪는 실패다 — Celestrak 은 같은 대형 그룹(Starlink 1.7MB)을
@@ -491,6 +576,18 @@ if __name__ == "__main__":
               + (f" (경고: {r['error']})" if r["error"] else ""))
         if r["satellites"]:
             print(f"        예: {r['satellites'][0]['name']} (NORAD {r['satellites'][0]['norad_id']})")
+
+    r = get_satcat()
+    if r["error"] and not r["satcat"]:
+        print(f"[FAIL] satcat - {r['error']}")
+    else:
+        tag = "OK(stale)" if r["stale"] else "OK"
+        print(f"[{tag}] satcat - {len(r['satcat'])}건"
+              + (f" (경고: {r['error']})" if r["error"] else ""))
+        iss = r["satcat"].get("25544")
+        if iss:
+            print(f"        예: {iss['name']} — {iss['type']} · {iss['owner']} · "
+                  f"{iss['launch_date']} · {iss['launch_site']} · 크기 {iss['size']}")
 
     # 아카이브: 작년치 1개 연도만(최초 1회 API, 이후 영구 캐시라 무료 스모크)
     last_year = time.gmtime().tm_year - 1

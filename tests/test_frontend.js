@@ -476,4 +476,63 @@ const { loadApp, group, check, done } = require("./harness");
     table.some((e) => e.dark) && table.some((e) => !e.dark), true);
 }
 
+// ── 위성 메타데이터 SATCAT (P12-5) ────────────────────────────────────────────
+// 메타는 **늦게·따로** 오고, 아예 안 올 수도 있다. 그때 화면이 거짓을 말하거나
+// 죽지 않는지가 핵심이다(위성 표시는 메타와 무관해야 한다).
+{
+  const { ctx, state } = loadApp();
+  group("위성 메타데이터 (P12-5)");
+
+  state.satcat = {
+    "25544": { norad_id: 25544, name: "ISS (ZARYA)", type: "위성체",
+               owner: "국제우주정거장(공동)", status: "운용 중",
+               launch_date: "1998-11-20", launch_site: "바이코누르(카자흐)",
+               intl_code: "1998-067A", size: "큼", decay_date: null },
+    "90001": { norad_id: 90001, name: "COSMOS 1408 DEB", type: "잔해",
+               owner: "러시아/구소련", status: "궤도 이탈(재진입)",
+               launch_date: "1982-09-16", launch_site: null,
+               intl_code: null, size: "작음", decay_date: "2024-03-02" },
+    "90004": { norad_id: 90004, name: "MINIMAL", type: null, owner: null,
+               status: null, launch_date: null, launch_site: null,
+               intl_code: null, size: null, decay_date: null },
+  };
+
+  check("satMeta — 숫자로 넘겨도 찾는다(키는 문자열)", ctx.satMeta(25544).type, "위성체");
+  check("satMeta — 문자열로도 찾는다", ctx.satMeta("25544").owner, "국제우주정거장(공동)");
+  check("satMeta — 없는 NORAD 는 null", ctx.satMeta(99999), null);
+
+  const iss = ctx.satMetaHtml(25544);
+  check("메타 HTML 에 발사장이 들어간다", iss.includes("바이코누르"), true);
+  check("메타 HTML 에 재진입 행이 없다(값이 null)", iss.includes("재진입"), false);
+
+  const deb = ctx.satMetaHtml(90001);
+  check("재진입 물체는 재진입 행이 있다", deb.includes("2024-03-02"), true);
+  check("값이 null 인 발사장 행은 아예 안 그린다", deb.includes("발사장"), false);
+
+  // 메타가 전부 비어 있으면 빈 표를 그리지 말고 아예 아무것도 내지 않아야 한다 —
+  // 빈 테두리만 남으면 "불러오는 중"처럼 보인다.
+  check("전 필드가 null 이면 빈 문자열", ctx.satMetaHtml(90004), "");
+  check("메타가 없으면 빈 문자열", ctx.satMetaHtml(99999), "");
+
+  check("배지 — 위성체는 '위성'", ctx.satBadgeHtml(25544).includes("위성"), true);
+  check("배지 — 재진입이 타입보다 우선", ctx.satBadgeHtml(90001).includes("재진입"), true);
+  check("배지 — 메타 없으면 기본 '위성'", ctx.satBadgeHtml(99999).includes("위성"), true);
+
+  // 이스케이프 — 메타는 외부 API 문자열이다(프로젝트 규칙 2번).
+  state.satcat["90005"] = { type: "<img src=x onerror=alert(1)>", owner: null, status: null,
+                            launch_date: null, launch_site: null, intl_code: null,
+                            size: null, decay_date: null };
+  check("메타 문자열도 이스케이프된다",
+    ctx.satMetaHtml(90005).includes("&lt;img"), true);
+  check("배지의 타입도 이스케이프된다",
+    ctx.satBadgeHtml(90005).includes("<img src=x"), false);
+
+  // 메타가 통째로 없는 상태(로드 실패)에서도 죽지 않아야 한다.
+  state.satcat = {};
+  check("satcat 이 비어도 satMeta 는 null", ctx.satMeta(25544), null);
+  check("satcat 이 비어도 HTML 은 빈 문자열", ctx.satMetaHtml(25544), "");
+  state.satcat = null;
+  check("satcat 이 null 이어도 죽지 않는다", ctx.satMeta(25544), null);
+}
+
 done();

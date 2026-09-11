@@ -9,6 +9,9 @@ let allLaunches = [];       // 라이브+아카이브 합본(id 중복 제거) �
 let tickerTimer = null;
 
 let satrecs = [];           // { name, norad, rec } — satellite.js SGP4 레코드
+// 위성 메타데이터(P12-5). { norad(문자열): {type, owner, launch_date, ...} }
+// **없어도 위성은 그대로 뜬다** — 상세 패널이 있는 값만 채운다.
+let satcat = {};
 let satTimer = null;        // 위성 위치 갱신 타이머(초당)
 
 let selectedSat = null;     // 선택된 위성 { name, norad, rec } — 지상궤적/추적 대상

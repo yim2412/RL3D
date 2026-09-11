@@ -18,6 +18,7 @@ import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
+import satcat_codes  # noqa: E402
 import applog  # noqa: E402
 import main as main_mod  # noqa: E402  (창 위치 판정 — 창을 띄우지 않는 순수 함수만 쓴다)
 import startup  # noqa: E402  (WebView2 감지 — 레지스트리를 주입해 판정만 잰다)
@@ -525,6 +526,90 @@ class TestMonitorOrder(unittest.TestCase):
         """주 모니터가 없다고 보고되는 환경에서도 죽지 않는다(원격 세션 등)."""
         a, b = self._S("a", False), self._S("b", False)
         self.assertEqual(main_mod.order_screens([a, b]), [a, b])
+
+
+class TestSatcatParsing(unittest.TestCase):
+    """SATCAT 정규화 (P12-5). 실제 응답 + 일부러 넣은 경계 사례로 잰다."""
+
+    @classmethod
+    def setUpClass(cls):
+        text = _read_text(os.path.join(FIXTURES, "celestrak_satcat.csv"))
+        cls.meta = api_client._parse_satcat(text)
+
+    def test_real_row_normalized(self):
+        """ISS — 코드가 사람 말로 바뀌는가."""
+        iss = self.meta[25544]
+        self.assertEqual(iss["name"], "ISS (ZARYA)")
+        self.assertEqual(iss["type"], "위성체")          # PAY
+        self.assertEqual(iss["owner"], "국제우주정거장(공동)")  # ISS
+        self.assertEqual(iss["status"], "운용 중")        # +
+        self.assertEqual(iss["launch_date"], "1998-11-20")
+        self.assertEqual(iss["launch_site"], "바이코누르(카자흐)")  # TYMSC
+        self.assertEqual(iss["intl_code"], "1998-067A")
+        self.assertEqual(iss["size"], "큼")               # RCS 399.05
+        self.assertIsNone(iss["decay_date"])              # 아직 궤도에 있다
+
+    def test_decayed_object_keeps_decay_date(self):
+        """재진입 물체 — 이 값이 P12-8(재진입 표시)의 근거가 된다."""
+        deb = self.meta[90001]
+        self.assertEqual(deb["type"], "잔해")             # DEB
+        self.assertEqual(deb["status"], "궤도 이탈(재진입)")  # D
+        self.assertEqual(deb["decay_date"], "2024-03-02")
+        self.assertEqual(deb["size"], "작음")             # RCS 0.0182 < 0.1
+
+    def test_unknown_owner_code_falls_back_to_raw(self):
+        """모르는 코드는 **원문 그대로**. '알 수 없음'으로 뭉개면 정보가 사라진다."""
+        rb = self.meta[90002]
+        self.assertEqual(rb["owner"], "ZZZ")
+        self.assertEqual(rb["type"], "로켓 몸체")         # R/B
+        self.assertEqual(rb["size"], "보통")              # RCS 0.55
+
+    def test_row_without_norad_is_dropped(self):
+        """NORAD 가 없으면 조인할 수 없다 — 그 행만 버리고 나머지는 산다."""
+        self.assertNotIn(0, self.meta)
+        self.assertIn(25544, self.meta)   # 깨진 행 뒤의 정상 행도 살아 있다
+        self.assertIn(90003, self.meta)
+
+    def test_non_numeric_rcs_only_loses_size(self):
+        """RCS 가 숫자가 아니면 크기만 None — 나머지 필드는 살아야 한다."""
+        odd = self.meta[90003]
+        self.assertIsNone(odd["size"])
+        self.assertEqual(odd["owner"], "미국")
+        self.assertEqual(odd["launch_date"], "2001-01-01")
+
+    def test_empty_rcs_is_none_not_zero(self):
+        """빈 RCS 를 0 으로 읽으면 전부 '작음'이 된다 — 실측상 절반이 비어 있다."""
+        sputnik = self.meta[2]
+        self.assertIsNone(sputnik["size"])
+
+    def test_empty_input_is_empty_dict(self):
+        self.assertEqual(api_client._parse_satcat(""), {})
+        self.assertEqual(api_client._parse_satcat("OBJECT_NAME,NORAD_CAT_ID" + chr(10)), {})
+
+
+class TestSatcatCodes(unittest.TestCase):
+    """코드 표 (satcat_codes). 표가 비거나 기준이 뒤집히면 화면이 조용히 틀린다."""
+
+    def test_all_measured_object_types_are_covered(self):
+        """실측 4종(DEB/PAY/R/B/UNK)은 전부 표에 있어야 한다."""
+        for code in ("DEB", "PAY", "R/B", "UNK"):
+            self.assertIn(code, satcat_codes.OBJECT_TYPES)
+            self.assertNotEqual(satcat_codes.label(satcat_codes.OBJECT_TYPES, code), code)
+
+    def test_rcs_bucket_boundaries(self):
+        """경계값을 잰다 — 부등호가 뒤집혀도 중간값만으로는 안 잡힌다."""
+        self.assertEqual(satcat_codes.rcs_size(0.09), "작음")
+        self.assertEqual(satcat_codes.rcs_size(0.1), "보통")   # 경계는 위쪽 구간
+        self.assertEqual(satcat_codes.rcs_size(0.99), "보통")
+        self.assertEqual(satcat_codes.rcs_size(1.0), "큼")
+        self.assertIsNone(satcat_codes.rcs_size(""))
+        self.assertIsNone(satcat_codes.rcs_size(None))
+        self.assertIsNone(satcat_codes.rcs_size("N/A"))
+
+    def test_label_returns_raw_code_when_unmapped(self):
+        self.assertEqual(satcat_codes.label(satcat_codes.OWNERS, "NOPE"), "NOPE")
+        self.assertIsNone(satcat_codes.label(satcat_codes.OWNERS, None))
+        self.assertIsNone(satcat_codes.label(satcat_codes.OWNERS, "   "))
 
 
 def main():

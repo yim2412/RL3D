@@ -447,6 +447,8 @@ html, body {
 .pass-name { font-size: 12px; color: var(--muted); }
 .pass-vis { color: #ffd479; margin-right: 4px; }          /* 햇빛을 받는 통과 */
 .pass-row-dim { opacity: .55; }                            /* 안 보이는 통과는 눌러 둔다 */
+/* 위성 메타데이터 (P12-5) — 변하지 않는 값이라 실시간 값과 선으로 나눈다 */
+.sat-meta { margin: 8px 0 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 
 /* 상태 토스트 */
 .status {

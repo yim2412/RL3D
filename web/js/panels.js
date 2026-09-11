@@ -385,14 +385,41 @@ function satRowsHtml(s) {
     : `<div class="pass-empty">궤도 정보를 계산할 수 없습니다.</div>`;
 }
 
+/** SATCAT 메타데이터 행(P12-5) — **변하지 않는 값**이라 매 초 갱신에서 뺀다.
+ *  메타가 없으면 빈 문자열: 위성은 그대로 보여야 하고, 없는 것을 "알 수 없음"으로
+ *  채우면 화면이 거짓을 말한다. */
+function satMetaHtml(norad) {
+  const m = satMeta(norad);
+  if (!m) return "";
+  const rows =
+    row("타입", m.type) +
+    row("소유", m.owner) +
+    row("상태", m.status) +
+    row("발사일", m.launch_date) +
+    row("발사장", m.launch_site) +
+    row("국제 식별번호", m.intl_code) +
+    row("크기", m.size) +
+    row("재진입", m.decay_date);
+  return rows ? `<div class="sat-meta">${rows}</div>` : "";
+}
+
+/** 재진입한 물체는 배지로 먼저 알린다 — 표 안의 한 줄은 눈에 안 들어온다. */
+function satBadgeHtml(norad) {
+  const m = satMeta(norad);
+  if (m && m.decay_date) return `<span class="badge m-failure">재진입</span>`;
+  if (m && m.type && m.type !== "위성체") return `<span class="badge m-partial">${escapeHtml(m.type)}</span>`;
+  return `<span class="badge m-upcoming">위성</span>`;
+}
+
 function openSatPanel(s) {
   satPanelId = s.norad;  // 이 위성이 열려 있는 동안 매 초 값 갱신
   const body = document.getElementById("panel-body");
   body.innerHTML =
     `<h2>🛰 ${escapeHtml(s.name)}</h2>` +
-    `<span class="badge m-upcoming">위성</span>` +
+    satBadgeHtml(s.norad) +
     favBtnHtml("sat", s.norad) +
-    `<div class="st-note">값은 실시간으로 갱신됩니다.</div>` +
+    satMetaHtml(s.norad) +
+    `<div class="st-note">아래 값은 실시간으로 갱신됩니다.</div>` +
     `<div id="sat-rows">${satRowsHtml(s)}</div>`;
   bindFavBtn(body);
   document.getElementById("panel").classList.remove("hidden");

@@ -19,7 +19,7 @@ import startup
 
 log = logging.getLogger(__name__)
 
-__version__ = "1.7.1"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.8.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -113,6 +113,9 @@ class Api:
 
     def get_satellites(self, force=False, groups=None):
         return api_client.get_satellites(force=force, groups=groups)
+
+    def get_satcat(self, groups=None, force=False):
+        return api_client.get_satcat(groups=groups, force=force)
 
     def get_satellite_groups(self):
         return api_client.satellite_group_catalog()
