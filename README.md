@@ -1,13 +1,13 @@
 # RL3D — 로켓 발사 & 위성 추적
 
-**v1.7.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
+**v1.7.1** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
 
 전 세계 로켓 발사를 **2D 지도**에 표시하고, 위성을 실시간으로 움직이게 보여주는 Windows 데스크톱 앱.
 뉴스 상황판 감성의 다크 테마. pywebview + MapLibre GL 로 만든 단일 exe(설치 불필요).
 
 ![RL3D 화면 — 발사 마커·위성 레이어·낮/밤 오버레이](docs/screenshot.png)
 
-> 위 화면(v1.5.1): 발사장 마커(클러스터), 위성 745개의 실시간 위치(stations+visual+GEO — 적도를 따라
+> 위 화면(v1.7.0): 발사장 마커(클러스터), 위성 773개의 실시간 위치(stations+visual+GEO+GPS — 적도를 따라
 > 늘어선 주황 점이 정지궤도 벨트), 낮/밤 오버레이, 다음 발사까지 카운트다운하는 상단 속보 티커, 하단 타임라인.
 
 ## 기능
@@ -24,7 +24,7 @@
 - 🛫 **관점 화면 (발사장 · 기관 · 로켓)** — 상세 패널의 발사장·기관·로켓 이름을 클릭하면 그 대상만의 총 발사·성공률과
   구성 막대(발사장은 로켓·기관·패드별, 기관/로켓은 로켓·발사장·연도별) + 예정/최근 발사 목록
 - ⭐ **관심 발사 · 위성** — 상세 패널의 `☆ 관심`으로 담아두면 지도에서 금색으로 강조되고 사이드바 **⭐ 관심** 탭에 모인다. 다음 실행에도 유지
-- 🗺 **배경 지도 전환** — 다크(CARTO) ↔ 위성사진(Esri). 툴바에서 전환, 설정에 저장
+- 🗺 **배경 지도 전환** — 다크 ↔ 위성사진(둘 다 Esri). 툴바에서 전환, 설정에 저장
 - 🗄 **과거 발사 아카이브** — 타임라인 옆에서 연도(최근 5년) 선택 후 불러오면 그 해 발사가 지도·목록·타임라인에 추가됨. 지난 연도는 영구 캐시(재요청 없음)
 - 📊 **발사 통계** — 총 발사·성공률·예정 요약 + 결과별/연도별/기관/국가 막대(불러온 데이터 기준, 아카이브를 불러올수록 정확)
 - 🛰 **위성 그룹 선택** — stations·visual·Starlink·GPS·Galileo·기상·과학·GEO 토글.
@@ -74,7 +74,7 @@ RL3D_DEV_MONITOR=2 python main.py   # 창을 2번(보조) 모니터에 배치
 ## ⚠ 온라인/오프라인
 
 - MapLibre GL·satellite.js 라이브러리는 exe 안에 **오프라인 번들**(`web/lib/`)로 포함
-- 단 **지도 배경 타일(CARTO dark · Esri World Imagery)과 발사/위성 데이터는 인터넷 연결이 필요**하다
+- 단 **지도 배경 타일(Esri Dark Gray Canvas · Esri World Imagery)과 발사/위성 데이터는 인터넷 연결이 필요**하다
 - 오프라인이면 발사·위성은 저장된 캐시로 그대로 뜨고 **배경 지도만 비어 보인다** → 이때 지도 좌하단에
   안내 배지가 나타난다(눌러서 닫을 수 있고, 연결이 돌아와 타일이 받아지면 스스로 사라진다)
 - 완전 오프라인(지도 배경까지)은 현재 범위 밖 — 로컬 타일 번들은 향후 과제

@@ -21,16 +21,16 @@ function initMap() {
     style: {
       version: 8,
       sources: {
-        carto: {
+        // 다크 배경. 2026-09-11 에 CARTO(basemaps.cartocdn.com/dark_all)에서 옮겨 왔다 —
+        // CARTO 가 API 키를 요구하기 시작해 **HTTP 200 으로 워터마크가 찍힌 타일**을
+        // 보낸다. 오류가 아니라 정상 응답이라 오프라인 배지(P11-7)도 못 잡는다.
+        // Esri 는 위성사진 배경으로 이미 쓰는 호스트라 외부 의존이 늘지 않는다.
+        darkbase: {
           type: "raster",
-          tiles: [
-            "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-            "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-            "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-          ],
+          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
           tileSize: 256,
-          maxzoom: 20,  // CARTO dark 타일은 z20까지 → 그 이상은 overzoom(배경 안 깨짐)
-          attribution: "© OpenStreetMap © CARTO",
+          maxzoom: 16,  // 서비스는 z23까지 광고하지만 실제 렌더는 저줌대라 16 위는 overzoom
+          attribution: "Esri, HERE, Garmin, © OpenStreetMap contributors",
         },
         // 위성사진 배경. 두 소스를 함께 두고 visibility 로 바꾼다
         // (setStyle 로 갈아끼우면 마커·궤적·터미네이터 레이어를 전부 다시 만들어야 한다).
@@ -44,7 +44,7 @@ function initMap() {
         },
       },
       layers: [
-        { id: "carto", type: "raster", source: "carto" },
+        { id: "darkbase", type: "raster", source: "darkbase" },
         { id: "esri", type: "raster", source: "esri", layout: { visibility: "none" } },
       ],
     },
@@ -84,14 +84,14 @@ function setOfflineBadge(on) {
 
 function setupOfflineBadge() {
   map.on("error", (e) => {
-    if (e && (e.sourceId === "carto" || e.sourceId === "esri")) {
+    if (e && (e.sourceId === "darkbase" || e.sourceId === "esri")) {
       if (++tileFails >= TILE_FAIL_LIMIT) setOfflineBadge(true);
     }
   });
   // 타일이 하나라도 성공하면 연결이 살아난 것 → 카운터와 배지를 함께 되돌린다
   map.on("data", (e) => {
     if (e && e.dataType === "source" && e.tile && e.tile.state === "loaded"
-        && (e.sourceId === "carto" || e.sourceId === "esri")) {
+        && (e.sourceId === "darkbase" || e.sourceId === "esri")) {
       tileFails = 0;
       setOfflineBadge(false);
     }
@@ -108,8 +108,8 @@ function setupOfflineBadge() {
 // ── 배경 지도 전환 (다크 / 위성사진) ──────────────────────────────────────────
 function setBasemap(kind) {
   basemap = kind === "satellite" ? "satellite" : "dark";
-  if (map && map.getLayer("carto")) {
-    map.setLayoutProperty("carto", "visibility", basemap === "dark" ? "visible" : "none");
+  if (map && map.getLayer("darkbase")) {
+    map.setLayoutProperty("darkbase", "visibility", basemap === "dark" ? "visible" : "none");
     map.setLayoutProperty("esri", "visibility", basemap === "satellite" ? "visible" : "none");
   }
   const btn = document.getElementById("basemap-btn");

@@ -485,6 +485,48 @@ class TestSmokeConsoleEncoding(unittest.TestCase):
         self.assertIn("UnicodeEncodeError", done.stderr)
 
 
+class TestMonitorOrder(unittest.TestCase):
+    """개발 모니터 번호 (2026-09-11 실측 버그).
+
+    `Screen.AllScreens` 순서는 사용자가 보는 "디스플레이 1/2"와 무관하다 — 이 PC 는
+    AllScreens[0] 이 **보조**, [1] 이 **주**였다. 그대로 인덱싱하면 `RL3D_DEV_MONITOR=2`
+    가 주 모니터를 가리켜 "보조에서만 테스트한다"는 규칙이 **조용히** 안 지켜진다.
+    """
+
+    class _S:
+        def __init__(self, name, primary):
+            self.name, self.Primary = name, primary
+
+        def __repr__(self):
+            return self.name
+
+    def test_primary_comes_first_even_when_listed_last(self):
+        """실측된 배치 그대로 — 보조가 먼저 나열돼도 주가 1번이어야 한다."""
+        sec, pri = self._S("보조", False), self._S("주", True)
+        order = main_mod.order_screens([sec, pri])
+        self.assertIs(order[0], pri)
+        self.assertIs(order[1], sec)
+        # 막지 않았으면 무엇이 일어났을 것인가 — 정렬 없이는 2번이 주 모니터였다.
+        self.assertIs([sec, pri][1], pri)
+
+    def test_already_primary_first_is_unchanged(self):
+        pri, sec = self._S("주", True), self._S("보조", False)
+        self.assertEqual(main_mod.order_screens([pri, sec]), [pri, sec])
+
+    def test_three_screens_keep_relative_order_of_others(self):
+        a, pri, b = self._S("a", False), self._S("주", True), self._S("b", False)
+        self.assertEqual(main_mod.order_screens([a, pri, b]), [pri, a, b])
+
+    def test_single_screen(self):
+        pri = self._S("주", True)
+        self.assertEqual(main_mod.order_screens([pri]), [pri])
+
+    def test_no_primary_reported(self):
+        """주 모니터가 없다고 보고되는 환경에서도 죽지 않는다(원격 세션 등)."""
+        a, b = self._S("a", False), self._S("b", False)
+        self.assertEqual(main_mod.order_screens([a, b]), [a, b])
+
+
 def main():
     global UPDATE
     # 테스트가 일부러 실패 경로를 태우므로 로그가 stderr 로 샌다(핸들러 없을 때의 기본

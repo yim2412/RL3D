@@ -19,7 +19,7 @@ import startup
 
 log = logging.getLogger(__name__)
 
-__version__ = "1.7.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.7.1"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -58,11 +58,25 @@ def _monitor_areas():
         return None
 
 
+def order_screens(screens):
+    """사용자가 보는 모니터 번호 순서로 정렬 — **주 모니터가 1번**, 나머지가 그 뒤.
+
+    `Screen.AllScreens` 의 순서는 사용자의 "디스플레이 1/2"와 무관하다(2026-09-11 실측:
+    이 PC 는 AllScreens[0] 이 보조, [1] 이 주였다). 그대로 인덱싱하면 `=2` 가 **주
+    모니터**를 가리켜, "보조에서 테스트한다"는 규칙이 조용히 지켜지지 않는다.
+    순수 함수라 테스트 대상 — screens 는 `.Primary` 를 가진 객체 목록이면 된다.
+    """
+    primary = [s for s in screens if s.Primary]
+    others = [s for s in screens if not s.Primary]
+    return primary + others
+
+
 def dev_window_pos(width, height):
     """개발 테스트 규칙: 창을 지정 모니터(기본 2번=보조)에 중앙 배치.
 
-    환경변수 RL3D_DEV_MONITOR 가 설정됐을 때만 동작(값 = 1부터 시작하는 모니터 번호,
-    미지정 시 첫 비주(非主) 모니터). 배포 exe 는 이 변수가 없어 OS 기본 위치에 뜬다.
+    환경변수 RL3D_DEV_MONITOR 가 설정됐을 때만 동작. 값은 **주 모니터를 1번으로 세는**
+    번호이고(order_screens), 숫자가 아니거나 범위를 벗어나면 첫 비주(非主) 모니터.
+    배포 exe 는 이 변수가 없어 OS 기본 위치에 뜬다.
     좌표를 못 구하면 (None, None) → pywebview 기본값 사용.
     """
     sel = os.environ.get("RL3D_DEV_MONITOR")
@@ -73,7 +87,7 @@ def dev_window_pos(width, height):
         clr.AddReference("System.Windows.Forms")
         from System.Windows.Forms import Screen
 
-        screens = list(Screen.AllScreens)
+        screens = order_screens(list(Screen.AllScreens))
         target = None
         if sel.isdigit() and int(sel) >= 1:
             idx = int(sel) - 1

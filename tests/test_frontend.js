@@ -132,14 +132,14 @@ const { loadApp, group, check, done } = require("./harness");
   const shown = () => !el("offline-badge").hidden;
   check("온라인 시작 — 안 보임", shown(), false);
 
-  map.fire("error", { sourceId: "carto" });
-  map.fire("error", { sourceId: "carto" });
+  map.fire("error", { sourceId: "darkbase" });
+  map.fire("error", { sourceId: "darkbase" });
   check("타일 실패 2회까지는 뜨지 않는다(한두 개 실패는 흔하다)", shown(), false);
-  map.fire("error", { sourceId: "carto" });
+  map.fire("error", { sourceId: "darkbase" });
   check("연속 3회에서 표시", shown(), true);
   check("문구에 오프라인 안내", el("offline-badge").textContent.includes("오프라인"), true);
 
-  map.fire("data", { dataType: "source", sourceId: "carto", tile: { state: "loaded" } });
+  map.fire("data", { dataType: "source", sourceId: "darkbase", tile: { state: "loaded" } });
   check("타일이 다시 받아지면 스스로 사라진다", [shown(), state.tileFails], [false, 0]);
 
   map.fire("error", { sourceId: "launches" });
