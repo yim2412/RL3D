@@ -28,7 +28,7 @@ const STATE_KEYS = [
   "map", "launches", "allLaunches", "satrecs", "satGroups", "satBands",
   "favLaunches", "favSats", "selectedSat", "sidebarTab", "basemap",
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
-  "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "tracking",
+  "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
 ];
 

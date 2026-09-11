@@ -314,7 +314,12 @@ def get_launches(force=False):
 
 # ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
 def _fetch_launch_pages(url, max_pages):
-    """`next`를 따라 최대 max_pages 페이지를 수집·정규화. 페이지 사이 딜레이로 보호."""
+    """`next`를 따라 최대 max_pages 페이지를 수집·정규화. 페이지 사이 딜레이로 보호.
+
+    반환: (launches, truncated). **truncated 는 캡에 걸려 남은 페이지를 버렸다는 뜻**이다
+    (P12-6). 이 사실이 화면까지 가지 않으면 "그 해는 이게 전부"로 읽힌다 — 잘린 목록은
+    통계의 모수까지 조용히 틀리게 만든다.
+    """
     launches, pages = [], 0
     while url and pages < max_pages:
         payload = json.loads(_http_get(url))
@@ -323,7 +328,7 @@ def _fetch_launch_pages(url, max_pages):
         pages += 1
         if url and pages < max_pages:
             time.sleep(ARCHIVE_PAGE_DELAY)
-    return launches
+    return launches, bool(url)   # 아직 next 가 남았는데 멈췄으면 잘린 것
 
 
 def get_archive(year, force=False):
@@ -335,23 +340,42 @@ def get_archive(year, force=False):
     year = int(year)
     name = "archive_{}.json".format(year)
     cached, age = _cache_read(name)
+    # 캐시는 예전 형식(리스트)일 수도 있다 — 그때는 잘림 여부를 모르니 False 로 본다.
+    cached, cached_truncated = _unpack_archive_cache(cached)
     is_current = year >= time.gmtime().tm_year  # 올해(및 방어적으로 미래)는 갱신 대상
     fresh = cached is not None and (
         not is_current or (age is not None and age < TTL_ARCHIVE_CURRENT)
     )
     if not force and fresh:
-        return {"launches": cached, "year": year, "stale": False, "error": None}
+        return {"launches": cached, "year": year, "stale": False, "error": None,
+                "truncated": cached_truncated}
 
     try:
-        launches = _fetch_launch_pages(LL2_ARCHIVE.format(year=year), ARCHIVE_MAX_PAGES)
-        _cache_write(name, launches)
-        return {"launches": launches, "year": year, "stale": False, "error": None}
+        launches, truncated = _fetch_launch_pages(LL2_ARCHIVE.format(year=year), ARCHIVE_MAX_PAGES)
+        if truncated:
+            log.warning("아카이브 %s 가 페이지 상한(%s)에 걸려 잘렸다 — %s건까지만 받았다",
+                        year, ARCHIVE_MAX_PAGES, len(launches))
+        _cache_write(name, {"launches": launches, "truncated": truncated})
+        return {"launches": launches, "year": year, "stale": False, "error": None,
+                "truncated": truncated}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = _friendly_error(e)
         log.warning("아카이브 %s 조회 실패: %s", year, e)
         if cached is not None:
-            return {"launches": cached, "year": year, "stale": True, "error": msg}
-        return {"launches": [], "year": year, "stale": False, "error": msg}
+            return {"launches": cached, "year": year, "stale": True, "error": msg,
+                    "truncated": cached_truncated}
+        return {"launches": [], "year": year, "stale": False, "error": msg, "truncated": False}
+
+
+def _unpack_archive_cache(cached):
+    """아카이브 캐시 → (launches, truncated).
+
+    **옛 캐시는 리스트 그대로다**(P12-6 전에 저장된 것). %APPDATA% 에 이미 깔려 있으므로
+    형식을 바꾸면서 그쪽을 못 읽으면, 사용자는 멀쩡한 아카이브를 다시 받게 된다.
+    """
+    if isinstance(cached, dict):
+        return cached.get("launches") or [], bool(cached.get("truncated"))
+    return cached, False
 
 
 # ── 위성(Celestrak TLE) ───────────────────────────────────────────────────────

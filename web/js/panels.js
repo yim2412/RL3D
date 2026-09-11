@@ -466,6 +466,12 @@ function computeStats(list) {
  * 그대로 "연도별 2026: 98" 막대를 그리면 **올해 발사가 98건이었다고 읽힌다** — 조용한 거짓말.
  * 아카이브로 연도 전체를 불러온 해만 완전하고, 나머지는 부분 표본이다.
  */
+/** 통계에서 **완전한 해**로 칠 수 있는 연도 — 불러왔고, 상한에 안 걸린 해.
+ *  잘린 해를 완전으로 세면 P12-7 의 경고가 거꾸로 거짓말이 된다(P12-6). */
+function completeYears() {
+  return new Set([...loadedYears].filter((y) => !truncatedYears.has(y)));
+}
+
 function statsScope(list, loaded, nowYear) {
   const years = new Set();
   let from = null, to = null;
@@ -593,7 +599,7 @@ function showEntityStats(kind, value) {
 
   document.getElementById("stats-body").innerHTML =
     `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
-    scopeNoteHtml(statsScope(list, loadedYears, new Date().getFullYear())) +
+    scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear())) +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
       `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +
@@ -623,7 +629,7 @@ function yearEntries(years, sc) {
 
 function showStats() {
   const s = computeStats(allLaunches);
-  const scope = statsScope(allLaunches, loadedYears, new Date().getFullYear());
+  const scope = statsScope(allLaunches, completeYears(), new Date().getFullYear());
   const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
   const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
   const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 8);

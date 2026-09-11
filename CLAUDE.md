@@ -19,7 +19,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `web/js/*.js` | UI 로직 10개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `panels` → `keys` → `settings` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
-| `tests/` | 파싱 회귀 테스트(`test_parsing.py`) + 실제 응답 픽스처·골든, 프론트 회귀 테스트(`test_frontend.js` + `harness.js`) |
+| `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
 | `PLAN.md` | 개발 계획·마일스톤 |
 
 ```powershell
@@ -64,6 +64,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   인코딩 일반 규칙은 전역 `~/.claude/CLAUDE.md`. (2026-08-15 전수 점검에서 이 프로젝트 파이썬·JS 는
   전부 `encoding="utf-8"` 명시로 위험 지점 0건이었다 — 그 상태를 유지한다.)
 - **고쳤으면 실제로 돌려본다.** `python api_client.py` 가 기본 스모크. UI를 고쳤으면 `python main.py`로 실행 확인.
+- **`api_client.py` 의 캐시·TTL·아카이브·설정을 건드렸으면 `python tests/test_cache.py`** — HTTP 를
+  주입해 **언제 부르고 실패하면 무엇을 돌려주는지**를 잰다(네트워크 불필요). TTL·폴백은 틀려도
+  예외가 안 나고 **요청 수만 조용히 늘어난다** — 429 가 뜨고 나서야 안다.
 - **파싱을 건드렸으면 `python tests/test_parsing.py`** — 실제 응답 픽스처로 정규화 결과를 골든과 비교한다
   (네트워크 불필요). 필드를 의도적으로 바꿨을 때만 픽스처 재수집 후 `--update` 로 골든을 갱신한다.
 - **`web/js/` 를 건드렸으면 `node tests/test_frontend.js`** — 스텁 DOM 위에서 함수를 직접 호출한다

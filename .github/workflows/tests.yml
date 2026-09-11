@@ -44,6 +44,9 @@ jobs:
       - name: 파싱 회귀 테스트 (픽스처 기반)
         run: python tests/test_parsing.py
 
+      - name: 캐시·폴백·아카이브·설정 회귀 테스트 (HTTP 주입)
+        run: python tests/test_cache.py
+
       - name: 프론트 회귀 테스트 (스텁 DOM)
         run: node tests/test_frontend.js
 

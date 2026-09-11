@@ -5,6 +5,9 @@ let map = null;
 let launches = [];          // 라이브 발사(예정+최근 previous). 5분마다 갱신되며 통째 교체됨
 let archiveLaunches = [];   // 불러온 과거 연도 발사(P7-5). 라이브 갱신에 안 지워짐
 let loadedYears = new Set();// 이미 불러온 아카이브 연도
+// 연도당 페이지 상한(ARCHIVE_MAX_PAGES)에 걸려 **일부만** 받은 연도(P12-6).
+// 불러오긴 했으므로 loadedYears 에도 있지만, 통계에서는 완전한 해로 쳐서는 안 된다.
+let truncatedYears = new Set();
 let allLaunches = [];       // 라이브+아카이브 합본(id 중복 제거) — 필터/목록/타임라인이 사용
 let tickerTimer = null;
 

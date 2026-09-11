@@ -808,6 +808,20 @@ const { loadApp, group, check, done } = require("./harness");
     ctx.yearEntries([["2025", 2], ["2026", 2]], sc), [["2025", 2], ["2026 (일부)", 2]]);
   check("완전한 해에는 표시하지 않는다",
     ctx.yearEntries([["2025", 2]], both), [["2025", 2]]);
+
+  // P12-6 × P12-7: **잘린 해를 완전으로 세면 경고가 거꾸로 거짓말이 된다.**
+  group("잘린 아카이브 연도 (completeYears)");
+  const { ctx: c2, state: s2 } = loadApp();
+  s2.loadedYears = new Set([2024, 2025]);
+  s2.truncatedYears = new Set();
+  check("잘린 해가 없으면 불러온 해가 전부 완전", [...c2.completeYears()].sort(), [2024, 2025]);
+  s2.truncatedYears = new Set([2024]);
+  check("상한에 걸린 해는 완전에서 빠진다", [...c2.completeYears()], [2025]);
+  check("그래서 통계에서 부분으로 잡힌다",
+    c2.statsScope([{ id: 1, net: "2024-05-01T00:00:00Z" }], c2.completeYears(), 2026).partial,
+    [2024]);
+  check("불러오지도 않은 해는 애초에 완전이 아니다",
+    c2.statsScope([{ id: 1, net: "2023-05-01T00:00:00Z" }], c2.completeYears(), 2026).full, []);
 }
 
 // ── 키보드 단축키 (P12-14) ────────────────────────────────────────────────────
@@ -897,4 +911,35 @@ const { loadApp, group, check, done } = require("./harness");
   }
 }
 
-done();
+// ── 아카이브 잘림 배선 (P12-6) ────────────────────────────────────────────────
+// 위의 completeYears 단언들은 truncatedYears 를 **테스트가 직접 채워** 잰다.
+// 실제로 그 집합을 채우는 건 loadArchive 한 줄뿐이라, 그 줄이 빠지면 로직이 다 맞아도
+// 경고가 영원히 안 뜬다(변이 실험에서 실제로 안 잡혔다 — 그래서 이 블록을 더했다).
+(async () => {
+  const mkApi = (truncated) => ({
+    get_archive: async () => ({
+      launches: [{ id: "a", name: "x", net: "2018-05-01T00:00:00Z", outcome: "success",
+                   lat: 1, lng: 1 }],
+      year: 2018, stale: false, error: null, truncated,
+    }),
+  });
+  {
+    const { ctx, state, map, el } = loadApp({ api: mkApi(true) });
+    state.map = map; map.stubSource("launches");
+    await ctx.loadArchive(2018);
+    group("아카이브 잘림 배선 (loadArchive)");
+    check("잘려서 왔으면 그 해를 기록한다", [...state.truncatedYears], [2018]);
+    check("불러온 해로도 남는다", [...state.loadedYears], [2018]);
+    check("완전한 해로 세지 않는다", [...ctx.completeYears()], []);
+    check("사용자에게 잘렸다고 말한다", el("status").textContent.includes("일부만"), true);
+  }
+  {
+    const { ctx, state, map, el } = loadApp({ api: mkApi(false) });
+    state.map = map; map.stubSource("launches");
+    await ctx.loadArchive(2018);
+    check("끝까지 받았으면 기록하지 않는다", [...state.truncatedYears], []);
+    check("그 해는 완전으로 센다", [...ctx.completeYears()], [2018]);
+    check("평범한 안내만 한다", el("status").textContent.includes("일부만"), false);
+  }
+  done();
+})();

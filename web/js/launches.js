@@ -223,11 +223,16 @@ async function loadArchive(year) {
     const have = new Set(archiveLaunches.map((d) => d.id));
     for (const d of list) if (!have.has(d.id)) archiveLaunches.push(d);
     loadedYears.add(year);
+    if (res.truncated) truncatedYears.add(year); else truncatedYears.delete(year);
     rebuildAll();
     recomputeTimeline();
     applyFilters();
     if (res.error) showStatus(res.stale ? `⚠ ${res.error} (저장된 데이터)` : `⚠ ${res.error}`);
-    else {
+    else if (res.truncated) {
+      // 잘린 줄 모르면 "그 해는 이만큼뿐"으로 읽고, 통계의 모수까지 틀어진다(P12-6).
+      showStatus(`⚠ ${year}년 ${list.length}건 추가됨 — 연도당 상한에 걸려 일부만 받았습니다`);
+      setTimeout(() => showStatus(null), 8000);
+    } else {
       showStatus(`${year}년 ${list.length}건 추가됨`);
       setTimeout(() => showStatus(null), 4000);
     }
