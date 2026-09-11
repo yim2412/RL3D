@@ -14,6 +14,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # 러너 콘솔은 cp1252 다. 스크립트 쪽에서도 stdout 을 재설정하지만(2026-09-11 첫 CI 가
+  # 실제로 여기서 깨졌다), 새로 붙는 스크립트가 그걸 빠뜨려도 CI 가 이유 없이 빨개지지
+  # 않도록 부모가 자식의 stdio 인코딩을 정해 둔다(전역 규칙 3번).
+  PYTHONIOENCODING: utf-8
+
 jobs:
   test:
     runs-on: windows-latest

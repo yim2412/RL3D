@@ -9,6 +9,7 @@ Launch Library 2(발사)와 Celestrak(위성 TLE)을 호출·정규화·디스�
 import json
 import logging
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -454,6 +455,14 @@ def _friendly_error(e):
 
 # ── 터미널 스모크 ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # 콘솔 인코딩은 실행 PC 를 따른다 — 이 PC 는 UTF-8(65001), 한국어 PC 는 cp949 라
+    # 한글이 넘어가지만 영문 로캘(cp1252)에서는 UnicodeEncodeError 로 죽는다.
+    # 2026-09-11 CI 첫 실행이 실제로 여기서 깨졌다(GitHub 러너 = cp1252).
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
     # 스모크는 터미널에서 도니 로그를 화면으로 보낸다(파일 로그는 main.py 가 설정).
     logging.basicConfig(level=logging.WARNING, format="[log] %(levelname)s %(message)s")
     print(f"[cache] {CACHE_DIR}")

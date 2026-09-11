@@ -8,10 +8,20 @@ Phase 12 ②번 묶음(P12-21 · P12-13). **앱 코드는 건드리지 않았다
 
 ### 추가
 - **CI** (P12-13) — `.github/workflows/tests.yml`. push·PR 마다 **windows-latest** 에서
-  파싱 회귀(46) + 프론트 회귀(102) + 로그 스모크. 이 앱은 Windows exe 이고 `startup.py` 는
+  파싱 회귀(48) + 프론트 회귀(102) + 로그 스모크. 이 앱은 Windows exe 이고 `startup.py` 는
   `winreg` 를 만지므로 리눅스에서 도는 초록은 실제를 대변하지 못한다.
   네트워크를 쓰는 `api_client.py` 스모크와, 러너에 WebView2 가 없어 반드시 실패하는
   `startup.py` 스모크는 **일부러 뺐다**
+
+### 수정
+- **스모크가 영문 로캘 콘솔에서 죽던 것** — CI 첫 실행이 바로 여기서 깨졌다.
+  한글 `print` 가 `cp1252` 에서 `UnicodeEncodeError` 를 낸다. **이 PC 는 UTF-8 로캘이고
+  한국어 PC 는 cp949 라 한글이 넘어가서, 개발 PC 에서는 재현되지 않는 버그였다.**
+  세 스모크(`applog`·`startup`·`api_client`)가 stdout 을 `utf-8`/`errors="replace"` 로
+  재설정하게 하고, 워크플로에도 `PYTHONIOENCODING: utf-8` 을 넣었다(이중 방어).
+  로그 파일 자체는 `encoding="utf-8"` 명시라 멀쩡했다 — 깨진 건 표준출력뿐이다.
+  회귀 테스트 2건 추가(46 → 48): `PYTHONIOENCODING=cp1252` 로 자식 stdio 만 되돌려
+  재현하고, **보호를 뜯으면 실제로 깨지는지**까지 함께 단언한다
 
 ### 문서
 - **PLAN.md 사후 정리** (P12-21) — 로드맵에 없던 작업 6건(v1.5.2 버그 3건, 개발 노트 2편,

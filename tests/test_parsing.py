@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -446,6 +447,42 @@ class TestLogFile(unittest.TestCase):
             self.assertIsNone(applog.setup(tmp))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestSmokeConsoleEncoding(unittest.TestCase):
+    """스모크의 stdout 인코딩 (2026-09-11 CI 첫 실행이 여기서 깨졌다).
+
+    개발 PC 는 UTF-8 로캘(65001)이고 한국어 PC 는 cp949 라 한글이 그냥 넘어간다.
+    영문 로캘(cp1252)에서만 UnicodeEncodeError 로 죽으므로 **이 PC 에서는 재현되지
+    않는다** — PYTHONIOENCODING 으로 자식의 stdio 만 cp1252 로 되돌려 재현한다.
+    """
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _run(self, script, encoding):
+        env = dict(os.environ, PYTHONIOENCODING=encoding)
+        return subprocess.run(
+            [sys.executable, os.path.join(self.ROOT, script)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, cwd=self.ROOT,
+        )
+
+    def test_applog_smoke_survives_cp1252_console(self):
+        done = self._run("applog.py", "cp1252")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("[OK] applog", done.stdout)
+        # 막지 않았으면 무엇이 일어났을 것인가 — 바로 이 예외다.
+        self.assertNotIn("UnicodeEncodeError", done.stderr)
+
+    def test_unguarded_korean_print_really_breaks_on_cp1252(self):
+        """보호 장치를 뜯으면 실제로 깨지는지 — 이게 없으면 위 테스트가 공허해진다."""
+        env = dict(os.environ, PYTHONIOENCODING="cp1252")
+        done = subprocess.run(
+            [sys.executable, "-c", "print('한글')"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("UnicodeEncodeError", done.stderr)
 
 
 def main():
