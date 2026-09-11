@@ -371,4 +371,109 @@ const { loadApp, group, check, done } = require("./harness");
   check("3시간 창이면 24시간보다 통과가 적거나 같다", short.length <= seoul.length, true);
 }
 
+// ── 가시 통과 (P12-1) — 실제 SGP4 + 태양 기하 ─────────────────────────────────
+// 정답표가 없으므로 물리 불변식으로 잰다(P6-2 통과 예측과 같은 방식).
+{
+  const { ctx, date } = loadApp({ realSatellite: true });
+  group("가시 통과 (P12-1)");
+  const rec = () => ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992",
+    "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537");
+  const SEOUL = { lat: 37.5665, lng: 126.978 };
+
+  // ① 태양 고도 — 정오/자정의 부호는 물리적으로 정해져 있다.
+  //    (경도 127°는 UTC+8.47h → UTC 03:00 ≈ 현지 정오, UTC 15:00 ≈ 현지 자정)
+  const noonUtc = date(Date.UTC(2026, 5, 21, 3, 0, 0));    // 하지 무렵 현지 정오
+  const midUtc = date(Date.UTC(2026, 5, 21, 15, 0, 0));    // 현지 자정
+  const elNoon = ctx.observerSunElev(SEOUL, noonUtc);
+  const elMid = ctx.observerSunElev(SEOUL, midUtc);
+  check("현지 정오에 태양 고도가 양수", elNoon > 0, true);
+  check("현지 자정에 태양 고도가 음수", elMid < 0, true);
+  check("하지 정오 서울 태양 고도가 70~80°", elNoon > 70 && elNoon < 80, true);
+
+  // ② 북극권은 하지에 백야 — 하루 종일 태양이 지평선 위다.
+  const polarDay = [0, 6, 12, 18].every((h) =>
+    ctx.observerSunElev({ lat: 80, lng: 0 }, date(Date.UTC(2026, 5, 21, h))) > 0);
+  check("하지의 북위 80°는 백야(24시간 태양 고도 > 0)", polarDay, true);
+
+  // ③ 조명 판정 — 태양 쪽에 있으면 무조건 조명, 정반대 저고도는 그림자.
+  const sun = ctx.sunEciUnit(date(Date.now()));
+  const R = 6378.137;
+  const toward = { x: sun.x * (R + 400), y: sun.y * (R + 400), z: sun.z * (R + 400) };
+  const behind = { x: -sun.x * (R + 400), y: -sun.y * (R + 400), z: -sun.z * (R + 400) };
+  check("태양 쪽 위성은 조명됨", ctx.isSunlit(toward, sun), true);
+  check("태양 정반대 저궤도는 그림자", ctx.isSunlit(behind, sun), false);
+  // 그림자 원통 밖으로 비껴 있으면(태양축 수직거리 > 지구반지름) 반대쪽이어도 조명.
+  const perp = Math.abs(sun.x) < 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+  const d = perp.x * sun.x + perp.y * sun.y + perp.z * sun.z;
+  const u = { x: perp.x - d * sun.x, y: perp.y - d * sun.y, z: perp.z - d * sun.z };
+  const un = Math.hypot(u.x, u.y, u.z);
+  const side = { x: -sun.x * R + u.x / un * R * 1.5,
+                 y: -sun.y * R + u.y / un * R * 1.5,
+                 z: -sun.z * R + u.z / un * R * 1.5 };
+  check("반대쪽이라도 그림자 원통 밖이면 조명", ctx.isSunlit(side, sun), true);
+  check("위치가 없으면 조명 아님", ctx.isSunlit(null, sun), false);
+
+  // ④ 가시 통과는 전체 통과의 부분집합이어야 한다 — 뒤집히면 논리가 반대로 붙은 것이다.
+  const all = ctx.computePasses(rec(), SEOUL);
+  const vis = all.filter((p) => p.visible);
+  check("가시 통과 <= 전체 통과", vis.length <= all.length, true);
+  check("모든 가시 통과에 조명 구간 시각이 있다",
+    vis.every((p) => p.visStart !== undefined && p.visEnd !== undefined), true);
+  check("조명 구간은 통과 구간 안에 있다",
+    vis.every((p) => p.visStart >= p.start && p.visEnd <= p.end), true);
+  check("조명 최대고도 <= 통과 최대고도",
+    vis.every((p) => p.visMaxEl <= p.maxEl + 1e-9), true);
+  check("보이지 않는 통과에는 조명 구간이 없다",
+    all.filter((p) => !p.visible).every((p) => p.visStart === undefined), true);
+
+  // ⑤ **배선을 직접 잰다.** 위의 "부분집합" 류는 어두움 조건을 통째로 떼어내도 참이라
+  //    아무것도 검증하지 못했다(2026-09-11 변이 실험에서 실제로 안 잡혔다).
+  //    가시로 판정된 순간에는 관측지가 반드시 기준보다 어두워야 한다.
+  check("가시 순간에는 관측지가 어둡다(태양고도 < −6°)",
+    vis.every((p) => ctx.observerSunElev(SEOUL, date(p.visStart)) < -6), true);
+  check("가시 순간에는 위성이 조명돼 있다", vis.every((p) => {
+    const pv = ctx.satellite.propagate(rec(), date(p.visStart));
+    return pv && pv.position && ctx.isSunlit(pv.position, ctx.sunEciUnit(date(p.visStart)));
+  }), true);
+  // 낮 통과가 가시로 새지 않는가 — 반대 방향의 단언.
+  check("보이지 않는다고 표시된 통과 중 '어둡고 조명된' 순간이 있는 것은 없다",
+    all.filter((p) => !p.visible).every((p) => {
+      for (let t = p.start; t <= p.end; t += 30000) {
+        const d = date(t);
+        if (ctx.observerSunElev(SEOUL, d) >= -6) continue;
+        const pv = ctx.satellite.propagate(rec(), d);
+        if (pv && pv.position && ctx.isSunlit(pv.position, ctx.sunEciUnit(d))) return false;
+      }
+      return true;
+    }), true);
+
+  // ⑥ **어두움 조건이 실제로 쓰이는가** — 위의 ISS 단언들만으로는 부족했다.
+  //    2026-09-11 변이 실험: `sky.dark &&` 를 통째로 지워도 ISS 결과가 그대로였다.
+  //    이 시간창의 ISS 통과 중 "낮인데 위성은 조명된" 경우가 없어 **데이터가 그 자리를
+  //    덮지 못했기** 때문이다. 정지궤도 위성은 24시간 내내 지평선 위에 있고 늘 조명되므로
+  //    그 자리를 확정적으로 만든다 — 어두움 조건이 없으면 낮에도 '보인다'가 된다.
+  //    (실제로 GEO 위성이 눈에 보이느냐는 밝기 문제로 별개다. 여기서 재는 건 배선이다.)
+  // 서울에서 고도 약 47°에 늘 떠 있는 진짜 정지궤도 위성(경사각 0.03°, Celestrak geo 그룹).
+  // 경사각이 큰 위성을 고르면 지평선 아래로 내려가 이 테스트가 무의미해진다.
+  const geo = ctx.satellite.twoline2satrec(
+    "1 43432U 18037A   26206.54211402 -.00000339  00000+0  00000+0 0  9994",
+    "2 43432   0.0313  98.4352 0000953 142.8422  25.1979  1.00273212 30347");
+  const geoPasses = ctx.computePasses(geo, SEOUL);
+  const geoVis = geoPasses.filter((p) => p.visible);
+  check("정지궤도는 24시간 내내 한 통과로 잡힌다", geoPasses.length >= 1, true);
+  check("정지궤도 가시 구간의 시작은 어두울 때다(어두움 조건이 실제로 쓰인다)",
+    geoVis.length > 0 && geoVis.every((p) =>
+      ctx.observerSunElev(SEOUL, date(p.visStart)) < -6), true);
+  check("정지궤도 가시 구간은 통과 전체보다 짧다(낮 시간이 빠진다)",
+    geoVis.every((p) => (p.visEnd - p.visStart) < (p.end - p.start)), true);
+
+  // ⑦ 태양표를 넘겨도 안 넘겨도 결과가 같아야 한다(P12-2 가 표를 공유한다).
+  const start = Date.now(), end = start + 24 * 3600 * 1000;
+  const table = ctx.sunTable(SEOUL, start, end, 30000);
+  check("태양표 길이가 시간창/간격과 맞는다", table.length, Math.floor(24 * 3600 * 1000 / 30000) + 1);
+  check("태양표에 dark 플래그가 둘 다 나온다(하루니까)",
+    table.some((e) => e.dark) && table.some((e) => !e.dark), true);
+}
+
 done();

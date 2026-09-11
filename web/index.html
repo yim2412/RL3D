@@ -48,6 +48,7 @@
       <button id="tab-launches" class="sb-tab active">🚀 발사</button>
       <button id="tab-sats" class="sb-tab">🛰 위성</button>
       <button id="tab-favs" class="sb-tab" title="관심 발사·위성">⭐ 관심</button>
+      <button id="tab-tonight" class="sb-tab" title="오늘 밤 눈으로 볼 만한 위성 통과">🌙 오늘 밤</button>
     </div>
     <input id="sat-search" class="sb-search hidden" type="text" placeholder="🔍 위성명 · NORAD" />
     <div class="sidebar-head"><span id="sidebar-count">0건</span></div>
@@ -83,6 +84,9 @@
   <!-- 통과 예측 패널 -->
   <aside id="pass-panel" class="panel hidden">
     <button id="pass-close" class="panel-close">✕</button>
+    <label class="pass-filter" title="관측자가 어둡고 위성이 햇빛을 받는 통과만">
+      <input type="checkbox" id="toggle-visible-only" checked> 눈에 보이는 통과만
+    </label>
     <div id="pass-body"></div>
   </aside>
 

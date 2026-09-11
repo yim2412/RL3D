@@ -29,6 +29,7 @@ function applySettings(s) {
     });
   }
   if (typeof s.terminator === "boolean") document.getElementById("toggle-terminator").checked = s.terminator;
+  if (typeof s.visibleOnly === "boolean") document.getElementById("toggle-visible-only").checked = s.visibleOnly;
   if (s.satellites) {
     if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
     if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;

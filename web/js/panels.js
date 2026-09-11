@@ -94,10 +94,55 @@ function setSidebarTab(tab) {
   document.getElementById("tab-launches").classList.toggle("active", tab === "launches");
   document.getElementById("tab-sats").classList.toggle("active", tab === "sats");
   document.getElementById("tab-favs").classList.toggle("active", tab === "favs");
+  document.getElementById("tab-tonight").classList.toggle("active", tab === "tonight");
   document.getElementById("sat-search").classList.toggle("hidden", tab !== "sats");
   if (tab === "sats") renderSatList();
   else if (tab === "favs") renderFavList();
+  else if (tab === "tonight") renderTonightList();
   else applyFilters();   // 발사 탭은 현재 필터 결과를 다시 그린다
+}
+
+// ── 오늘 밤 볼 만한 통과 (P12-2) ──────────────────────────────────────────────
+/** 계산 전제가 갖춰지지 않았을 때의 안내. 갖춰졌으면 null. */
+function tonightBlocker() {
+  if (!observer) {
+    return "관측 위치가 필요합니다.<br />🛰 위성 패널의 <b>관측지 지정</b>을 눌러 지도를 클릭하세요.";
+  }
+  if (!satrecs.length) {
+    return "위성 데이터가 아직 없습니다.<br />위성 레이어를 켜면 목록이 채워집니다.";
+  }
+  return null;
+}
+
+function renderTonightList() {
+  const cont = document.getElementById("sidebar-list");
+  const countEl = document.getElementById("sidebar-count");
+  const blocked = tonightBlocker();
+  if (blocked) {
+    countEl.textContent = "—";
+    cont.innerHTML = `<div class="sb-empty">${blocked}</div>`;
+    return;
+  }
+  const rows = computeTonight(observer);
+  countEl.textContent = `${rows.length}건`;
+  if (!rows.length) {
+    // 조건을 못 채운 것이지 고장이 아니다 — 기준을 함께 보여준다.
+    cont.innerHTML = `<div class="sb-empty">향후 24시간 안에 <b>눈에 보이는 통과가 없습니다.</b><br />` +
+      `(관측지가 어둡고 = 태양고도 −6° 미만, 위성이 햇빛을 받는 통과만 셉니다)</div>`;
+    return;
+  }
+  cont.innerHTML = rows.map((r) => {
+    const p = r.pass;
+    const when = p.visStart !== undefined ? p.visStart : p.start;
+    const el = Math.round(p.visMaxEl !== undefined ? p.visMaxEl : p.maxEl);
+    const dur = Math.max(1, Math.round((p.end - p.start) / 60000));
+    const dir = `${azToCompass(p.startAz)}→${azToCompass(p.endAz)}`;
+    return `<button class="sb-row" data-norad="${escapeHtml(String(r.norad))}">` +
+      `<span class="dot d-sat"></span>` +
+      `<span class="sb-main"><span class="sb-name">${escapeHtml(r.name)}</span>` +
+      `<span class="sb-sub">${escapeHtml(fmtPassTime(when))} · 최대고도 ${el}° · ${escapeHtml(dir)} · ${dur}분</span>` +
+      `</span></button>`;
+  }).join("");
 }
 
 /** 위성 목록 — satrecs(로드된 TLE) 기준. 이름·NORAD 로 걸러 보여준다. */

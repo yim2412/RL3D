@@ -152,8 +152,16 @@ function loadApp(options = {}) {
     /** 소스를 미리 만들어 둔다(setupLaunchLayers 를 부르지 않고 applyFilters 만 볼 때) */
     stubSource: (id) => { sources[id] = null; },
   };
+  // vm 컨텍스트는 **별도 realm** 이라 Date 생성자가 Node 쪽과 다르다. Node 에서 만든
+  // Date 를 satellite.js 에 넘기면 `instanceof Date` 가 실패해 **예외 없이 NaN 좌표**가
+  // 나온다(2026-09-11 P12-1 테스트에서 실제로 당했다 — 통과 예측이 조용히 전부 NaN).
+  // realm 안의 Date 를 꺼내 주어 테스트가 같은 realm 의 시각을 만들 수 있게 한다.
+  const RealmDate = vm.runInContext("Date", ctx);
+
   return {
     ctx, state: ctx.__state, el, map, api, sel: selectors,
+    /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
+    date: (ms) => new RealmDate(ms),
     win: { fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a) },
   };
 }

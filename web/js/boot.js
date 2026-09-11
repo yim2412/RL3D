@@ -38,6 +38,13 @@ function bindUI() {
   document.getElementById("tab-launches").addEventListener("click", () => setSidebarTab("launches"));
   document.getElementById("tab-sats").addEventListener("click", () => setSidebarTab("sats"));
   document.getElementById("tab-favs").addEventListener("click", () => setSidebarTab("favs"));
+  document.getElementById("tab-tonight").addEventListener("click", () => setSidebarTab("tonight"));
+  // 가시 전용 토글(P12-1) — 열려 있는 통과 패널을 즉시 다시 그리고, 오늘 밤 탭도 갱신한다.
+  document.getElementById("toggle-visible-only").addEventListener("change", (e) => {
+    saveSettings({ visibleOnly: e.target.checked });
+    if (!document.getElementById("pass-panel").classList.contains("hidden")) showPasses();
+    if (sidebarTab === "tonight") renderTonightList();
+  });
   document.getElementById("sat-search").addEventListener("input", renderSatList);
   document.getElementById("tl-range").addEventListener("input", onTimeline);
   populateArchiveYears();
