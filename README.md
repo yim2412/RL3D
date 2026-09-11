@@ -1,6 +1,6 @@
 # RL3D — 로켓 발사 & 위성 추적
 
-**v1.5.2** · [변경 이력](CHANGELOG.md)
+**v1.6.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
 
 전 세계 로켓 발사를 **2D 지도**에 표시하고, 위성을 실시간으로 움직이게 보여주는 Windows 데스크톱 앱.
 뉴스 상황판 감성의 다크 테마. pywebview + MapLibre GL 로 만든 단일 exe(설치 불필요).
@@ -88,6 +88,10 @@ python startup.py               # 이 PC 의 WebView2 런타임 버전 확인 (�
 python tests/test_parsing.py    # 파이썬 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
 node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저·네트워크 불필요)
 ```
+
+두 회귀 테스트는 **네트워크가 필요 없어** GitHub Actions 에서도 그대로 돈다
+(`.github/workflows/tests.yml` — push·PR 마다 windows-latest 에서 실행).
+`api_client.py` 스모크는 네트워크를 쓰므로 CI 에 넣지 않았다.
 
 파싱 회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
 외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
