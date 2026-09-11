@@ -14,7 +14,7 @@ function bindUI() {
   });
   document.getElementById("toggle-sat").addEventListener("change", (e) => {
     setSatelliteVisible(e.target.checked);
-    saveSettings({ satellites: { enabled: e.target.checked, groups: satGroups, bands: satBands } });
+    saveSatSettings();   // 저장 모양은 sats.js 한 곳에만 둔다
   });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
   document.getElementById("basemap-btn").addEventListener("click", toggleBasemap);

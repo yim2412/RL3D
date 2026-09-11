@@ -1,6 +1,6 @@
 # RL3D — 로켓 발사 & 위성 추적
 
-**v1.8.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
+**v1.9.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
 
 전 세계 로켓 발사를 **2D 지도**에 표시하고, 위성을 실시간으로 움직이게 보여주는 Windows 데스크톱 앱.
 뉴스 상황판 감성의 다크 테마. pywebview + MapLibre GL 로 만든 단일 exe(설치 불필요).
@@ -98,7 +98,7 @@ node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저
 파싱 회귀 테스트는 `tests/fixtures/`에 저장한 **실제 API 응답**을 파싱해 `tests/golden/`의 기대 결과와 비교한다.
 외부 API가 필드를 바꾸거나 파싱을 잘못 건드리면 여기서 잡힌다.
 
-프론트엔드 테스트(140항목)는 `web/js/*.js`를 로드 순서대로 이어 붙여 Node `vm`에 스텁 DOM과 함께
+프론트엔드 테스트(167항목)는 `web/js/*.js`를 로드 순서대로 이어 붙여 Node `vm`에 스텁 DOM과 함께
 올리고 함수를 직접 호출한다(마우스 자동화 없음). 대상은 **깨져도 화면상으로는 알아채기 어려운** 로직 —
 궤도 대역 분류·필터·검색·타임라인, 설정 복원 방어, 오프라인 판정, 통계 집계, 사이드바 정렬,
 그리고 실제 SGP4로 검증하는 **지상궤적선(날짜변경선 끊기)과 통과 예측**이다.

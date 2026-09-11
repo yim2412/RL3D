@@ -33,6 +33,14 @@ function applySettings(s) {
   if (s.satellites) {
     if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
     if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;
+    // 종류·소유국은 **끈 것만** 저장된다 → 없으면 전부 켜진 상태가 된다(P12-5b).
+    // 대역처럼 "전부 꺼진 설정"을 걱정하지 않아도 되는 모양이라 방어가 따로 필요 없다.
+    if (s.satellites.typesOff && typeof s.satellites.typesOff === "object") {
+      satTypesOff = { ...s.satellites.typesOff };
+    }
+    if (s.satellites.ownersOff && typeof s.satellites.ownersOff === "object") {
+      satOwnersOff = { ...s.satellites.ownersOff };
+    }
     const b = s.satellites.bands;
     // 전부 꺼진 설정이 저장돼 있으면 위성이 하나도 안 보여 앱이 고장난 것처럼 된다 → 무시
     if (b && BANDS.some((x) => b[x.key])) {

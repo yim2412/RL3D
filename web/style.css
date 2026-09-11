@@ -311,8 +311,14 @@ html, body {
   border-radius: 10px;
   padding: 10px 12px;
   box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  /* 소유국은 불러온 그룹에 따라 9~53종까지 늘어난다(P12-5b 실측) — 화면을 넘치면
+     아래쪽 항목을 아예 누를 수 없게 되므로 높이를 묶고 스크롤을 준다. */
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
 }
 .sat-groups.hidden { display: none; }
+/* 종류·소유국 구역만 따로 다시 그리므로 자체 레이아웃이 필요하다(부모 flex 밖이다) */
+#sat-facets { display: flex; flex-direction: column; gap: 7px; }
 .sat-groups label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
 .satg-sec {
   font-size: 11px; color: var(--accent);

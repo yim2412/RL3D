@@ -23,10 +23,36 @@ function bandLabel(key) {
   return b ? b.short : "";
 }
 
-/** 대역 필터를 통과하는 위성만. 지도·목록이 같은 기준을 쓰게 한 곳에 둔다.
+/** 대역·종류·소유국 필터를 통과하는 위성만. 지도·목록·개수가 **같은 기준**을 쓰게 한 곳에 둔다.
  *  관심 위성은 필터와 무관하게 남긴다 — 관심 탭에서 골랐는데 지도에 점이 없으면 고장으로 보인다. */
 function visibleSats() {
-  return satrecs.filter((s) => satBands[s.band] !== false || isFavSat(s.norad));
+  return satrecs.filter((s) => {
+    if (isFavSat(s.norad)) return true;
+    if (satBands[s.band] === false) return false;
+    // 메타가 아직 안 왔거나(비동기) 실패했으면 **숨기지 않는다.** 분류를 모르는 것을
+    // 숨기면 SATCAT 이 늦게 올 때 위성이 사라졌다 나타난다.
+    const m = satMeta(s.norad);
+    if (!m) return true;
+    if (m.type && satTypesOff[m.type]) return false;
+    if (m.owner && satOwnersOff[m.owner]) return false;
+    return true;
+  });
+}
+
+/** 불러온 위성의 종류·소유국 분포. 필터 UI 는 **고정 표가 아니라 이 결과**로 만든다.
+ *  SATCAT 의 나라 코드는 130종이고 그룹마다 달라서, 고정 목록을 두면 반드시 어긋난다.
+ *  반환: [{ value, count }] — 많은 순. */
+function satFacet(field) {
+  const counts = new Map();
+  for (const s of satrecs) {
+    const m = satMeta(s.norad);
+    const v = m && m[field];
+    if (!v) continue;   // 메타가 없는 위성은 세지 않는다(필터로 숨기지도 않는다)
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, "ko"));
 }
 
 // ── 위성 (Celestrak TLE → satellite.js SGP4 실시간 위치) ──────────────────────
@@ -95,14 +121,37 @@ function setupSatelliteLayer() {
 // ── 지상궤적선 + 추적 모드 (P6-1) ─────────────────────────────────────────────
 /** 선택 위성의 지상궤적(약 1주기)을 1분 간격으로 계산해 MultiLineString Feature로.
  *  날짜변경선(±180°) 통과 지점에서 선을 끊어 지도를 가로지르는 가짜 선을 막는다. */
+/** 날짜변경선에서 끊어 세그먼트로 나눈다 — **순수 함수**라 합성 입력으로 규칙을 잴 수 있다.
+ *
+ * 끊지 않으면 +179° 에서 -179° 로 가는 점 두 개가 지도를 가로지르는 **가짜 직선**이 된다.
+ * 점이 1개뿐인 세그먼트는 버린다(선이 그려지지 않는다).
+ *
+ * (2026-09-11 분리) 이 규칙이 루프 안에 박혀 있어 테스트가 실제 SGP4 결과에 의존했고,
+ * **"1주기면 반드시 날짜변경선을 넘는다"는 전제가 틀려** 시각에 따라 통과/실패가 갈렸다 —
+ * 실측: 경도가 156.4° → -177.9° 로 연속 감소만 하고 넘지 않는 구간이 있다.
+ */
+function splitAtDateline(points) {
+  const segments = [];
+  let cur = [];
+  let prevLng = null;
+  for (const [lng, lat] of points) {
+    if (prevLng != null && Math.abs(lng - prevLng) > 180) {
+      if (cur.length > 1) segments.push(cur);
+      cur = [];
+    }
+    cur.push([lng, lat]);
+    prevLng = lng;
+  }
+  if (cur.length > 1) segments.push(cur);
+  return segments;
+}
+
 function computeGroundTrack(rec) {
   // 평균운동(rad/min)에서 주기 산출. 비정상값이면 LEO 기본 90분으로 대체.
   let periodMin = (rec.no && rec.no > 0) ? (2 * Math.PI) / rec.no : 90;
   if (!isFinite(periodMin) || periodMin <= 0 || periodMin > 24 * 60) periodMin = 90;
   const half = periodMin / 2;
-  const segments = [];
-  let cur = [];
-  let prevLng = null;
+  const points = [];
   for (let dm = -half; dm <= half; dm += 1) {
     const t = new Date(Date.now() + dm * 60000);
     let pv;
@@ -112,15 +161,11 @@ function computeGroundTrack(rec) {
     const lng = satellite.degreesLong(geo.longitude);
     const lat = satellite.degreesLat(geo.latitude);
     if (!isFinite(lng) || !isFinite(lat)) continue;
-    if (prevLng != null && Math.abs(lng - prevLng) > 180) {
-      if (cur.length > 1) segments.push(cur);  // 날짜변경선 통과 → 세그먼트 분리
-      cur = [];
-    }
-    cur.push([lng, lat]);
-    prevLng = lng;
+    points.push([lng, lat]);
   }
-  if (cur.length > 1) segments.push(cur);
-  return { type: "Feature", geometry: { type: "MultiLineString", coordinates: segments }, properties: {} };
+  return { type: "Feature",
+           geometry: { type: "MultiLineString", coordinates: splitAtDateline(points) },
+           properties: {} };
 }
 
 function drawGroundTrack() {
@@ -425,7 +470,9 @@ async function loadSatcat() {
   try {
     const res = await window.pywebview.api.get_satcat(satGroups, false);
     satcat = (res && res.satcat) || {};
-    // 열려 있는 상세 패널이 있으면 즉시 채운다(매 초 갱신이라 사실 자동으로 들어온다).
+    // 종류·소유국 목록은 메타가 있어야 만들 수 있다 → 도착한 지금 그린다(P12-5b).
+    renderFacetFilters();
+    applySatFilter();   // 저장돼 있던 필터가 이제서야 적용될 수 있다
   } catch (_) {
     satcat = satcat || {};   // 실패해도 이전 값을 버리지 않는다
   }
@@ -527,32 +574,96 @@ async function initSatGroups() {
       + `<div class="satg-sec">궤도 대역</div>`
       + BANDS.map((b) =>
         `<label><input type="checkbox" class="satb" value="${b.key}" ${satBands[b.key] !== false ? "checked" : ""}/> ` +
-        `${escapeHtml(b.label)} <span class="muted">${escapeHtml(b.note)}</span></label>`).join("");
+        `${escapeHtml(b.label)} <span class="muted">${escapeHtml(b.note)}</span></label>`).join("")
+      // 종류·소유국은 SATCAT 이 온 뒤에야 채워진다 → 자리만 만들어 두고 따로 그린다.
+      + `<div id="sat-facets"></div>`;
     box.querySelectorAll(".satg").forEach((c) => c.addEventListener("change", onSatGroupChange));
     box.querySelectorAll(".satb").forEach((c) => c.addEventListener("change", onSatBandChange));
+    renderFacetFilters();   // 종류·소유국(P12-5b). 메타가 오면 다시 그린다
   } catch (e) { console.error("위성 그룹 로드 실패", e); }
+}
+
+// ── 종류·소유국 필터 (P12-5b) ──────────────────────────────────────────────────
+// 실측이 근거다(2026-09-11): `visual` 159개 중 위성체는 66개뿐이고 92개가 다 쓴
+// 로켓 몸체다. "밝게 보이는 위성"의 58%가 위성이 아니다.
+const FACETS = [
+  { field: "type", cls: "satt", title: "종류", off: () => satTypesOff },
+  { field: "owner", cls: "sato", title: "소유국", off: () => satOwnersOff },
+];
+
+function facetSectionHtml(f) {
+  const items = satFacet(f.field);
+  if (!items.length) return "";   // 메타가 아직 없으면 빈 제목만 남기지 않는다
+  const off = f.off();
+  return `<div class="satg-sec">${escapeHtml(f.title)}</div>` +
+    items.map((it) =>
+      `<label><input type="checkbox" class="${f.cls}" value="${escapeHtml(it.value)}" ` +
+      `${off[it.value] ? "" : "checked"}/> ${escapeHtml(it.value)} ` +
+      `<span class="muted">${it.count}</span></label>`).join("");
+}
+
+/** 종류·소유국 구역만 다시 그린다 — 그룹·대역 체크박스는 건드리지 않는다
+ *  (전부 다시 그리면 열어 둔 드롭다운에서 방금 누른 체크가 튄다). */
+function renderFacetFilters() {
+  const host = document.getElementById("sat-facets");
+  if (!host) return;
+  host.innerHTML = FACETS.map(facetSectionHtml).join("");
+  host.querySelectorAll(".satt").forEach((c) => c.addEventListener("change", onFacetChange));
+  host.querySelectorAll(".sato").forEach((c) => c.addEventListener("change", onFacetChange));
+}
+
+function onFacetChange() {
+  // **끈 것만** 모은다 — 켠 것을 담으면 새로 나타난 종류·나라가 조용히 숨겨진다.
+  satTypesOff = {};
+  document.querySelectorAll(".satt:not(:checked)").forEach((c) => { satTypesOff[c.value] = true; });
+  satOwnersOff = {};
+  document.querySelectorAll(".sato:not(:checked)").forEach((c) => { satOwnersOff[c.value] = true; });
+  saveSatSettings();
+  applySatFilter();
+}
+
+/** 필터가 바뀐 뒤 화면을 맞춘다 — 대역·종류·소유국이 같은 뒷정리를 쓰게 한 곳에 모은다. */
+function applySatFilter() {
+  // 숨겨진 위성이 선택돼 있으면 해제 — 지도에 점이 없는데 패널만 떠 있으면 혼란스럽다.
+  if (selectedSat && !visibleSats().some((s) => s.norad === selectedSat.norad)) {
+    deselectSatellite();
+  }
+  updateSatCount();
+  if (satTimer) updateSatellitePositions();  // 다음 초를 기다리지 않고 바로 반영
+  if (sidebarTab === "sats") renderSatList();
+  else if (sidebarTab === "favs") renderFavList();
+}
+
+/** 위성 설정을 통째로 저장한다.
+ *
+ * 저장 지점이 셋(그룹·대역·종류/소유국)인데 각자 객체를 만들고 있었다. 새 필드를 늘리면
+ * **한 곳만 빠뜨려도 그 경로로 저장할 때 조용히 사라진다** — 실제로 P12-5b 을 넣으며 그럴
+ * 뻔했다. 저장 모양은 여기 한 곳에만 둔다(전역 규칙 6번과 같은 이유).
+ */
+function saveSatSettings() {
+  saveSettings({ satellites: {
+    enabled: document.getElementById("toggle-sat").checked,
+    groups: satGroups,
+    bands: satBands,
+    typesOff: satTypesOff,
+    ownersOff: satOwnersOff,
+  } });
 }
 
 function onSatGroupChange() {
   satGroups = Array.from(document.querySelectorAll(".satg:checked")).map((c) => c.value);
-  const enabled = document.getElementById("toggle-sat").checked;
-  saveSettings({ satellites: { enabled, groups: satGroups, bands: satBands } });
-  if (enabled) { satrecs = []; loadSatellites(); }  // 그룹이 바뀌었으니 재로드
+  saveSatSettings();
+  if (document.getElementById("toggle-sat").checked) {
+    satrecs = []; loadSatellites();   // 그룹이 바뀌었으니 재로드
+  }
 }
 
 /** 대역 필터 변경 — 재로드 없이 즉시 반영(이미 받아둔 TLE만 걸러낸다). */
 function onSatBandChange() {
   BANDS.forEach((b) => { satBands[b.key] = false; });
   document.querySelectorAll(".satb:checked").forEach((c) => { satBands[c.value] = true; });
-  saveSettings({
-    satellites: { enabled: document.getElementById("toggle-sat").checked, groups: satGroups, bands: satBands },
-  });
-  // 선택 위성이 필터 밖으로 나가면 궤적선만 지도에 남으므로 함께 해제
-  if (selectedSat && satBands[selectedSat.band] === false && !isFavSat(selectedSat.norad)) deselectSatellite();
-  updateSatCount();
-  if (satTimer) updateSatellitePositions();  // 다음 초를 기다리지 않고 바로 반영
-  if (sidebarTab === "sats") renderSatList();
-  else if (sidebarTab === "favs") renderFavList();
+  saveSatSettings();
+  applySatFilter();
 }
 
 /** 툴바 위성 개수 — 대역 필터가 걸려 있으면 "보이는 수/전체" 로 보여준다. */

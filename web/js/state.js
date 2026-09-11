@@ -33,6 +33,11 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;  // 5분마다 폴링(실제 API는 캐�
 
 let satGroups = ["stations", "visual"];  // 선택된 위성 그룹(P7-6). 설정으로 덮어씀
 let satBands = { leo: true, meo: true, geo: true };  // 궤도 대역 필터(P11-3). 설정으로 덮어씀
+// 종류·소유국 필터(P12-5b). **끈 것만** 담는다 — 켠 것을 담으면 새로 나타난 종류/나라가
+// 목록에 없어서 조용히 숨겨진다(SATCAT 은 나라 코드가 130종이고 그룹마다 달라진다).
+// 값이 없으면 보인다 = 기본은 전부 켜짐.
+let satTypesOff = {};    // { "로켓 몸체": true, ... }
+let satOwnersOff = {};   // { "미국": true, ... }
 let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — "N분 전 갱신"(P7-7)
 
 // 관심 목록(P11-2) — id/norad 는 항상 문자열로 넣는다(LL2 id는 문자열, NORAD는 숫자로 와 섞인다)

@@ -313,7 +313,11 @@ const { loadApp, group, check, done } = require("./harness");
   check("ISS 궤도 경사(51.6°) 밖으로는 안 간다",
     pts.every(([, lat]) => Math.abs(lat) <= 53), true);
   check("경도는 항상 -180~180", pts.every(([lng]) => lng >= -180 && lng <= 180), true);
-  check("날짜변경선에서 끊어 세그먼트가 2개 이상", segs.length >= 2, true);
+  // ⚠ 여기서 "세그먼트가 2개 이상"을 단언했었는데 **전제가 틀렸다**(2026-09-11).
+  // 1주기가 반드시 날짜변경선을 넘는 것이 아니다 — 실측으로 경도가 156.4° → -177.9° 로
+  // 연속 감소만 하는 구간이 있었고, 그래서 **시각에 따라 통과/실패가 갈렸다.**
+  // 분할 규칙 자체는 아래 splitAtDateline 블록에서 합성 입력으로 결정론적으로 잰다.
+  check("세그먼트가 최소 1개는 나온다", segs.length >= 1, true);
   const jump = segs.some((s) => s.some((p, i) => i > 0 && Math.abs(p[0] - s[i - 1][0]) > 180));
   check("한 세그먼트 안에서 180° 이상 건너뛰는 구간이 없다(가짜 선 방지)", jump, false);
   check("길이 1인 세그먼트는 버린다(선이 안 그려진다)",
@@ -533,6 +537,128 @@ const { loadApp, group, check, done } = require("./harness");
   check("satcat 이 비어도 HTML 은 빈 문자열", ctx.satMetaHtml(25544), "");
   state.satcat = null;
   check("satcat 이 null 이어도 죽지 않는다", ctx.satMeta(25544), null);
+}
+
+// ── 종류·소유국 필터 (P12-5b) ──────────────────────────────────────────────────
+// 실측 근거: visual 159개 중 위성체 66 · 로켓 몸체 92 · 잔해 1.
+// 이 필터가 조용히 틀리면 "위성이 왜 사라졌지"가 되므로 경계를 촘촘히 잰다.
+{
+  const { ctx, state } = loadApp();
+  group("종류·소유국 필터 (P12-5b)");
+
+  state.satrecs = [
+    { name: "PAY-US", norad: 1, band: "leo" },
+    { name: "PAY-CN", norad: 2, band: "leo" },
+    { name: "RB-RU", norad: 3, band: "leo" },
+    { name: "DEB-RU", norad: 4, band: "leo" },
+    { name: "META-없음", norad: 5, band: "leo" },
+    { name: "MEO-PAY", norad: 6, band: "meo" },
+  ];
+  const meta = (type, owner) => ({ type, owner, status: null, launch_date: null,
+    launch_site: null, intl_code: null, size: null, decay_date: null });
+  state.satcat = {
+    "1": meta("위성체", "미국"),
+    "2": meta("위성체", "중국"),
+    "3": meta("로켓 몸체", "러시아/구소련"),
+    "4": meta("잔해", "러시아/구소련"),
+    "6": meta("위성체", "미국"),
+    // norad 5 는 일부러 없다 — 메타가 안 온 위성
+  };
+  state.satBands = { leo: true, meo: true, geo: true };
+  state.satTypesOff = {};
+  state.satOwnersOff = {};
+  state.favSats = new Set();
+
+  const names = () => ctx.visibleSats().map((s) => s.name).sort();
+
+  check("기본은 전부 보인다", ctx.visibleSats().length, 6);
+
+  // 종류 필터
+  state.satTypesOff = { "로켓 몸체": true };
+  check("로켓 몸체를 끄면 사라진다", names().includes("RB-RU"), false);
+  check("끈 것 외에는 남는다", ctx.visibleSats().length, 5);
+  state.satTypesOff = { "로켓 몸체": true, "잔해": true };
+  check("잔해까지 끄면 위성체만 남는다", names().join(","), "MEO-PAY,META-없음,PAY-CN,PAY-US");
+
+  // **메타가 없는 위성은 숨기지 않는다** — 이게 깨지면 SATCAT 이 늦게 올 때
+  // 위성이 사라졌다 나타난다.
+  check("메타 없는 위성은 종류 필터로 숨기지 않는다", names().includes("META-없음"), true);
+
+  // 소유국 필터
+  state.satTypesOff = {};
+  state.satOwnersOff = { "미국": true };
+  check("미국을 끄면 미국 것만 사라진다", names().join(","), "DEB-RU,META-없음,PAY-CN,RB-RU");
+  state.satOwnersOff = {};
+
+  // 대역 필터와 함께 걸린다(AND)
+  state.satBands = { leo: true, meo: false, geo: true };
+  state.satTypesOff = { "잔해": true };
+  check("대역과 종류가 함께 걸린다(MEO 위성체도 빠진다)",
+    names().join(","), "META-없음,PAY-CN,PAY-US,RB-RU");
+
+  // 관심 위성은 어떤 필터도 넘어선다 — 골라 뒀는데 지도에 없으면 고장으로 보인다.
+  state.favSats = new Set(["4"]);   // Set 이고 키는 문자열이다
+  check("관심 위성은 종류 필터를 넘어선다", names().includes("DEB-RU"), true);
+  state.favSats = new Set(["6"]);
+  check("관심 위성은 대역 필터도 넘어선다", names().includes("MEO-PAY"), true);
+  state.favSats = new Set();
+  state.satBands = { leo: true, meo: true, geo: true };
+  state.satTypesOff = {};
+
+  // 분포 집계 — 필터 UI 를 만드는 재료다
+  const types = ctx.satFacet("type");
+  check("종류 분포가 많은 순", types.map((t) => `${t.value}:${t.count}`).join(","),
+    "위성체:3,로켓 몸체:1,잔해:1");
+  const owners = ctx.satFacet("owner");
+  // 동수(미국 2 · 러시아 2)는 한국어 정렬 — '러'가 '미'보다 앞이다.
+  check("소유국 분포가 많은 순", owners.map((t) => `${t.value}:${t.count}`).join(","),
+    "러시아/구소련:2,미국:2,중국:1");
+  check("메타 없는 위성은 분포에 세지 않는다",
+    types.reduce((a, t) => a + t.count, 0), 5);
+
+  // 같은 개수면 이름순 — 순서가 매번 바뀌면 체크박스가 튄다
+  check("동수는 이름순(러시아 < 미국)",
+    owners.filter((o) => o.count === 2).map((o) => o.value).join(","), "러시아/구소련,미국");
+
+  // 메타가 통째로 없을 때
+  state.satcat = {};
+  check("메타가 없으면 분포는 빈 배열", ctx.satFacet("type").length, 0);
+  check("메타가 없어도 위성은 전부 보인다", ctx.visibleSats().length, 6);
+  state.satTypesOff = { "위성체": true };
+  check("메타가 없으면 종류 필터는 아무것도 못 숨긴다", ctx.visibleSats().length, 6);
+}
+
+// ── 날짜변경선 분할 규칙 (순수 함수) ──────────────────────────────────────────
+// 실제 SGP4 결과에 기대면 시각에 따라 결과가 달라진다(위 ⚠ 참조). 합성 입력으로 잰다.
+{
+  const { ctx } = loadApp();
+  group("날짜변경선 분할 (splitAtDateline)");
+  const S = (pts) => ctx.splitAtDateline(pts);
+
+  check("넘지 않으면 한 덩어리", S([[10,0],[20,0],[30,0]]).length, 1);
+  check("+179 → -179 는 끊는다", S([[178,0],[179,0],[-179,0],[-178,0]]).length, 2);
+  check("끊긴 두 덩어리의 점 수", S([[178,0],[179,0],[-179,0],[-178,0]]).map((x)=>x.length).join(","), "2,2");
+  check("두 번 넘으면 세 덩어리",
+    S([[170,0],[179,0],[-179,0],[-170,0],[-179,0],[179,0],[170,0]]).length, 3);
+
+  // 경계: 정확히 180° 차이는 끊지 않는다(> 180 이어야 한다). 부등호가 >= 로 바뀌면
+  // -90 → 90 같은 정상 이동까지 끊겨 선이 조각난다.
+  check("정확히 180° 차이는 끊지 않는다", S([[-90,0],[90,0]]).length, 1);
+  // 1점짜리 덩어리는 버려지므로 앞뒤에 점을 하나씩 더 둔다 — 안 그러면 0 이 나온다.
+  check("180.1° 차이는 끊는다", S([[-91,0],[-90,0],[90.1,0],[91,0]]).length, 2);
+  check("180.0° 차이는 안 끊는다(같은 입력 모양으로 비교)",
+    S([[-91,0],[-90,0],[90,0],[91,0]]).length, 1);
+
+  // 점이 1개뿐인 덩어리는 버린다 — 선이 안 그려지는데 빈 배열이 지도로 넘어간다.
+  check("끊긴 뒤 점이 1개면 버린다", S([[178,0],[179,0],[-179,0]]).map((x)=>x.length).join(","), "2");
+  check("점이 1개면 빈 배열", S([[0,0]]).length, 0);
+  check("빈 입력은 빈 배열", S([]).length, 0);
+
+  // 막지 않았으면 무엇이 일어났을 것인가 — 끊지 않으면 지구를 가로지르는 가짜 선이 된다.
+  const notSplit = S([[178,0],[179,0],[-179,0],[-178,0]]).flat();
+  check("한 세그먼트 안에 180° 넘는 도약이 없다",
+    S([[178,0],[179,0],[-179,0],[-178,0]]).every((seg) =>
+      seg.every((p, i) => i === 0 || Math.abs(p[0] - seg[i-1][0]) <= 180)), true);
 }
 
 done();
