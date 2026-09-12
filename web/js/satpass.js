@@ -139,9 +139,9 @@ function computePasses(rec, obs, hours = 24, stepSec = 30, minEl = 10, sun = nul
 }
 
 function fmtPassTime(ms) {
-  return new Date(ms).toLocaleString("ko-KR", {
+  return new Date(ms).toLocaleString("ko-KR", Object.assign({
     month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
-  });
+  }, tzOpts()));
 }
 
 /** 통과 1건을 목록 행으로. 가시 통과는 ☀ 로 표시하고 조명 구간 시각을 앞세운다. */

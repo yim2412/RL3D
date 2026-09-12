@@ -1592,5 +1592,95 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("상세 패널의 맥락 줄에도 올해 순번이 실린다",
     el("panel-body").innerHTML.includes("전 세계 올해 356번째"), true);
 }
+
+// ── 시간대 표기 (P13-5) ──────────────────────────────────────────────────────
+// 이 앱은 시간이 핵심인데 어느 시간대인지 어디에도 안 적혀 있었다.
+// 조용히 깨지는 자리: 포맷터가 **갈라지는 것**(한쪽은 현지, 한쪽은 UTC) —
+// 표기가 없는 것보다 나쁘다. 그리고 열린 화면을 안 고치면 옛 시각이 남는다.
+// **단언은 UTC 모드와 현지↔UTC 차이로만 한다** — 실행 PC 의 시간대에 기대면 CI 에서 갈린다.
+{
+  const { ctx, state, el, sel, map } = loadApp();
+  group("시간대 전환 (fmtDate · fmtClock · fmtPassTime)");
+  // UTC 기준 23:30 — 현지(UTC+9)로는 **다음 날**이 되어 날짜까지 갈린다(경계를 일부러 만든다)
+  const ISO = "2026-05-01T23:30:00Z";
+  state.timeZoneMode = "utc";
+  // **로캘 문자열에 기대지 않는다.** Node 의 ICU 는 ko-KR 을 "AM 12:30" 으로 찍고
+  // 앱(WebView2)은 "오전 12:30" 으로 찍는다 — 같은 코드가 환경에 따라 다른 글자를 낸다.
+  check("UTC 모드는 UTC 날짜·시각으로 찍는다",
+    [ctx.fmtDate(ISO).includes("2026. 05. 01."), ctx.fmtDate(ISO).includes("11:30")], [true, true]);
+  check("UTC 모드 이름", ctx.tzName(), "UTC");
+  check("접미사는 앞에 공백 하나", ctx.tzSuffix(), " UTC");
+  check("요청할 때만 접미사를 붙인다(모든 시각에 붙이면 화면이 지저분해진다)",
+    [ctx.fmtDate(ISO).includes("UTC"), ctx.fmtDate(ISO, true).includes("UTC")], [false, true]);
+  const utcDate = ctx.fmtDate(ISO), utcClock = ctx.fmtClock(Date.parse(ISO));
+  const utcPass = ctx.fmtPassTime(Date.parse(ISO));
+
+  state.timeZoneMode = "local";
+  check("현지 모드는 다른 값을 낸다(같으면 전환이 안 된 것이다)",
+    [ctx.fmtDate(ISO) !== utcDate, ctx.fmtClock(Date.parse(ISO)) !== utcClock,
+     ctx.fmtPassTime(Date.parse(ISO)) !== utcPass], [true, true, true]);
+  check("현지 모드 이름은 UTC 가 아니다", ctx.tzName() === "UTC", false);
+  check("미정·이상한 값에도 죽지 않는다",
+    [ctx.fmtDate(null), ctx.fmtDate("언젠가"), ctx.fmtClock(NaN)], ["미정", "언젠가", ""]);
+
+  group("네 포맷터가 같은 스위치를 본다");
+  // 갈라지면 화면의 한쪽은 현지, 한쪽은 UTC 가 된다 — 표기가 없는 것보다 나쁘다.
+  state.timeZoneMode = "utc";
+  const u = [ctx.fmtDate(ISO), ctx.fmtClock(Date.parse(ISO)), ctx.fmtPassTime(Date.parse(ISO)),
+             ctx.tlLabelDate(Date.parse(ISO))];
+  state.timeZoneMode = "local";
+  const l = [ctx.fmtDate(ISO), ctx.fmtClock(Date.parse(ISO)), ctx.fmtPassTime(Date.parse(ISO)),
+             ctx.tlLabelDate(Date.parse(ISO))];
+  check("fmtDate · fmtClock · fmtPassTime · 타임라인 라벨이 모두 모드를 따른다",
+    u.map((v, i) => v !== l[i]), [true, true, true, true]);
+  // 발사 윈도우도 같은 스위치를 본다(따로 만든 포맷이라 빠뜨리기 쉽다)
+  // 종료는 시작보다 **뒤**여야 한다 — 앞서면 windowText 가 양쪽 다 null 을 내고,
+  // 그러면 "같지 않다"는 단언이 통과처럼 보이는 게 아니라 공허하게 실패한다.
+  const win = { window_start: ISO, window_end: "2026-05-02T02:30:00Z" };
+  state.timeZoneMode = "utc";
+  const wu = ctx.windowText(win);
+  state.timeZoneMode = "local";
+  check("발사 윈도우도 따른다", ctx.windowText(win) !== wu, true);
+
+  group("시간대 배선 (버튼 · 설정 · 단축키)");
+  const { ctx: c2, state: s2, el: e2, map: m2, sel: sel2, doc } = loadApp({
+    api: { save_settings: (p) => saved.push(p) },
+  });
+  var saved = [];
+  s2.map = m2;
+  m2.stubSource("launches");
+  m2.stubSource("launch-heat");
+  s2.allLaunches = [];
+  s2.sidebarTab = "launches";
+  sel2[".flt:checked"] = [];
+  c2.bindUI();
+  check("bindUI 가 버튼에 클릭을 붙인다", !!e2("tz-btn").handlers.click, true);
+  c2.applySettings({});
+  check("설정이 없으면 현지 시각", s2.timeZoneMode, "local");
+  check("버튼이 현재 시간대를 상시 보여준다(이게 이 기능의 표기 자체다)",
+    e2("tz-btn").textContent.startsWith("🕓"), true);
+  e2("tz-btn").fire("click");
+  check("눌러서 UTC 로", [s2.timeZoneMode, e2("tz-btn").textContent], ["utc", "🕓UTC"]);
+  e2("tz-btn").fire("click");
+  check("다시 눌러서 현지로", s2.timeZoneMode, "local");
+
+  c2.applySettings({ timeZone: "utc" });
+  check("저장된 설정이 복원된다", s2.timeZoneMode, "utc");
+  check("복원하면 버튼 문구도 같이 선다", e2("tz-btn").textContent, "🕓UTC");
+  c2.applySettings({ timeZone: "이상한 값" });
+  check("모르는 설정값은 현지로 본다", s2.timeZoneMode, "local");
+  // applySettings 가 미리 정규화하므로, 모드 함수 자체의 기본값도 따로 재야 한다
+  c2.setTimeZoneMode("이상한 값");
+  check("모드 함수도 모르는 값이면 현지", s2.timeZoneMode, "local");
+  c2.setTimeZoneMode("utc");
+  check("utc 만 UTC 다", s2.timeZoneMode, "utc");
+
+  c2.setTimeZoneMode("local");   // 앞 단언이 남긴 상태에 기대지 않는다
+  doc.fire("keydown", { key: "t", target: { tagName: "BODY" }, preventDefault() {} });
+  check("T 로도 바뀐다", s2.timeZoneMode, "utc");
+  check("바뀔 때마다 설정에 남긴다", saved.filter((p) => p.timeZone).length > 0, true);
+  check("입력 중 t 는 글자다",
+    ctx.keyAction({ key: "t", target: { tagName: "INPUT" } }), null);
+}
   done();
 })();

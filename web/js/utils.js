@@ -25,14 +25,82 @@ function showStatus(msg) {
   el.classList.remove("hidden");
 }
 
-function fmtDate(iso) {
+/**
+ * 시각 표시 옵션 — **모든 포맷터가 여기 한 곳을 거친다**(P13-5).
+ * 갈라지면 화면의 한쪽은 현지, 한쪽은 UTC 가 되고 그건 표기가 없는 것보다 나쁘다.
+ */
+function tzOpts() {
+  return timeZoneMode === "utc" ? { timeZone: "UTC" } : {};
+}
+
+/**
+ * 지금 쓰는 시간대의 이름 — `UTC` 또는 실행 PC 의 시간대(`GMT+9` · `KST`). 순수 함수가 아니다
+ * (모드와 브라우저 설정을 읽는다). 이름을 못 구하면 빈 문자열이다 — **지어내지 않는다**.
+ */
+function tzName() {
+  if (timeZoneMode === "utc") return "UTC";
+  try {
+    const parts = new Intl.DateTimeFormat("ko-KR", { timeZoneName: "short" })
+      .formatToParts(new Date());
+    const z = parts.find((p) => p.type === "timeZoneName");
+    return (z && z.value) || "";
+  } catch (_) { return ""; }
+}
+
+/** 시각 문자열 뒤에 붙일 접미사(` UTC` · ` GMT+9`). 이름이 없으면 아무것도 안 붙인다. */
+function tzSuffix() {
+  const n = tzName();
+  return n ? " " + n : "";
+}
+
+/**
+ * 시간대 설정과 화면 표기를 함께 바꾼다(P13-5).
+ *
+ * **툴바 버튼이 현재 시간대를 상시 보여주는 것**이 이 기능의 핵심이다 — 시각마다 접미사를
+ * 붙이면 화면이 지저분해지고, 아무 데도 안 붙이면 지금 상태로 돌아간다.
+ */
+function setTimeZoneMode(mode) {
+  timeZoneMode = mode === "utc" ? "utc" : "local";
+  const btn = document.getElementById("tz-btn");
+  if (btn) {
+    const n = tzName();
+    // 툴바가 빡빡하다 — 이모지와 이름 사이 공백을 빼 폭을 아낀다(P13-5 캡처에서 줄이 밀렸다)
+    btn.textContent = "🕓" + (n || (timeZoneMode === "utc" ? "UTC" : "현지"));
+    btn.classList.toggle("active", timeZoneMode === "utc");
+    btn.title = timeZoneMode === "utc"
+      ? "시각을 UTC 로 보고 있습니다 — 눌러서 현지 시각으로"
+      : "시각을 현지 시각으로 보고 있습니다 — 눌러서 UTC 로";
+  }
+}
+
+/** 토글 — 바뀐 시간대를 **이미 열려 있는 화면에도** 반영한다(안 하면 다시 열 때까지 옛 시각이 남는다). */
+function toggleTimeZone() {
+  setTimeZoneMode(timeZoneMode === "utc" ? "local" : "utc");
+  saveSettings({ timeZone: timeZoneMode });
+  refreshTimeViews();
+}
+
+/** 시각이 찍혀 있는 열린 화면들을 다시 그린다. */
+function refreshTimeViews() {
+  applyFilters();                                   // 사이드바 목록의 날짜
+  if (typeof onTimeline === "function") onTimeline();  // 타임라인 라벨
+  const panel = document.getElementById("panel");
+  if (panel && !panel.classList.contains("hidden") && panelLaunchId) {
+    const d = findLaunch(panelLaunchId);
+    if (d) openPanel(d);
+  }
+  if (!document.getElementById("pass-panel").classList.contains("hidden")) showPasses();
+  if (sidebarTab === "tonight") renderTonightList();
+}
+
+function fmtDate(iso, withZone) {
   if (!iso) return "미정";
   const d = new Date(iso);
   if (isNaN(d)) return escapeHtml(iso);
-  return d.toLocaleString("ko-KR", {
+  return d.toLocaleString("ko-KR", Object.assign({
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
-  });
+  }, tzOpts())) + (withZone ? tzSuffix() : "");
 }
 
 /** net까지 남은 시간 → "T-02:14:33" / 지났으면 "T+…" */
@@ -147,7 +215,8 @@ const TIMELINE_KO = {
 function fmtClock(ms) {
   const d = new Date(ms);
   if (isNaN(d)) return "";
-  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString("ko-KR",
+    Object.assign({ hour: "2-digit", minute: "2-digit", second: "2-digit" }, tzOpts()));
 }
 
 function tr(map, v) {

@@ -84,7 +84,9 @@ html, body {
   color: var(--text);
   border-radius: 7px;
   padding: 6px 10px;
-  width: 240px;
+  /* 버튼이 늘 때마다 툴바가 두 줄로 밀린다(기본 창 1280px). 검색창이 가장 넓어 여기서 아낀다.
+     P13-5 에서 시간대 버튼이 들어오며 실제로 밀렸고, 200px 로 줄여 한 줄로 되돌렸다. */
+  width: 200px;
   font-size: 13px;
   outline: none;
 }

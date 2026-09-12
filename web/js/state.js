@@ -31,6 +31,12 @@ let settingObserver = false;  // 지도 클릭으로 관측 위치 지정 중인
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
 const DEG = Math.PI / 180;
 
+// 시간대(P13-5). 이 앱은 시간이 핵심인데(카운트다운·순서표·발사 윈도우·통과 예측)
+// **어느 시간대인지 어디에도 안 적혀 있었다.** 발사는 UTC 로 이야기되는 영역이라
+// 표기 없이 현지 시각만 찍는 것은 조용한 모호함이다. 설정에 저장한다.
+let timeZoneMode = "local";   // "local" | "utc"
+let panelLaunchId = null;     // 열려 있는 발사 상세의 id — 시간대 전환 시 다시 그린다
+
 let terminatorTimer = null;  // 낮/밤 오버레이 분 단위 갱신 타이머
 
 // 발사 밀도 히트맵(P12-15). 마커와 **같은 필터 결과**를 쓰되 소스는 따로 둔다

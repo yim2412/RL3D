@@ -34,6 +34,7 @@ function keyAction(e) {
   const k = key.length === 1 ? key.toLowerCase() : key;
   if (k === "s") return "sidebar";
   if (k === "r") return "refresh";
+  if (k === "t") return "timezone";
   if (KEY_TOGGLES[k]) return "toggle:" + k;
   return null;
 }
@@ -96,6 +97,7 @@ const KEY_HELP = [
   ["/", "발사 검색으로"],
   ["S", "목록 사이드바 열기/닫기"],
   ["R", "강제 새로고침"],
+  ["T", "시간대 전환 (현지 ↔ UTC)"],
   ["1 2 3 4", "예정 · 성공 · 실패 · 부분 필터"],
   ["5", "위성 레이어"],
   ["6", "낮/밤 오버레이"],
@@ -137,5 +139,6 @@ function handleKey(e) {
   if (action === "help") { toggleKeyHelp(); return; }
   if (action === "sidebar") { toggleSidebar(); return; }
   if (action === "refresh") { forceRefresh(); return; }
+  if (action === "timezone") { toggleTimeZone(); return; }
   if (action.startsWith("toggle:")) applyKeyToggle(action.slice(7));
 }

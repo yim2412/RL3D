@@ -272,7 +272,8 @@ function windowText(d) {
   if (isNaN(s) || isNaN(e) || e <= s) return null;
   const mins = Math.round((e - s) / 60000);
   if (mins < 2) return null;  // 순간 발사(instantaneous)면 net 과 같아 의미 없음
-  const hhmm = (dt) => dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const hhmm = (dt) => dt.toLocaleTimeString("ko-KR",
+    Object.assign({ hour: "2-digit", minute: "2-digit" }, tzOpts()));
   const dur = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60 ? (mins % 60) + "분" : ""}`.trim() : `${mins}분`;
   return `${hhmm(s)} ~ ${hhmm(e)} (${dur})`;
 }
@@ -335,7 +336,7 @@ function openPanel(d) {
     ${d.fail_reason ? reasonBlock("실패 사유", d.fail_reason, "fail") : ""}
     ${d.hold_reason ? reasonBlock("지연·보류 사유", d.hold_reason, "warn") : ""}
     ${d.weather_concerns ? reasonBlock("기상 우려", d.weather_concerns, "warn") : ""}
-    ${row("발사 시각", fmtDate(d.net))}
+    ${row("발사 시각", fmtDate(d.net, true))}
     ${row("발사 윈도우", windowText(d))}
     ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
     ${entityRow("로켓", d.rocket, "rocket")}
@@ -358,6 +359,7 @@ function openPanel(d) {
     b.addEventListener("click", () => showEntityStats(b.dataset.kind, b.dataset.val)));
   bindFavBtn(body);
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
+  panelLaunchId = String(d.id);  // 시간대를 바꾸면 이 패널을 다시 그린다(P13-5)
   panel.classList.remove("hidden");
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
   if (typeof d.lng === "number" && typeof d.lat === "number")
@@ -367,6 +369,7 @@ function openPanel(d) {
 function closePanel() {
   document.getElementById("panel").classList.add("hidden");
   satPanelId = null;
+  panelLaunchId = null;
   clearAscentPath();   // 패널을 닫으면 근사선도 같이 지운다(P12-4) — 남으면 무엇의 선인지 알 수 없다
 }
 

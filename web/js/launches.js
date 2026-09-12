@@ -368,7 +368,8 @@ async function loadArchive(year) {
 }
 
 function tlLabelDate(ms) {
-  return new Date(ms).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+  return new Date(ms).toLocaleDateString("ko-KR",
+    Object.assign({ year: "numeric", month: "long", day: "numeric" }, tzOpts()));
 }
 
 function onTimeline() {

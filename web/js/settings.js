@@ -55,6 +55,7 @@ function applySettings(s) {
   if (s.observer && typeof s.observer.lat === "number" && typeof s.observer.lng === "number") {
     observer = s.observer;
   }
+  setTimeZoneMode(s.timeZone === "utc" ? "utc" : "local");   // 버튼 문구도 여기서 선다(P13-5)
   if (s.basemap === "satellite" || s.basemap === "dark") setBasemap(s.basemap);
   const cam = s.camera;
   if (cam && typeof cam.lng === "number" && typeof cam.lat === "number"
