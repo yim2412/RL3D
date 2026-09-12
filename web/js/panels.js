@@ -317,6 +317,9 @@ function openPanel(d) {
   const precision = netPrecisionNote(d.net_precision);
   const progs = (d.programs || []).map((p) =>
     `<span class="prog-tag">${escapeHtml(p)}</span>`).join("");
+  // 발사 궤적 근사선(P12-4) — 그리고, 무엇을 가정했는지를 **패널 위쪽에** 적는다.
+  // 선만 그리고 가정을 안 적으면 실측처럼 읽힌다(이 항목의 유일한 전제 조건).
+  const ascentInfo = ascentNoteHtml(ascentNote(drawAscentPath(d)));
   body.innerHTML = `
     ${d.image ? `<img src="${escapeHtml(d.image)}" alt="" onerror="this.remove()" />` : ""}
     <h2>${escapeHtml(d.name)}</h2>
@@ -326,6 +329,7 @@ function openPanel(d) {
     ${progs}
     ${cd}
     ${precision ? `<div class="net-precision">⚠ ${escapeHtml(precision)}</div>` : ""}
+    ${ascentInfo}
     ${vidLinksBlock(d)}
     ${d.fail_reason ? reasonBlock("실패 사유", d.fail_reason, "fail") : ""}
     ${d.hold_reason ? reasonBlock("지연·보류 사유", d.hold_reason, "warn") : ""}
@@ -361,6 +365,7 @@ function openPanel(d) {
 function closePanel() {
   document.getElementById("panel").classList.add("hidden");
   satPanelId = null;
+  clearAscentPath();   // 패널을 닫으면 근사선도 같이 지운다(P12-4) — 남으면 무엇의 선인지 알 수 없다
 }
 
 // ── 위성 상세 패널 ────────────────────────────────────────────────────────────

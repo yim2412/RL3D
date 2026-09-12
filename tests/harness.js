@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "focus.js",
-  "sats.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
+  "sats.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -38,10 +38,16 @@ const STATE_KEYS = [
 function makeEl(id) {
   let hidden = true;
   const classes = new Set();
+  let html = "";
+  const children = [];
   return {
-    id, checked: false, value: "", textContent: "", innerHTML: "",
+    id, checked: false, value: "", textContent: "",
     dataset: {}, style: {}, disabled: false,
     handlers: {},
+    // 실제 DOM 은 innerHTML 을 덮어쓰면 자식이 **날아간다**. 스텁이 그걸 안 하면
+    // 앞서 열었던 패널의 자식이 남아 "안 그렸는데 그려졌다"로 잘못 통과한다(P12-4 에서 실제로 겪음).
+    get innerHTML() { return html; },
+    set innerHTML(v) { html = v; children.length = 0; },
     get hidden() { return hidden; },
     classList: {
       add: (c) => { if (c === "hidden") hidden = true; else classes.add(c); },
@@ -56,8 +62,8 @@ function makeEl(id) {
     addEventListener(ev, fn) { this.handlers[ev] = fn; },
     /** 테스트에서 클릭 등을 직접 발생시킨다(마우스 자동화 대신). */
     fire(ev, arg) { if (this.handlers[ev]) this.handlers[ev](arg); },
-    children: [],
-    appendChild(c) { this.children.push(c); return c; },
+    children,
+    appendChild(c) { children.push(c); return c; },
     querySelectorAll: () => ({ forEach() {} }),
     querySelector: () => null,
   };

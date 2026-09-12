@@ -1298,5 +1298,117 @@ const { loadApp, group, check, done } = require("./harness");
   c2.applySettings({});
   check("설정이 없으면 꺼진 채로", [s2.heatOn, e2("toggle-heat").checked], [false, false]);
 }
+
+// ── 발사 궤적 근사선 (P12-4) ─────────────────────────────────────────────────
+// 외부 정답표가 없다(실측 텔레메트리가 없어서 이 기능이 있는 것이다) → **물리 불변식**과
+// 널리 알려진 실제 발사 방위각으로 잰다. 조용히 깨지는 자리: 방위각 해의 선택(순행/역행)과
+// 경도 정규화 — 둘 다 선은 "그럴듯하게" 그려진다.
+{
+  const { ctx, state, el, map } = loadApp();
+  group("발사 방위각 (ascentAzimuth)");
+  const A = (inc, lat) => Number(ctx.ascentAzimuth(inc, lat).toFixed(1));
+
+  check("경사 = 발사장 위도면 정동(최소 에너지)", A(28.5, 28.5), 90);
+  check("적도에서 경사 0° 도 정동", A(0, 0), 90);
+  // 케네디(28.6°N)에서 ISS 궤도(51.6°) — 실제 발사 방위각은 약 44~45°
+  check("케네디 → ISS 궤도는 북동 45° 부근", A(51.6, 28.6), 45);
+  // 바이코누르(45.9°N)에서 같은 궤도 — 실제 약 61~65°
+  check("바이코누르 → ISS 궤도는 더 북쪽으로", A(51.6, 45.9), 63.2);
+  // 반덴버그(34.7°N) 태양동기 — 역행이라 **남서쪽**으로 나간다
+  check("반덴버그 → 태양동기는 남서 190° 부근", A(98, 34.7), 189.7);
+  check("극궤도(90°)는 정남", A(90, 34.7), 180);
+  // i < |φ| 는 물리적으로 불가능하다 — 예외를 던지면 선만 조용히 사라진다
+  check("위도보다 낮은 경사는 정동으로 클램프", A(20, 28.5), 90);
+  check("남반구 발사장도 같다(위도 부호 무관)", A(45, -45), 90);
+
+  // 같은 발사장에서 경사를 올리면 방위각은 정동에서 북쪽으로 단조 이동한다
+  const seq = [30, 40, 50, 60, 70, 80].map((i) => ctx.ascentAzimuth(i, 28.5));
+  check("경사가 커질수록 북쪽으로(단조 감소)",
+    seq.every((v, i) => i === 0 || v < seq[i - 1]), true);
+
+  group("경사각 가정 (ascentAssumption)");
+  const P = (orbit, lat = 28.5, lng = -80.6) => ctx.ascentPath({ orbit, lat, lng });
+  check("태양동기는 표의 값을 쓴다", P("Sun-Synchronous Orbit").inc, 98);
+  check("극궤도는 90°", P("Polar Orbit").inc, 90);
+  check("저궤도는 발사장 위도(모른다는 뜻)", [P("Low Earth Orbit").inc, P("Low Earth Orbit").vague], [28.5, true]);
+  check("정지궤도 전이도 발사장 위도지만 모르는 게 아니다",
+    P("Geostationary Transfer Orbit").vague, false);
+  check("탄도 비행은 그리지 않는다(궤도 진입이 없다)", P("Suborbital"), null);
+  check("모르는 궤도 이름은 Unknown 으로 본다(표에 없다고 죽지 않는다)",
+    [P("Cislunar Gateway Orbit").inc, P("Cislunar Gateway Orbit").vague], [28.5, true]);
+  check("좌표 없는 발사는 그릴 수 없다", ctx.ascentPath({ orbit: "Low Earth Orbit", lat: null, lng: null }), null);
+  check("남반구 발사장은 위도의 절댓값을 경사로 쓴다(음수 경사는 없다)",
+    P("Low Earth Orbit", -39.2, 177.8).inc, 39.2);
+
+  group("근사 경로 (ascentPath)");
+  const path = P("Low Earth Orbit");
+  const hav = ([lng1, lat1], [lng2, lat2]) => {
+    const R = 6371, r = Math.PI / 180;
+    const dLat = (lat2 - lat1) * r, dLng = (lng2 - lng1) * r;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  };
+  check("발사장에서 시작한다", path.points[0].map((v) => Number(v.toFixed(3))), [-80.6, 28.5]);
+  check("점이 31개(0~30)", path.points.length, 31);
+  check("끝점까지 약 2,200km(상승 구간)", Math.round(hav(path.points[0], path.points[30]) / 100) * 100, 2200);
+  check("모든 점이 -180~180 안에 있다",
+    path.points.every(([lng, lat]) => lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90), true);
+  // 정동 발사는 위도가 거의 안 변해야 한다(경사 = 위도일 때)
+  check("정동 발사는 위도가 크게 안 변한다",
+    Math.abs(path.points[30][1] - 28.5) < 4, true);
+  // 태양동기(남서)는 위도가 **내려가야** 한다 — 해를 잘못 고르면 북으로 올라간다
+  check("태양동기는 남쪽으로 내려간다",
+    P("Sun-Synchronous Orbit", 34.7, -120.6).points[30][1] < 34.7, true);
+
+  group("날짜변경선 (근사선)");
+  // 마샬제도·뉴질랜드처럼 날짜변경선 옆 발사장은 정동 2,200km 로 실제로 선을 넘는다
+  const east = ctx.ascentPath({ orbit: "Low Earth Orbit", lat: 9, lng: 167.7 });
+  check("넘는 경로도 경도가 180 을 안 넘는다(정규화)",
+    east.points.every(([lng]) => lng >= -180 && lng <= 180), true);
+  check("끊어 그리지 않으면 지도를 가로지르는 가짜 직선이 된다",
+    ctx.splitAtDateline(east.points).length, 2);
+
+  group("가정 문구 (ascentNote)");
+  const n1 = ctx.ascentNote(P("Sun-Synchronous Orbit", 34.7, -120.6));
+  check("경사와 방위를 숫자로 적는다", n1.head, "가정: 경사 98.0° (태양동기) · 방위 190° 남쪽");
+  check("아는 궤도에는 경고가 없다", n1.warn, null);
+  const n2 = ctx.ascentNote(P("Low Earth Orbit"));
+  check("저궤도에는 모른다는 것을 적는다", n2.warn.includes("28~97°"), true);
+  check("그릴 수 없으면 문구도 없다", ctx.ascentNote(null), null);
+  check("나침반 방위", [ctx.compassKo(0), ctx.compassKo(90), ctx.compassKo(190), ctx.compassKo(350)],
+    ["북", "동", "남", "북"]);
+
+  group("근사선 배선 (상세 패널)");
+  state.map = map;
+  map.stubSource("launch-track");
+  map.stubSource("launches");
+  const seg = () => {
+    const d = map.data("launch-track");
+    return d && d.geometry ? d.geometry.coordinates.length : 0;
+  };
+  ctx.openPanel({ id: "1", name: "테스트 발사", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
+                  orbit: "Sun-Synchronous Orbit", lat: 34.7, lng: -120.6 });
+  check("패널을 열면 선이 그려진다", seg(), 1);
+  check("패널에 가정을 적는다(선만 그리면 실측처럼 읽힌다)",
+    el("panel-body").innerHTML.includes("가정: 경사 98.0°"), true);
+  // 맨 아래에 붙이면 긴 패널에서 스크롤 끝까지 내려야 보인다 — "명시했다"고 할 수 없다.
+  check("문구는 패널 위쪽(발사 시각보다 먼저)에 온다",
+    el("panel-body").innerHTML.indexOf("상승 궤적") < el("panel-body").innerHTML.indexOf("발사 시각"), true);
+  // 배선 — splitAtDateline 을 **그리는 쪽이** 실제로 타는지. 순수 함수 테스트만으로는
+  // 끊기 로직이 맞아도 drawAscentPath 가 안 부르면 지도를 가로지르는 가짜 직선이 남는다.
+  ctx.openPanel({ id: "3", name: "날짜변경선 옆 발사", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
+                  orbit: "Low Earth Orbit", lat: 9, lng: 167.7 });
+  check("그릴 때도 날짜변경선에서 끊는다", seg(), 2);
+
+  ctx.closePanel();
+  check("패널을 닫으면 선도 지운다", map.data("launch-track"), { type: "FeatureCollection", features: [] });
+
+  ctx.openPanel({ id: "2", name: "탄도 비행", outcome: "success", net: "2026-01-01T00:00:00Z",
+                  orbit: "Suborbital", lat: 32.99, lng: -106.97 });
+  check("탄도 비행은 선도 문구도 없다",
+    [map.data("launch-track"), el("panel-body").innerHTML.includes("가정: 경사")],
+    [{ type: "FeatureCollection", features: [] }, false]);
+}
   done();
 })();

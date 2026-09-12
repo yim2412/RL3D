@@ -346,6 +346,20 @@ html, body {
 .offline-badge:hover { border-color: #a06f28; }
 .offline-badge.hidden { display: none; }
 
+/* 발사 궤적 근사선 안내 (P12-4) — 선만 그리면 실측처럼 읽힌다. */
+.ascent-note {
+  margin: 12px 0 4px;
+  padding: 8px 10px;
+  font-size: 11px; line-height: 1.5;
+  background: rgba(125, 211, 252, .07);
+  border: 1px solid rgba(125, 211, 252, .28);
+  border-radius: 7px;
+}
+.ascent-note b { font-size: 12px; color: #7dd3fc; }
+.an-head { margin-top: 4px; color: var(--text); }
+.an-warn { margin-top: 4px; color: #fcd34d; }
+.an-foot { margin-top: 4px; color: var(--muted); }
+
 /* 발사 밀도 히트맵 범례 (P12-15) — 좌하단. 오프라인·업데이트 배지 위로 쌓는다. */
 .heat-legend {
   position: absolute;
