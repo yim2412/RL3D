@@ -192,15 +192,23 @@ function showPasses() {
 // 관심 위성 + visual 그룹을 한 번에 훑어 최대고도 순으로 세운다.
 const TONIGHT_HOURS = 24;
 
-/** 훑을 대상: 관심 위성(전부) + visual 그룹. norad 로 중복 제거. */
+/**
+ * 훑을 대상: **지금 로드된 위성 전부**(norad 중복 제거).
+ *
+ * 원래는 `관심 위성이면 항상 포함`이라는 조건이 있었는데 두 가지로 틀렸다(2026-09-12 점검):
+ * ① `favSats` 는 **Set** 인데 `.includes()` 를 불러 **예외로 죽었다** — 관측지가 있는 상태의
+ *    "오늘 밤" 탭이 도입(v1.7.0) 이래 줄곧 아무 일도 안 했다(화면에는 오류가 안 보인다).
+ * ② 예외를 고쳐도 그 조건은 **아무 일도 하지 않는다**: `satrecs` 에는 `loadSatellites` 가
+ *    SGP4 레코드를 만든 것만 담으므로 `rec` 없는 항목이 없다.
+ *
+ * 관심 위성이라도 **TLE 가 로드돼 있지 않으면 훑을 수 없다** — 그건 그룹 선택의 문제지
+ * 이 함수가 해결할 수 있는 것이 아니다.
+ */
 function tonightTargets() {
   const seen = new Set();
   const out = [];
   for (const r of satrecs) {
-    const isFav = favSats && favSats.includes(r.norad);
-    // visual 그룹 여부는 로드된 satrecs 만으로 알 수 없다 → 관심 위성은 항상,
-    // 나머지는 현재 로드된 것 전부를 본다(그룹 선택이 곧 사용자의 관심 범위다).
-    if (!isFav && !r.rec) continue;
+    if (!r || !r.rec) continue;          // 방어 — 없으면 통과 계산에서 죽는다
     if (seen.has(r.norad)) continue;
     seen.add(r.norad);
     out.push(r);

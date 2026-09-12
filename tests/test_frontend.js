@@ -1866,5 +1866,44 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("로켓 관점에는 붙지 않는다",
     el("stats-body").innerHTML.includes("이 발사장은 통산"), false);
 }
+
+// ── 오늘 밤 탭이 관측지가 있을 때 실제로 도는가 (2026-09-12 정기 점검) ─────────
+// **도입(v1.7.0) 이래 줄곧 죽어 있었다**: `favSats` 는 Set 인데 `.includes()` 를 불러
+// tonightTargets 에서 TypeError 가 났다. 탭이 안 바뀔 뿐 화면에는 오류가 안 보인다.
+// 기존 테스트는 **관측지가 없는 경로만** 덮고 있었다 — 막힌 안내가 나오는 쪽이라 예외가 안 났다.
+{
+  const { ctx, state, el, map } = loadApp({ realSatellite: true });
+  group("오늘 밤 탭 — 관측지가 있을 때");
+  state.map = map;
+  state.sidebarTab = "tonight";
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  state.satrecs = [];
+  ctx.renderTonightList();
+  check("위성이 없으면 그 이유를 말한다(예외로 죽지 않는다)",
+    el("sidebar-list").innerHTML.includes("위성 데이터"), true);
+
+  // 관심 위성이 있는 상태 — 여기서 favSats 를 만진다(버그가 났던 자리)
+  state.favSats = new Set(["25544"]);
+  const tle1 = "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005";
+  const tle2 = "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537";
+  const rec = ctx.satellite.twoline2satrec(tle1, tle2);
+  state.satrecs = [{ name: "ISS (ZARYA)", norad: 25544, rec: rec }];
+  check("대상 목록이 나온다(Set 에 .includes 를 부르면 여기서 예외로 죽는다)",
+    ctx.tonightTargets().map((t) => t.norad), [25544]);
+  // rec 없는 항목은 통과 계산에서 죽으므로 걸러야 한다
+  state.satrecs = [{ name: "ISS (ZARYA)", norad: 25544, rec: rec },
+                   { name: "레코드 없음", norad: 40000, rec: null },
+                   { name: "중복", norad: 25544, rec: rec }];
+  check("rec 없는 항목은 빼고, 같은 NORAD 는 한 번만",
+    ctx.tonightTargets().map((t) => t.norad), [25544]);
+  state.satrecs = [{ name: "ISS (ZARYA)", norad: 25544, rec: rec }];
+
+  // 전체 경로 — 예외 없이 목록이나 "없음" 안내 중 하나가 나와야 한다
+  ctx.renderTonightList();
+  const html = el("sidebar-list").innerHTML;
+  check("관측지가 있으면 목록을 그리거나 '보이는 통과 없음'을 말한다(둘 다 아니면 죽은 것이다)",
+    html.includes("sb-row") || html.includes("눈에 보이는 통과가 없습니다"), true);
+  check("막힌 안내가 아니다", html.includes("관측 위치가 필요합니다"), false);
+}
   done();
 })();
