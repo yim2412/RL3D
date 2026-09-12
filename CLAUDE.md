@@ -14,7 +14,9 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | 파일 | 역할 |
 |------|------|
 | `main.py` | pywebview 창 생성 + `Api` 브릿지 클래스(JS→파이썬 호출 창구) |
-| `api_client.py` | 외부 API 호출·정규화·디스크 캐싱. **엔드포인트 URL 상수는 전부 이 파일 상단에** |
+| `api_client.py` | 외부 API **호출·캐싱**과 설정 저장. **엔드포인트 URL 상수는 전부 이 파일 상단에**. 테스트가 `CACHE_DIR`·`_http_get` 을 **재대입해서** 격리하므로, 여기 것을 다른 모듈로 옮길 때는 전역 8번을 먼저 본다 |
+| `api_parsing.py` | 응답·문자열 → 값 (순수). `_parse_launch(es)`·`_parse_tle`·`_parse_satcat`·`parse_version`·`is_newer`. 네트워크도 캐시도 없다 |
+| `api_errors.py` | 예외 → 사람이 읽는 말. 상태코드별 문구 표를 **한 곳에** |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
 | `web/js/*.js` | UI 로직 15개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `trajectory` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
@@ -64,6 +66,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   인코딩 일반 규칙은 전역 `~/.claude/CLAUDE.md`. (2026-08-15 전수 점검에서 이 프로젝트 파이썬·JS 는
   전부 `encoding="utf-8"` 명시로 위험 지점 0건이었다 — 그 상태를 유지한다.)
 - **고쳤으면 실제로 돌려본다.** `python api_client.py` 가 기본 스모크. UI를 고쳤으면 `python main.py`로 실행 확인.
+- **`api_parsing.py`·`api_errors.py` 는 `api_client.py` 가 모듈 경유로 부른다**(`api_parsing._parse_launches(...)`).
+  이름 import 로 당겨오지 않는다 — 지금은 재대입이 없지만, 이 짝에서 재대입되는 값(`CACHE_DIR`·`_http_get`)이
+  **테스트의 격리 수단**이라 같은 규칙을 지킨다(전역 8번).
 - **`api_client.py` 의 캐시·TTL·아카이브·설정을 건드렸으면 `python tests/test_cache.py`** — HTTP 를
   주입해 **언제 부르고 실패하면 무엇을 돌려주는지**를 잰다(네트워크 불필요). TTL·폴백은 틀려도
   예외가 안 나고 **요청 수만 조용히 늘어난다** — 429 가 뜨고 나서야 안다.

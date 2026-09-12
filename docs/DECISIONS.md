@@ -460,3 +460,65 @@ P11-5 때도 있던 위험이고, 쪼갤 때마다 다시 생긴다.
 
 앱 동작이 바뀌지 않았다. P11-5 때와 같은 판단이다 — **사용자가 보는 것이 그대로면
 릴리스할 것이 없다.** CHANGELOG 에는 `[미출시]` 로 남겨 다음 기능 릴리스에 묶인다.
+
+---
+
+## P12-19 `api_client.py` 분리 (2026-09-12, 버전 변화 없음)
+
+### JS 분리와 사정이 달랐다 — 테스트가 전역 재대입으로 격리한다
+
+`sats.js`(P12-23)는 줄을 옮기기만 하면 됐다. `api_client.py` 는 아니었다:
+
+```python
+# tests/test_cache.py — 격리 수단이 곧 전역 재대입이다
+api_client.CACHE_DIR = os.path.join(self.tmp, "cache")
+api_client._http_get = fake
+```
+
+이 넷(`APP_DIR`·`CACHE_DIR`·`SETTINGS_PATH`·`_http_get`)을 다른 모듈로 옮기면
+**전역 규칙 8번**(재할당되는 전역은 이름 import 금지)에 정면으로 걸린다. 더 나쁜 건
+**패치가 안 먹는데 테스트가 통과할 수 있다**는 것이다 — 임시 디렉터리 대신 진짜
+`%APPDATA%` 캐시에 쓰면서.
+
+그래서 경계를 **"전역 재대입이 없는 곳"** 에 그었다. 착수 전에 그것부터 쟀다:
+
+- `grep "global "` → **0건**
+- AST 로 옮길 함수 12개가 참조하는 모듈 전역을 전부 나열 → `MAX_VID_URLS`·`MAX_UPDATES`·
+  `log`·`HTTP_ERROR_MESSAGES`·`TIMEOUT_MESSAGE` 뿐이고 **전부 같이 옮기면 되는 상수**
+- 테스트가 패치하는 이름과 겹치는 것 → **없음**(옮길 함수들은 호출만 된다)
+
+결과: 722 → **480**(상수·HTTP·캐시·설정·`get_*`·`check_update`·스모크) +
+**`api_parsing.py` 225** + **`api_errors.py` 50**.
+
+### 전면 분리(패키지화)를 기각한 이유
+
+`http`·`cache`·`launches`·`sats`·`update` 로 전부 나누는 안도 검토했다. 가장 깨끗하지만
+`test_cache.py` 46개의 패치 대상을 전부 옮겨야 하고, **잘못 옮기면 위의 조용한 실패**가 된다.
+남는 480줄은 "외부에서 가져와 캐시한다"는 **한 관심사**라 더 쪼갤 이유도 약하다.
+
+### 호출은 모듈 경유로
+
+옮긴 함수들은 재대입되지 않으니 `from api_parsing import _parse_launches` 도 동작한다.
+그래도 `api_parsing._parse_launches(...)` 로 쓴다 — **같은 파일의 이웃한 값들이
+재대입되는 짝**이라, 여기만 이름 import 를 쓰면 다음 사람이 규칙의 경계를 다시 판단해야 한다.
+
+### 모듈 이름에 `api_` 를 붙였다
+
+`parsing.py`·`errors.py` 는 최상위 이름이라 exe 번들 안에서 서드파티 최상위 모듈과
+겹칠 수 있고, **그 실패는 조용하다**(엉뚱한 모듈이 import 된다). `api_client.py` 와 짝이 맞기도 한다.
+
+### 검증
+
+- `test_parsing` 63 · `test_cache` 46 전부 통과, `python api_client.py` 스모크 5개 `[OK]`
+- 변이 6종: 버전 비교를 문자열로(cache 5건 실패) · TLE 3줄 재동기화 제거(parsing 1건) ·
+  403 문구를 404 문구로(cache 1건) · 타임아웃 판정 무력화(parsing 2건) ·
+  `_friendly_error` 가 상태코드 표를 안 봄(parsing 3건) — **전부 검출**
+- 앱 실행 확인(로그 무오류·캡처)
+
+### 이번에 한 실수 하나
+
+변이 스크립트가 파이썬 경로를 못 찾아 중간에 죽으면서 **원본 복구가 실행되지 않아**
+`api_client.py` 에 변이가 한 줄 남았다. 곧바로 `grep` 으로 찾아 지웠지만,
+**복구를 `finally` 에 두지 않은 것이 원인**이다. 이후 변이 스크립트는 `finally` 로 복구한다.
+같은 실행에서 `capture_fixtures.py` 를 `--help` 인 줄 알고 돌려 **픽스처 3개가 실제로
+다시 받아졌다** — `git checkout` 으로 되돌렸다. 골든은 의도할 때만 바꾼다.

@@ -3,11 +3,14 @@
 Launch Library 2(발사)와 Celestrak(위성 TLE)을 호출·정규화·디스크 캐싱한다.
 파이썬이 네트워크/캐싱을 전담하고, 결과 JSON만 프론트엔드로 넘긴다.
 
+응답 정규화는 `api_parsing.py`, 에러 문구는 `api_errors.py` 로 떼어냈다(P12-23 다음의 P12-19).
+**둘 다 모듈 경유로 부른다**(`api_parsing._parse_launches(...)`) — 이름 import 로 당겨오면
+나중에 그 이름이 재대입될 때 이쪽에 안 보인다(전역 규칙 8번). 지금은 재대입이 없지만,
+이 파일의 `CACHE_DIR`·`_http_get` 은 **테스트가 재대입해서** 격리하는 값이라 같은 규칙을 지킨다.
+
 터미널 스모크: `python api_client.py` → 소스별 [OK]/[FAIL]·건수 출력.
 """
 
-import csv
-import io
 import json
 import logging
 import os
@@ -16,7 +19,8 @@ import time
 import urllib.error
 import urllib.request
 
-import satcat_codes
+import api_errors
+import api_parsing
 
 # 핸들러 설정은 진입점(main.py → applog)에서만 한다 — 여기선 기록만 남긴다.
 log = logging.getLogger(__name__)
@@ -167,128 +171,6 @@ def save_settings(patch):
 
 
 # ── 발사(Launch Library 2) ────────────────────────────────────────────────────
-def _outcome_from_status(status_abbrev):
-    """LL2 status.abbrev → 정규화된 outcome."""
-    s = (status_abbrev or "").lower()
-    if s == "success":
-        return "success"
-    if s == "failure":
-        return "failure"
-    if s in ("partial failure", "partial"):
-        return "partial"
-    return "upcoming"  # TBD / Go / TBC / Hold 등 예정 계열
-
-
-MAX_VID_URLS = 4     # 중계 링크는 상위 몇 개만(응답에 10개 넘게 오는 건도 있다)
-MAX_UPDATES = 6      # 발사 소식도 최신 몇 건만 — 캐시 파일이 커지는 걸 막는다
-
-
-def _parse_vid_urls(item):
-    """중계 링크 → [{title, url}]. description 은 길어서 버린다."""
-    out = []
-    for v in (item.get("vidURLs") or []):
-        if not isinstance(v, dict):
-            continue
-        url = v.get("url")
-        if not url:
-            continue
-        out.append({"title": v.get("title") or "중계", "url": url})
-        if len(out) >= MAX_VID_URLS:
-            break
-    return out
-
-
-def _parse_updates(item):
-    """발사 소식 → 최신순 [{comment, created_on, info_url}]."""
-    items = [u for u in (item.get("updates") or []) if isinstance(u, dict) and u.get("comment")]
-    items.sort(key=lambda u: u.get("created_on") or "", reverse=True)
-    return [{"comment": u.get("comment"),
-             "created_on": u.get("created_on"),
-             "info_url": u.get("info_url")} for u in items[:MAX_UPDATES]]
-
-
-def _parse_launch(item):
-    """LL2 발사 1건 → 정규화 dict. 좌표 없으면 None(지도에 못 찍음)."""
-    pad = item.get("pad") or {}
-    location = pad.get("location") or {}
-    lat, lng = pad.get("latitude"), pad.get("longitude")
-    if lat is None or lng is None:
-        return None
-
-    rocket = item.get("rocket") or {}
-    config = rocket.get("configuration") or {}
-    provider = item.get("launch_service_provider") or {}
-    status = item.get("status") or {}
-    mission = item.get("mission") or {}
-    image = item.get("image")
-
-    return {
-        "id": item.get("id"),
-        "name": item.get("name"),
-        "net": item.get("net"),
-        "status": status.get("name"),
-        "outcome": _outcome_from_status(status.get("abbrev")),
-        "rocket": config.get("full_name") or config.get("name"),
-        "provider": provider.get("name"),
-        "provider_country": provider.get("country_code"),
-        "pad_name": pad.get("name"),
-        "location_name": location.get("name"),
-        "lat": float(lat),
-        "lng": float(lng),
-        "mission_name": mission.get("name"),
-        "mission_type": mission.get("type"),
-        "mission_desc": mission.get("description"),
-        "orbit": ((mission.get("orbit") or {}).get("name")),
-        "image": image,
-        # 실패/지연(홀드) 사유 — 있을 때만 채워짐(상세 모드)
-        "fail_reason": item.get("failreason"),
-        "hold_reason": item.get("holdreason"),
-        # 아래는 이미 detailed 응답에 들어오던 값들(추가 요청 없음)
-        "vid_urls": _parse_vid_urls(item),
-        "webcast_live": bool(item.get("webcast_live")),
-        "patch": ((item.get("mission_patches") or [{}])[0] or {}).get("image_url"),
-        "updates": _parse_updates(item),
-        "window_start": item.get("window_start"),
-        "window_end": item.get("window_end"),
-        # net 이 어디까지 확정인지(Second/Hour/Day/Month…) — 카운트다운의 신뢰도
-        "net_precision": (item.get("net_precision") or {}).get("name"),
-        "programs": [p.get("name") for p in (item.get("program") or [])
-                     if isinstance(p, dict) and p.get("name")],
-        "pad_count": item.get("pad_launch_attempt_count"),
-        "agency_year_count": item.get("agency_launch_attempt_count_year"),
-        "probability": item.get("probability"),
-        "weather_concerns": item.get("weather_concerns"),
-    }
-
-
-def _parse_launches(payload):
-    out = []
-    for item in payload.get("results", []) or []:
-        if not isinstance(item, dict):
-            continue  # results 안에 null 이 섞여 오는 경우가 있다
-        try:
-            parsed = _parse_launch(item)
-        except (TypeError, ValueError, AttributeError, KeyError) as e:
-            # 1건 실패가 전체를 죽이지 않게. 다만 조용히 사라지면 API 필드 변경을
-            # 눈치채지 못한다 — id 와 사유를 남긴다.
-            log.warning("발사 1건 파싱 실패 id=%s: %s", item.get("id"), e)
-            continue
-        if parsed:
-            out.append(parsed)
-    return out
-
-
-def _dedupe_launches(items):
-    """id 기준 중복 제거(먼저 온 항목 우선). id가 없는 건은 그대로 남긴다."""
-    seen, out = set(), []
-    for d in items:
-        key = d.get("id")
-        if key is not None:
-            if key in seen:
-                continue
-            seen.add(key)
-        out.append(d)
-    return out
 
 
 def get_launches(force=False):
@@ -302,15 +184,15 @@ def get_launches(force=False):
         return {"launches": cached, "stale": False, "error": None, "age": age}
 
     try:
-        upcoming = _parse_launches(json.loads(_http_get(LL2_UPCOMING)))
-        previous = _parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
+        upcoming = api_parsing._parse_launches(json.loads(_http_get(LL2_UPCOMING)))
+        previous = api_parsing._parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
         # 막 발사된 건은 LL2가 upcoming·previous 양쪽에 내보낸다 → id로 중복 제거.
         # (안 하면 마커·통계·티커에 같은 발사가 두 번 잡힌다. previous 쪽이 결과가 최신)
-        launches = _dedupe_launches(previous + upcoming)
+        launches = api_parsing._dedupe_launches(previous + upcoming)
         _cache_write("launches.json", launches)
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
+        msg = api_errors._friendly_error(e)
         log.warning("발사 조회 실패(%s) — %s", e, "오래된 캐시 사용" if cached is not None else "캐시 없음")
         if cached is not None:
             return {"launches": cached, "stale": True, "error": msg, "age": age}
@@ -328,7 +210,7 @@ def _fetch_launch_pages(url, max_pages):
     launches, pages = [], 0
     while url and pages < max_pages:
         payload = json.loads(_http_get(url))
-        launches.extend(_parse_launches(payload))
+        launches.extend(api_parsing._parse_launches(payload))
         url = payload.get("next")
         pages += 1
         if url and pages < max_pages:
@@ -364,7 +246,7 @@ def get_archive(year, force=False):
         return {"launches": launches, "year": year, "stale": False, "error": None,
                 "truncated": truncated}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
+        msg = api_errors._friendly_error(e)
         log.warning("아카이브 %s 조회 실패: %s", year, e)
         if cached is not None:
             return {"launches": cached, "year": year, "stale": True, "error": msg,
@@ -384,20 +266,6 @@ def _unpack_archive_cache(cached):
 
 
 # ── 위성(Celestrak TLE) ───────────────────────────────────────────────────────
-def _parse_tle(text):
-    """TLE 텍스트(3줄 1세트: 이름/L1/L2) → 위성 dict 리스트."""
-    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
-    out = []
-    i, n = 0, len(lines)
-    while i <= n - 3:
-        name, l1, l2 = lines[i], lines[i + 1], lines[i + 2]
-        if l1.startswith("1 ") and l2.startswith("2 "):
-            out.append({"name": name.strip(), "norad_id": l1[2:7].strip(),
-                        "tle1": l1, "tle2": l2})
-            i += 3
-        else:
-            i += 1  # 3줄 정렬이 어긋났으면 한 줄씩 밀며 재동기화(헤더·잡음 줄 방어)
-    return out
 
 
 def _get_group_tle(group, force=False):
@@ -407,14 +275,14 @@ def _get_group_tle(group, force=False):
     if not force and cached is not None and age is not None and age < TTL_TLE:
         return cached, False, None
     try:
-        sats = _parse_tle(_http_get(CELESTRAK_GP.format(group=group)))
+        sats = api_parsing._parse_tle(_http_get(CELESTRAK_GP.format(group=group)))
         cap = (SATELLITE_GROUP_CATALOG.get(group) or {}).get("cap")
         if cap:
             sats = sats[:cap]  # 대형 그룹은 상한까지만(렌더 성능)
         _cache_write(name, sats)
         return sats, False, None
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
+        msg = api_errors._friendly_error(e)
         log.warning("TLE 그룹 %s 조회 실패: %s", group, e)
         if cached is not None:
             return cached, True, msg
@@ -453,37 +321,6 @@ def get_satellites(force=False, groups=None):
 # **무엇인지**(위성체/로켓몸체/잔해)와 발사일·소유국·발사장·크기를 준다.
 # TLE 와 같은 GROUP 단위로 받아 같은 캐시 구조를 쓴다(조인은 프론트에서 NORAD 로).
 
-def _parse_satcat(text):
-    """SATCAT CSV → {norad: {...}} 정규화.
-
-    1건 파싱 실패가 나머지를 날리지 않게 행마다 감싼다(전역 규칙 7번).
-    코드는 여기서 사람 말로 바꾼다 — 프론트가 표를 또 갖지 않게.
-    """
-    out = {}
-    reader = csv.DictReader(io.StringIO(text))
-    for row in reader:
-        try:
-            norad = int((row.get("NORAD_CAT_ID") or "").strip())
-        except (TypeError, ValueError):
-            continue  # NORAD 가 없으면 조인할 수 없다 — 이 행만 버린다
-        try:
-            decay = (row.get("DECAY_DATE") or "").strip() or None
-            out[norad] = {
-                "norad_id": norad,
-                "name": (row.get("OBJECT_NAME") or "").strip() or None,
-                "intl_code": (row.get("OBJECT_ID") or "").strip() or None,
-                "type": satcat_codes.label(satcat_codes.OBJECT_TYPES, row.get("OBJECT_TYPE")),
-                "status": satcat_codes.label(satcat_codes.OPS_STATUS, row.get("OPS_STATUS_CODE")),
-                "owner": satcat_codes.label(satcat_codes.OWNERS, row.get("OWNER")),
-                "launch_date": (row.get("LAUNCH_DATE") or "").strip() or None,
-                "launch_site": satcat_codes.label(satcat_codes.LAUNCH_SITES, row.get("LAUNCH_SITE")),
-                "decay_date": decay,
-                "size": satcat_codes.rcs_size(row.get("RCS")),
-            }
-        except (TypeError, ValueError, AttributeError) as e:
-            log.warning("SATCAT 1건 파싱 실패 norad=%s: %s", norad, e)
-    return out
-
 
 def _get_group_satcat(group, force=False):
     """한 그룹의 SATCAT → (dict, stale, error). 그룹별로 캐시."""
@@ -492,13 +329,13 @@ def _get_group_satcat(group, force=False):
     if not force and cached is not None and age is not None and age < TTL_SATCAT:
         return cached, False, None
     try:
-        meta = _parse_satcat(_http_get(CELESTRAK_SATCAT.format(group=group)))
+        meta = api_parsing._parse_satcat(_http_get(CELESTRAK_SATCAT.format(group=group)))
         # JSON 키는 문자열이 된다 → 저장 전에 문자열로 통일해 캐시/네트워크 결과 모양을 맞춘다.
         meta = {str(k): v for k, v in meta.items()}
         _cache_write(name, meta)
         return meta, False, None
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
+        msg = api_errors._friendly_error(e)
         log.warning("SATCAT 그룹 %s 조회 실패: %s", group, e)
         if cached is not None:
             return cached, True, msg
@@ -524,41 +361,6 @@ def get_satcat(groups=None, force=False):
 
 
 # ── 업데이트 확인 (P12-12) ────────────────────────────────────────────────────
-def parse_version(text):
-    """`v1.13.0` · `1.13.0` → (1, 13, 0). 읽을 수 없으면 None.
-
-    None 은 "모른다"는 뜻이고, 비교하는 쪽은 모를 때 **업데이트 없음**으로 본다 —
-    알 수 없는 태그(`nightly` 등) 때문에 없는 새 버전을 알리는 것이 더 나쁘다.
-    """
-    if not isinstance(text, str):
-        return None
-    t = text.strip().lstrip("vV")
-    parts = t.split(".")
-    out = []
-    for part in parts[:3]:
-        # 1.13.0-rc1 처럼 꼬리가 붙어도 앞의 숫자까지는 읽는다
-        num = ""
-        for ch in part:
-            if ch.isdigit():
-                num += ch
-            else:
-                break
-        if not num:
-            return None
-        out.append(int(num))
-    if not out:
-        return None
-    while len(out) < 3:
-        out.append(0)
-    return tuple(out)
-
-
-def is_newer(latest, current):
-    """latest 가 current 보다 높은 버전인가. 어느 한쪽이라도 못 읽으면 False."""
-    a, b = parse_version(latest), parse_version(current)
-    if a is None or b is None:
-        return False
-    return a > b
 
 
 def check_update(current_version, force=False):
@@ -575,7 +377,7 @@ def check_update(current_version, force=False):
         return {
             "current": current_version,
             "latest": latest,
-            "update_available": is_newer(latest, current_version),
+            "update_available": api_parsing.is_newer(latest, current_version),
             "url": url,
             "name": name,
             "stale": stale,
@@ -596,7 +398,7 @@ def check_update(current_version, force=False):
         _cache_write("update.json", {"latest": latest, "url": url, "name": name})
         return result(latest, url, name, False, None, 0)
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
-        msg = _friendly_error(e)
+        msg = api_errors._friendly_error(e)
         log.warning("업데이트 확인 실패(%s) — %s", e,
                     "오래된 캐시 사용" if isinstance(cached, dict) else "캐시 없음")
         if isinstance(cached, dict):
@@ -604,50 +406,6 @@ def check_update(current_version, force=False):
                           True, msg, age)
         # 업데이트 확인 실패는 앱 기능이 아니다 — 화면에 에러를 띄우지 않고 조용히 넘긴다.
         return result(None, None, None, False, msg, None)
-
-
-# ── 에러 메시지(사람이 읽는 말로) ─────────────────────────────────────────────
-# HTTP 상태코드 → 사용자 문구. 새 코드를 만나면 여기에만 추가한다.
-# 403 은 이 앱이 실제로 겪는 실패다 — Celestrak 은 같은 대형 그룹(Starlink 1.7MB)을
-# 짧은 간격으로 거듭 받으면 403 으로 막는다(v1.5.1 위성 상한의 근거).
-HTTP_ERROR_MESSAGES = {
-    403: "서버가 접근을 거부했습니다(403). 같은 데이터를 짧은 간격으로 여러 번 받으면 "
-         "차단될 수 있습니다 — 잠시 후 다시 시도하세요.",
-    404: "요청한 데이터를 찾을 수 없습니다(404).",
-    429: "요청이 많아 잠시 제한됐습니다(시간당 한도). 잠시 후 다시 시도하세요.",
-    500: "서버에 일시적인 문제가 있습니다(500). 잠시 후 다시 시도하세요.",
-    502: "서버에 일시적인 문제가 있습니다(502). 잠시 후 다시 시도하세요.",
-    503: "서버가 일시적으로 응답할 수 없습니다(503). 잠시 후 다시 시도하세요.",
-    504: "서버 응답이 지연됩니다(504). 잠시 후 다시 시도하세요.",
-}
-
-TIMEOUT_MESSAGE = "응답이 지연됩니다(타임아웃). 잠시 후 다시 시도하세요."
-
-
-def _is_timeout(e):
-    """타임아웃 판별.
-
-    urlopen 은 타임아웃을 그대로 던지지 않고 URLError(reason=timeout) 으로 감싼다
-    (2026-08-20 실측) — isinstance(e, TimeoutError) 가 그래서 False 다. URLError 를
-    먼저 잡으면 서버가 느릴 뿐인데도 "인터넷 연결을 확인하세요" 라고 잘못 안내하게
-    되므로 reason 까지 들여다본다.
-    """
-    if isinstance(e, TimeoutError):
-        return True
-    reason = getattr(e, "reason", None)
-    if isinstance(reason, TimeoutError):
-        return True
-    return "timed out" in str(reason).lower()
-
-
-def _friendly_error(e):
-    if isinstance(e, urllib.error.HTTPError):
-        return HTTP_ERROR_MESSAGES.get(e.code) or f"서버 응답 오류({e.code})."
-    if _is_timeout(e):
-        return TIMEOUT_MESSAGE
-    if isinstance(e, urllib.error.URLError):
-        return "네트워크에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
-    return "데이터를 불러오지 못했습니다."
 
 
 # ── 터미널 스모크 ─────────────────────────────────────────────────────────────

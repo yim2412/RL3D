@@ -27,7 +27,7 @@ def _strip_video_descriptions(results):
     유튜브 설명문에는 채널 운영자의 SNS 계정·사업용 이메일과 저작권 문구가 통째로
     딸려 온다. 공개 저장소에 남의 연락처를 픽스처로 올릴 이유가 없다.
 
-    파싱에도 필요 없다 — `api_client._parse_launches` 는 중계 링크에서 title·url 만
+    파싱에도 필요 없다 — `api_parsing._parse_launches` 는 중계 링크에서 title·url 만
     남기고 description 은 버린다(캐시 비대 방지). 지워도 골든값은 바뀌지 않는다.
     """
     for launch in results:

@@ -23,6 +23,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
+import api_parsing  # noqa: E402
 
 
 def _page(count=1, next_url=None, tag="x"):
@@ -302,35 +303,35 @@ class TestVersionCompare(unittest.TestCase):
     """버전 비교는 **틀려도 예외가 안 난다** — 없는 업데이트를 알리거나 있는 것을 놓칠 뿐이다."""
 
     def test_parses_with_and_without_v(self):
-        self.assertEqual(api_client.parse_version("v1.13.0"), (1, 13, 0))
-        self.assertEqual(api_client.parse_version("1.13.0"), (1, 13, 0))
+        self.assertEqual(api_parsing.parse_version("v1.13.0"), (1, 13, 0))
+        self.assertEqual(api_parsing.parse_version("1.13.0"), (1, 13, 0))
 
     def test_pads_missing_parts(self):
-        self.assertEqual(api_client.parse_version("2"), (2, 0, 0))
-        self.assertEqual(api_client.parse_version("1.4"), (1, 4, 0))
+        self.assertEqual(api_parsing.parse_version("2"), (2, 0, 0))
+        self.assertEqual(api_parsing.parse_version("1.4"), (1, 4, 0))
 
     def test_unreadable_is_none(self):
         for bad in ("nightly", "", None, "v", "..", 13):
-            self.assertIsNone(api_client.parse_version(bad), bad)
+            self.assertIsNone(api_parsing.parse_version(bad), bad)
 
     def test_numeric_not_lexicographic(self):
         # 문자열 비교면 "1.9.0" > "1.13.0" 이 된다 — 실제로 이 앱이 지나온 구간이다
-        self.assertTrue(api_client.is_newer("v1.13.0", "1.9.0"))
-        self.assertFalse(api_client.is_newer("v1.9.0", "1.13.0"))
+        self.assertTrue(api_parsing.is_newer("v1.13.0", "1.9.0"))
+        self.assertFalse(api_parsing.is_newer("v1.9.0", "1.13.0"))
 
     def test_same_version_is_not_newer(self):
-        self.assertFalse(api_client.is_newer("v1.13.0", "1.13.0"))
+        self.assertFalse(api_parsing.is_newer("v1.13.0", "1.13.0"))
 
     def test_older_release_is_not_newer(self):
         # 개발 중(코드가 릴리스보다 앞선) 상태에서 "업데이트 있음"이 뜨면 거꾸로 동작하는 것
-        self.assertFalse(api_client.is_newer("v1.2.0", "1.13.0"))
+        self.assertFalse(api_parsing.is_newer("v1.2.0", "1.13.0"))
 
     def test_unreadable_side_never_claims_update(self):
-        self.assertFalse(api_client.is_newer("nightly", "1.13.0"))
-        self.assertFalse(api_client.is_newer("v1.14.0", "알 수 없음"))
+        self.assertFalse(api_parsing.is_newer("nightly", "1.13.0"))
+        self.assertFalse(api_parsing.is_newer("v1.14.0", "알 수 없음"))
 
     def test_prerelease_tail_reads_leading_number(self):
-        self.assertEqual(api_client.parse_version("1.14.0-rc1"), (1, 14, 0))
+        self.assertEqual(api_parsing.parse_version("1.14.0-rc1"), (1, 14, 0))
 
 
 class TestCheckUpdate(CacheTestBase):

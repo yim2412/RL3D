@@ -18,6 +18,8 @@ import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
+import api_errors  # noqa: E402
+import api_parsing  # noqa: E402
 import satcat_codes  # noqa: E402
 import applog  # noqa: E402
 import main as main_mod  # noqa: E402  (창 위치 판정 — 창을 띄우지 않는 순수 함수만 쓴다)
@@ -55,16 +57,16 @@ UPDATE = False  # main()에서 --update 로 켜짐
 
 class LaunchParsing(unittest.TestCase):
     def test_upcoming_matches_golden(self):
-        parsed = api_client._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
+        parsed = api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
         self.assertEqual(parsed, _golden("launches_upcoming.json", parsed, UPDATE))
 
     def test_previous_matches_golden(self):
-        parsed = api_client._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json")))
+        parsed = api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json")))
         self.assertEqual(parsed, _golden("launches_previous.json", parsed, UPDATE))
 
     def test_required_fields_present(self):
         """지도·패널이 의존하는 필드가 빠지면 앱이 조용히 비어 보인다."""
-        parsed = api_client._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json")))
+        parsed = api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json")))
         self.assertTrue(parsed, "픽스처에서 파싱된 발사가 0건")
         for d in parsed:
             for key in ("id", "name", "net", "outcome", "lat", "lng"):
@@ -76,7 +78,7 @@ class LaunchParsing(unittest.TestCase):
     def test_missing_coords_dropped(self):
         """좌표 없는 발사는 지도에 못 찍으므로 제외된다."""
         payload = {"results": [{"id": "x", "name": "No pad", "pad": {}}]}
-        self.assertEqual(api_client._parse_launches(payload), [])
+        self.assertEqual(api_parsing._parse_launches(payload), [])
 
     def test_broken_items_do_not_kill_the_rest(self):
         """1건이 깨져도 나머지는 살아야 한다(CLAUDE.md API 규칙 3)."""
@@ -89,7 +91,7 @@ class LaunchParsing(unittest.TestCase):
             {"id": "bad2", "pad": None},                                            # pad 없음
             good,
         ]}
-        parsed = api_client._parse_launches(payload)
+        parsed = api_parsing._parse_launches(payload)
         self.assertEqual([d["id"] for d in parsed], ["ok"])
         self.assertEqual(parsed[0]["outcome"], "success")
 
@@ -101,7 +103,7 @@ class LaunchParsing(unittest.TestCase):
             "rocket": None, "mission": None, "status": None,
             "launch_service_provider": None,
         }]}
-        parsed = api_client._parse_launches(payload)
+        parsed = api_parsing._parse_launches(payload)
         self.assertEqual(len(parsed), 1)
         d = parsed[0]
         self.assertEqual(d["outcome"], "upcoming")   # status 없으면 예정 계열
@@ -110,7 +112,7 @@ class LaunchParsing(unittest.TestCase):
 
     def test_detail_fields_present(self):
         """detailed 응답에서만 오는 확장 필드(중계·소식·맥락)가 정규화에 실려야 한다."""
-        parsed = api_client._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
+        parsed = api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
         starship = next(d for d in parsed if "Starship" in (d["name"] or ""))
         self.assertTrue(starship["vid_urls"], "중계 링크가 비어 있다")
         self.assertTrue(all(set(v) == {"title", "url"} for v in starship["vid_urls"]))
@@ -123,13 +125,13 @@ class LaunchParsing(unittest.TestCase):
     def test_vid_urls_capped_and_cleaned(self):
         item = {"vidURLs": [{"url": "https://e/{}".format(i), "title": "t{}".format(i),
                              "description": "x" * 500} for i in range(10)]}
-        vids = api_client._parse_vid_urls(item)
-        self.assertEqual(len(vids), api_client.MAX_VID_URLS)
+        vids = api_parsing._parse_vid_urls(item)
+        self.assertEqual(len(vids), api_parsing.MAX_VID_URLS)
         self.assertEqual(set(vids[0]), {"title", "url"})   # description 은 버린다(캐시 비대 방지)
 
     def test_vid_urls_skip_broken(self):
         item = {"vidURLs": [None, {"title": "제목만"}, {"url": "https://ok"}, "문자열"]}
-        self.assertEqual(api_client._parse_vid_urls(item), [{"title": "중계", "url": "https://ok"}])
+        self.assertEqual(api_parsing._parse_vid_urls(item), [{"title": "중계", "url": "https://ok"}])
 
     def test_updates_newest_first_and_capped(self):
         item = {"updates": [
@@ -138,8 +140,8 @@ class LaunchParsing(unittest.TestCase):
             {"comment": None, "created_on": "2026-08-01T00:00:00Z"},  # 본문 없는 건 제외
         ] + [{"comment": "c{}".format(i), "created_on": "2026-06-{:02d}T00:00:00Z".format(i + 1)}
              for i in range(10)]}
-        ups = api_client._parse_updates(item)
-        self.assertEqual(len(ups), api_client.MAX_UPDATES)
+        ups = api_parsing._parse_updates(item)
+        self.assertEqual(len(ups), api_parsing.MAX_UPDATES)
         self.assertEqual(ups[0]["comment"], "new")
         self.assertNotIn(None, [u["comment"] for u in ups])
 
@@ -147,7 +149,7 @@ class LaunchParsing(unittest.TestCase):
         """구버전/간이 응답이라 확장 필드가 없어도 죽지 않고 빈 값이 된다."""
         payload = {"results": [{"id": "m", "name": "Minimal",
                                 "pad": {"latitude": 1, "longitude": 2}}]}
-        d = api_client._parse_launches(payload)[0]
+        d = api_parsing._parse_launches(payload)[0]
         self.assertEqual(d["vid_urls"], [])
         self.assertEqual(d["updates"], [])
         self.assertEqual(d["programs"], [])
@@ -163,7 +165,7 @@ class LaunchParsing(unittest.TestCase):
             None: "upcoming", "": "upcoming", "무슨상태": "upcoming",
         }
         for abbrev, expected in cases.items():
-            self.assertEqual(api_client._outcome_from_status(abbrev), expected, abbrev)
+            self.assertEqual(api_parsing._outcome_from_status(abbrev), expected, abbrev)
 
     def test_dedupe_keeps_first(self):
         """LL2는 막 발사된 건을 upcoming·previous 양쪽에 낸다 → 앞의 것(결과 확정본) 유지."""
@@ -174,18 +176,18 @@ class LaunchParsing(unittest.TestCase):
             {"id": None, "name": "no-id-1"},
             {"id": None, "name": "no-id-2"},
         ]
-        out = api_client._dedupe_launches(items)
+        out = api_parsing._dedupe_launches(items)
         self.assertEqual([d.get("id") for d in out], ["a", "b", None, None])
         self.assertEqual(out[0]["outcome"], "success")
 
 
 class TleParsing(unittest.TestCase):
     def test_tle_matches_golden(self):
-        parsed = api_client._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
+        parsed = api_parsing._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
         self.assertEqual(parsed, _golden("satellites_stations.json", parsed, UPDATE))
 
     def test_tle_fields(self):
-        parsed = api_client._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
+        parsed = api_parsing._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
         self.assertTrue(parsed)
         for s in parsed:
             self.assertTrue(s["name"])
@@ -201,11 +203,11 @@ class TleParsing(unittest.TestCase):
             "1 25544U 98067A   26206.50000000  .00016717  00000-0  10270-3 0  9007\n"
             "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391 10000\n"
         )
-        parsed = api_client._parse_tle(text)
+        parsed = api_parsing._parse_tle(text)
         self.assertEqual([s["norad_id"] for s in parsed], ["25544"])
 
     def test_empty_text(self):
-        self.assertEqual(api_client._parse_tle(""), [])
+        self.assertEqual(api_parsing._parse_tle(""), [])
 
 
 class TestFriendlyError(unittest.TestCase):
@@ -225,41 +227,41 @@ class TestFriendlyError(unittest.TestCase):
         """
         e = urllib.error.URLError(TimeoutError("timed out"))
         self.assertFalse(isinstance(e, TimeoutError))   # 막지 않았으면 아래가 틀렸을 것
-        self.assertEqual(api_client._friendly_error(e), api_client.TIMEOUT_MESSAGE)
+        self.assertEqual(api_errors._friendly_error(e), api_errors.TIMEOUT_MESSAGE)
 
     def test_timeout_reason_as_plain_string(self):
         """reason 이 예외가 아니라 문자열로 오는 경우도 타임아웃으로 읽는다."""
         e = urllib.error.URLError("timed out")
-        self.assertEqual(api_client._friendly_error(e), api_client.TIMEOUT_MESSAGE)
+        self.assertEqual(api_errors._friendly_error(e), api_errors.TIMEOUT_MESSAGE)
 
     def test_offline_is_not_timeout(self):
         """DNS 실패는 타임아웃이 아니라 연결 문제로 안내한다."""
         e = urllib.error.URLError(OSError(11001, "getaddrinfo failed"))
-        msg = api_client._friendly_error(e)
-        self.assertNotEqual(msg, api_client.TIMEOUT_MESSAGE)
+        msg = api_errors._friendly_error(e)
+        self.assertNotEqual(msg, api_errors.TIMEOUT_MESSAGE)
         self.assertIn("인터넷 연결", msg)
 
     def test_403_has_own_message(self):
         """Celestrak 이 실제로 돌려주는 코드 — 숫자만 보여주면 안 된다."""
-        msg = api_client._friendly_error(self._http_error(403, "Forbidden"))
-        self.assertEqual(msg, api_client.HTTP_ERROR_MESSAGES[403])
+        msg = api_errors._friendly_error(self._http_error(403, "Forbidden"))
+        self.assertEqual(msg, api_errors.HTTP_ERROR_MESSAGES[403])
         self.assertNotEqual(msg, "서버 응답 오류(403).")
 
     def test_429_still_mentions_rate_limit(self):
-        msg = api_client._friendly_error(self._http_error(429, "Too Many"))
+        msg = api_errors._friendly_error(self._http_error(429, "Too Many"))
         self.assertIn("한도", msg)
 
     def test_unmapped_code_falls_back(self):
         """표에 없는 코드는 코드 번호라도 알려준다."""
         self.assertEqual(
-            api_client._friendly_error(self._http_error(418, "Teapot")),
+            api_errors._friendly_error(self._http_error(418, "Teapot")),
             "서버 응답 오류(418).")
 
     def test_http_error_is_not_read_as_timeout(self):
         """HTTPError 도 URLError 라 reason 을 갖는다 — 표가 먼저 이겨야 한다."""
         e = self._http_error(503, "timed out")
-        self.assertEqual(api_client._friendly_error(e),
-                         api_client.HTTP_ERROR_MESSAGES[503])
+        self.assertEqual(api_errors._friendly_error(e),
+                         api_errors.HTTP_ERROR_MESSAGES[503])
 
 
 class TestLegacyCacheCleanup(unittest.TestCase):
@@ -534,7 +536,7 @@ class TestSatcatParsing(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         text = _read_text(os.path.join(FIXTURES, "celestrak_satcat.csv"))
-        cls.meta = api_client._parse_satcat(text)
+        cls.meta = api_parsing._parse_satcat(text)
 
     def test_real_row_normalized(self):
         """ISS — 코드가 사람 말로 바뀌는가."""
@@ -583,8 +585,8 @@ class TestSatcatParsing(unittest.TestCase):
         self.assertIsNone(sputnik["size"])
 
     def test_empty_input_is_empty_dict(self):
-        self.assertEqual(api_client._parse_satcat(""), {})
-        self.assertEqual(api_client._parse_satcat("OBJECT_NAME,NORAD_CAT_ID" + chr(10)), {})
+        self.assertEqual(api_parsing._parse_satcat(""), {})
+        self.assertEqual(api_parsing._parse_satcat("OBJECT_NAME,NORAD_CAT_ID" + chr(10)), {})
 
 
 class TestSatcatCodes(unittest.TestCase):
