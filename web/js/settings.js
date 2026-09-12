@@ -30,6 +30,11 @@ function applySettings(s) {
   }
   if (typeof s.terminator === "boolean") document.getElementById("toggle-terminator").checked = s.terminator;
   if (typeof s.visibleOnly === "boolean") document.getElementById("toggle-visible-only").checked = s.visibleOnly;
+  if (typeof s.heatmap === "boolean") {
+    // 지도 생성 전이라 레이어가 아직 없다 → 상태만 세워 두고 반영은 map.on("load") 에서(P12-15)
+    heatOn = s.heatmap;
+    document.getElementById("toggle-heat").checked = s.heatmap;
+  }
   if (s.satellites) {
     if (Array.isArray(s.satellites.groups) && s.satellites.groups.length) satGroups = s.satellites.groups;
     if (s.satellites.enabled) document.getElementById("toggle-sat").checked = true;

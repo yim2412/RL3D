@@ -4,7 +4,7 @@
  * 테스트가 직접 부르고, 실행은 기존 함수들을 그대로 호출한다.
  */
 
-// 숫자키 ↔ 토글 대상. 1~4 는 결과 필터(툴바 체크박스 순서와 같다), 5·6 은 레이어.
+// 숫자키 ↔ 토글 대상. 1~4 는 결과 필터(툴바 체크박스 순서와 같다), 5~7 은 레이어.
 const KEY_TOGGLES = {
   "1": { kind: "filter", value: "upcoming" },
   "2": { kind: "filter", value: "success" },
@@ -12,6 +12,7 @@ const KEY_TOGGLES = {
   "4": { kind: "filter", value: "partial" },
   "5": { kind: "el", id: "toggle-sat" },
   "6": { kind: "el", id: "toggle-terminator" },
+  "7": { kind: "el", id: "toggle-heat" },
 };
 
 /**
@@ -98,6 +99,7 @@ const KEY_HELP = [
   ["1 2 3 4", "예정 · 성공 · 실패 · 부분 필터"],
   ["5", "위성 레이어"],
   ["6", "낮/밤 오버레이"],
+  ["7", "발사 밀도 히트맵"],
   ["Esc", "열린 패널 닫기 (위에 덮인 것부터)"],
   ["?", "이 도움말"],
 ];

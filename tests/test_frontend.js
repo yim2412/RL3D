@@ -836,8 +836,9 @@ const { loadApp, group, check, done } = require("./harness");
   check("대문자 S 도 같다(Shift 를 눌러도 동작한다)", K("S"), "sidebar");
   check("r 는 새로고침", K("r"), "refresh");
   check("? 는 도움말", K("?"), "help");
-  check("숫자키는 토글", [K("1"), K("5"), K("6")], ["toggle:1", "toggle:5", "toggle:6"]);
-  check("정의되지 않은 키는 무시", [K("7"), K("z"), K("F5")], [null, null, null]);
+  check("숫자키는 토글", [K("1"), K("5"), K("6"), K("7")],
+    ["toggle:1", "toggle:5", "toggle:6", "toggle:7"]);
+  check("정의되지 않은 키는 무시", [K("8"), K("z"), K("F5")], [null, null, null]);
 
   // **입력 중에는 단축키가 없어야 한다.** 검색창에 "s" 를 치면 사이드바가 열리는 앱은
   // 검색을 쓸 수 없는데, 화면으로는 "글자가 안 써진다"로만 보인다.
@@ -1159,5 +1160,143 @@ const { loadApp, group, check, done } = require("./harness");
     await ctx.initUpdateCheck();
     check("확인이 실패해도 배지는 안 뜬다", el("update-badge").hidden, true);
   }
+
+// ── 발사 밀도 히트맵 (P12-15) ────────────────────────────────────────────────
+// 조용히 깨지는 자리가 셋이다:
+//   ① 히트맵 소스가 마커와 **다른 집합**을 받으면 한 지도의 두 표현이 서로 다른 말을 한다.
+//   ② 겹친 발사가 한 점으로 합쳐지면 1건과 300건이 똑같이 그려진다 — 히트맵의 존재 이유가 사라진다.
+//   ③ 모수 안내가 빠지면 라이브 100건짜리 얼룩을 "발사 중심"으로 읽는다(P12-7 과 같은 거짓말).
+// 셋 다 예외가 없고 화면은 "그럴듯하게" 그려진다.
+{
+  const { ctx, state, el, map, sel } = loadApp();
+  group("히트맵 GeoJSON (launchesToHeatFC)");
+  const fc = ctx.launchesToHeatFC([
+    { id: "1", lat: 28.5, lng: -80.6 },
+    { id: "2", lat: 28.5, lng: -80.6 },   // 같은 발사장 — 합치지 않는다
+    { id: "3", lat: null, lng: null },
+  ]);
+  check("좌표 없는 발사는 빠진다", fc.features.length, 2);
+  check("좌표는 [경도, 위도] 순서", fc.features[0].geometry.coordinates, [-80.6, 28.5]);
+  check("같은 발사장은 점으로 쌓인다(합치지 않는다 — 밀도의 근거)",
+    fc.features.map((f) => f.geometry.coordinates), [[-80.6, 28.5], [-80.6, 28.5]]);
+  check("빈 입력에도 죽지 않는다", ctx.launchesToHeatFC(null).features, []);
+
+  group("히트맵 색 눈금 (heatScale)");
+  // 가중치가 고정이면 점 하나로 색이 포화해 1건과 30건이 똑같이 빨강이 된다 — 화면은 멀쩡하다.
+  const S = (l) => ctx.heatScale(l);
+  check("최다 발사장 건수를 찾는다", S([
+    { lat: 28.5, lng: -80.6 }, { lat: 28.5, lng: -80.6 }, { lat: 28.5, lng: -80.6 },
+    { lat: -39.2, lng: 177.8 },
+  ]).max, 3);
+  // 커널 계수(GAUSS_COEF)를 빼면 최다 지점이 램프의 40% 에서 멈춘다 — 색만 안 나오고 오류는 없다.
+  check("가중치는 그 최다 건수에서 색이 끝나도록 잡는다", Number(S([
+    { lat: 1, lng: 1 }, { lat: 1, lng: 1 }, { lat: 1, lng: 1 }, { lat: 1, lng: 1 },
+  ]).weight.toFixed(4)), 0.6267);
+  check("같은 발사장의 패드는 ≈1km 로 묶어 한 곳으로 센다",
+    S([{ lat: 28.561, lng: -80.577 }, { lat: 28.562, lng: -80.579 }]).max, 2);
+  check("멀리 떨어진 발사장은 따로 센다",
+    S([{ lat: 28.5, lng: -80.6 }, { lat: 34.7, lng: -120.6 }]).max, 1);
+  check("좌표 없는 발사는 세지 않는다", S([{ lat: null, lng: null }]).max, 0);
+  check("빈 목록에서도 0 으로 나누지 않는다", S([]).weight, 1);
+  check("한 곳에 1건뿐이어도 그 곳이 램프 끝이 된다", Number(S([{ lat: 1, lng: 1 }]).weight.toFixed(4)), 2.5066);
+
+  group("히트맵 배선 (applyFilters · setHeatVisible)");
+  state.map = map;
+  state.sidebarTab = "launches";
+  map.stubSource("launches");
+  map.stubSource("launch-heat");
+  state.allLaunches = [
+    { id: "1", name: "A", outcome: "success", net: "2026-01-10T00:00:00Z", lat: 28.5, lng: -80.6 },
+    { id: "2", name: "B", outcome: "success", net: "2026-02-10T00:00:00Z", lat: 28.5, lng: -80.6 },
+    { id: "3", name: "C", outcome: "failure", net: "2026-03-10T00:00:00Z", lat: -39.2, lng: 177.8 },
+    { id: "4", name: "좌표 없음", outcome: "success", net: "2026-04-10T00:00:00Z", lat: null, lng: null },
+  ];
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }];
+  el("search").value = "";
+  const heatCount = () => (map.data("launch-heat").features || []).length;
+  const markerCount = () => (map.data("launches").features || []).length;
+
+  ctx.applyFilters();
+  check("꺼져 있으면 히트맵 소스는 비어 있다", heatCount(), 0);
+  check("범례도 숨어 있다", el("heat-legend").hidden, true);
+
+  ctx.setHeatVisible(true);
+  check("켜면 레이어가 보인다", map.layout("launch-heat", "visibility"), "visible");
+  check("켜면 클러스터 원을 흐린다(숨기지 않는다 — 저줌 클릭 대상이 사라진다)",
+    map.paint("clusters", "circle-opacity"), 0.3);
+  check("켠 순간 소스가 채워진다(토글이 applyFilters 를 부른다)", heatCount(), 3);
+  check("마커와 같은 집합을 쓴다", heatCount(), markerCount());
+  // 같은 발사장 2건이 최다 → 가중치 0.5. 이게 안 걸리면 1건짜리도 빨강이 된다.
+  check("색 눈금을 지금 보고 있는 집합에 맞춘다",
+    Number(map.paint("launch-heat", "heatmap-weight").toFixed(4)), 1.2533);
+
+  sel[".flt:checked"] = [{ value: "success" }];
+  ctx.applyFilters();
+  check("결과 필터가 히트맵에도 걸린다", heatCount(), 2);
+  check("여기서도 마커와 갈라지지 않는다", heatCount(), markerCount());
+  el("search").value = "B";
+  ctx.applyFilters();
+  check("검색어도 히트맵에 걸린다", heatCount(), 1);
+  el("search").value = "";
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }];
+  ctx.applyFilters();
+
+  group("히트맵 범례 (모수)");
+  check("켜면 범례가 보인다", el("heat-legend").hidden, false);
+  // 좌표 없는 발사(4번)는 지도에 안 찍힌다 → 범례가 4건이라고 하면 그 자체가 거짓말이다.
+  check("지도에 찍힌 건수만 적는다", el("heat-legend").innerHTML.includes("3건 기준"), true);
+  check("눈금을 건수로 적는다(적음/많음은 아무 말도 안 한 것과 같다)",
+    el("heat-legend").innerHTML.includes("한 발사장 최다 2건"), true);
+  check("아카이브를 안 불러왔으면 부분 표본이라고 경고한다",
+    el("heat-legend").innerHTML.includes("일부만"), true);
+  state.loadedYears = new Set([2026]);
+  ctx.applyFilters();
+  check("연도 전체를 불러오면 경고가 사라진다",
+    el("heat-legend").innerHTML.includes("일부만"), false);
+
+  ctx.setHeatVisible(false);
+  check("끄면 레이어가 숨는다", map.layout("launch-heat", "visibility"), "none");
+  check("끄면 클러스터가 원래 밝기로 돌아온다", map.paint("clusters", "circle-opacity"), 0.92);
+  check("끄면 소스를 비운다", heatCount(), 0);
+  check("끄면 범례도 숨는다", el("heat-legend").hidden, true);
+}
+
+// 배선 — 위 단언은 setHeatVisible 을 **직접** 부른다. 체크박스와 단축키가 그 함수에
+// 닿지 않으면 판정이 다 맞아도 앱에서는 아무 일도 일어나지 않는다.
+{
+  const { ctx, state, el, map, doc } = loadApp();
+  group("히트맵 토글 배선 (체크박스 · 단축키 7)");
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-heat");
+  state.allLaunches = [];
+  check("bindUI 전에는 체크박스에 change 가 없다", !!el("toggle-heat").handlers.change, false);
+  ctx.bindUI();
+  check("bindUI 가 체크박스에 change 를 붙인다", !!el("toggle-heat").handlers.change, true);
+
+  el("toggle-heat").checked = true;
+  el("toggle-heat").fire("change", { target: el("toggle-heat") });
+  check("체크박스로 실제 켜진다", map.layout("launch-heat", "visibility"), "visible");
+  check("상태에도 남는다(다음 applyFilters 가 소스를 채운다)", state.heatOn, true);
+
+  doc.fire("keydown", { key: "7", target: { tagName: "BODY" }, preventDefault() {} });
+  check("7 로 꺼진다(체크박스의 change 경로를 그대로 탄다)",
+    [el("toggle-heat").checked, map.layout("launch-heat", "visibility")], [false, "none"]);
+  doc.fire("keydown", { key: "7", target: { tagName: "BODY" }, preventDefault() {} });
+  check("한 번 더 누르면 다시 켜진다", map.layout("launch-heat", "visibility"), "visible");
+}
+
+// 설정 복원 — 지도 생성 **전에** 불리므로 레이어가 아직 없다. 여기서 레이어를 만지면
+// 조용히 예외가 나고 그 뒤 복원(카메라·관심목록)이 통째로 날아간다.
+{
+  const { ctx, el, state } = loadApp();
+  group("히트맵 설정 복원");
+  ctx.applySettings({ heatmap: true });
+  check("저장된 값이 상태에 선다", state.heatOn, true);
+  check("체크박스도 같이 켜진다", el("toggle-heat").checked, true);
+  const { ctx: c2, state: s2, el: e2 } = loadApp();
+  c2.applySettings({});
+  check("설정이 없으면 꺼진 채로", [s2.heatOn, e2("toggle-heat").checked], [false, false]);
+}
   done();
 })();

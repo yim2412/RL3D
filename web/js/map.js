@@ -58,7 +58,9 @@ function initMap() {
   map.on("load", () => {
     if (basemap === "satellite") setBasemap("satellite");  // 저장된 배경 복원
     setupTerminator();      // 낮/밤 음영 — 마커보다 먼저 추가해 그 아래에 깔리게
+    setupHeatLayer();       // 발사 밀도 히트맵(P12-15) — 터미네이터 **위**(야간 음영에 색이 죽지 않게), 마커 아래
     setupLaunchLayers();    // 발사 클러스터/포인트 레이어(빈 소스로 먼저 생성)
+    if (heatOn) setHeatVisible(true);  // 저장된 히트맵 상태 복원(클러스터 반투명까지 같이 맞춘다)
     setupSatelliteLayer();  // 빈 레이어만(기본 숨김). 위성은 토글 켤 때 로드
     if (observer) showObserverMarker();          // 저장된 관측 위치 복원(P8-9)
     if (document.getElementById("toggle-sat").checked) setSatelliteVisible(true);  // 설정에 켜져 있었으면 로드

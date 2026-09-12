@@ -23,6 +23,7 @@
       <label><input type="checkbox" class="flt" value="partial" checked /> <span class="dot d-partial"></span>부분</label>
       <span class="sep"></span>
       <label><input type="checkbox" id="toggle-terminator" checked /> 🌓 낮/밤</label>
+      <label title="발사 밀도 히트맵 — 과거 아카이브를 불러올수록 뚜렷해집니다"><input type="checkbox" id="toggle-heat" /> 🔥 밀도</label>
       <label><input type="checkbox" id="toggle-sat" /> <span class="dot d-sat"></span>위성 <span id="sat-count" class="muted"></span></label>
       <button id="sat-groups-btn" class="btn sm" title="위성 그룹 선택">그룹 ▾</button>
     </div>
@@ -38,6 +39,9 @@
 
   <!-- 지도 -->
   <div id="map"></div>
+
+  <!-- 발사 밀도 히트맵 범례 (P12-15) — 색이 무슨 뜻인지와 **무엇을 세고 있는지**(모수) -->
+  <div id="heat-legend" class="heat-legend hidden"></div>
 
   <!-- 배경 타일을 못 받을 때(오프라인) 안내 배지 — 클릭하면 닫힌다 -->
   <button id="offline-badge" class="offline-badge hidden" title="눌러서 닫기"></button>

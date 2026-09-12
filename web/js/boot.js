@@ -16,6 +16,10 @@ function bindUI() {
     setSatelliteVisible(e.target.checked);
     saveSatSettings();   // 저장 모양은 sats.js 한 곳에만 둔다
   });
+  document.getElementById("toggle-heat").addEventListener("change", (e) => {
+    setHeatVisible(e.target.checked);
+    saveSettings({ heatmap: e.target.checked });
+  });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
   document.getElementById("basemap-btn").addEventListener("click", toggleBasemap);
   document.getElementById("stats-btn").addEventListener("click", showStats);

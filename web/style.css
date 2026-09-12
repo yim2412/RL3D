@@ -346,6 +346,35 @@ html, body {
 .offline-badge:hover { border-color: #a06f28; }
 .offline-badge.hidden { display: none; }
 
+/* 발사 밀도 히트맵 범례 (P12-15) — 좌하단. 오프라인·업데이트 배지 위로 쌓는다. */
+.heat-legend {
+  position: absolute;
+  left: 14px; bottom: 162px;
+  z-index: 24;
+  width: 260px;
+  font-size: 11px; line-height: 1.45;
+  color: var(--text);
+  background: rgba(13, 20, 34, .94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  pointer-events: none;   /* 지도 조작을 막지 않는다 — 읽기 전용 안내다 */
+}
+.heat-legend.hidden { display: none; }
+.hl-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+/* 눈금 색은 heatmap-color 램프와 같은 값이다 — 한쪽만 바꾸면 범례가 거짓말을 한다. */
+.hl-bar {
+  height: 9px; border-radius: 5px;
+  background: linear-gradient(to right,
+    rgba(37,99,235,.55) 0%, rgba(14,165,233,.7) 25%, rgba(34,197,94,.78) 50%,
+    rgba(250,204,21,.85) 75%, rgba(239,68,68,.9) 100%);
+}
+.hl-ends {
+  display: flex; justify-content: space-between;
+  color: var(--muted); font-size: 10px; margin: 3px 0 7px;
+}
+.heat-legend .st-note { margin: 0 0 6px; }
+
 /* 새 버전 안내 배지 (P12-12) — 오프라인 배지와 같은 좌하단이라 위로 비켜 둔다.
    둘이 동시에 뜨는 상황(오프라인인데 캐시된 업데이트 정보가 있다)이 실제로 가능하다. */
 .update-badge {

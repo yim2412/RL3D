@@ -31,7 +31,7 @@ const STATE_KEYS = [
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
   "trackAheadMin", "futureMarker",
-  "latestUpdateInfo", "settingsDismissedUpdate",
+  "latestUpdateInfo", "settingsDismissedUpdate", "heatOn",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
@@ -94,6 +94,8 @@ function loadApp(options = {}) {
   const docHandlers = {};   // document 에 직접 붙는 핸들러(키보드 P12-14)
   const selectors = {};   // 테스트가 채우는 querySelectorAll 응답
   const sources = {};     // 지도 소스별 마지막 setData 값
+  const layouts = {};     // setLayoutProperty 로 바뀐 값 ("레이어.속성" → 값)
+  const paints = {};      // setPaintProperty 로 바뀐 값
   const api = Object.assign({
     get_settings: async () => ({}),
     save_settings: () => {},
@@ -151,8 +153,12 @@ function loadApp(options = {}) {
       ? { setData(d) { sources[id] = d; } }
       : undefined),
     getLayer: () => ({}),
-    setLayoutProperty() {},
-    setPaintProperty() {},
+    // 레이아웃·페인트 속성은 **남겨 둔다** — 히트맵(P12-15)처럼 "켜면 다른 레이어가
+    // 같이 흐려지는" 배선은 setData 로는 안 보이고 이 값으로만 잴 수 있다.
+    setLayoutProperty(id, prop, v) { layouts[`${id}.${prop}`] = v; },
+    setPaintProperty(id, prop, v) { paints[`${id}.${prop}`] = v; },
+    layout: (id, prop) => layouts[`${id}.${prop}`],
+    paint: (id, prop) => paints[`${id}.${prop}`],
     getCanvas: () => ({ style: {} }),
     flyTo() {}, easeTo() {}, addControl() {},
     /** 마지막으로 setData 된 값 */

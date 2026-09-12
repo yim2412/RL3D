@@ -114,12 +114,126 @@ function setupLaunchLayers() {
   map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = ""; hideTooltip(); });
 }
 
+// ── 발사 밀도 히트맵 (P12-15) ────────────────────────────────────────────────
+// 마커·클러스터는 "어디서 몇 번"을 못 보여준다 — 클러스터는 줌에 따라 뭉치는 기준이 바뀌고,
+// 개별 점은 같은 발사장에 완전히 겹쳐 1건과 300건이 똑같이 보인다.
+//
+// **소스를 따로 판다.** 기존 "launches" 소스는 cluster:true 라, 히트맵을 그 위에 얹으면
+// 클러스터 하나가 점 하나로 세어져 밀도가 통째로 왜곡된다 — 오류 없이 조용히 틀리는 모양이다.
+
+/** 지도에 찍을 수 있는 발사인가. 마커·히트맵·범례가 **같은 술어**를 써야
+ *  "지도에 3개인데 범례는 4건"이 안 생긴다. */
+function hasCoords(d) {
+  return !!d && typeof d.lat === "number" && typeof d.lng === "number";
+}
+
+/** 발사 배열 → 히트맵용 GeoJSON(클러스터 없음). 좌표 없는 발사는 제외. 순수 함수. */
+function launchesToHeatFC(list) {
+  return {
+    type: "FeatureCollection",
+    features: (list || [])
+      .filter(hasCoords)
+      .map((d) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [d.lng, d.lat] },
+        properties: {},
+      })),
+  };
+}
+
+function setupHeatLayer() {
+  map.addSource("launch-heat", { type: "geojson", data: EMPTY_FC });
+  map.addLayer({
+    id: "launch-heat", type: "heatmap", source: "launch-heat",
+    layout: { visibility: heatOn ? "visible" : "none" },
+    paint: {
+      // 발사 1건 = 1. 발사장이 겹친 만큼 자연히 쌓인다(가중치를 따로 주지 않는다).
+      // 가중치는 데이터에 맞춰 applyFilters 가 매번 다시 잡는다(heatScale). 여기 값은 초기치.
+      "heatmap-weight": 1,
+      // **줌에 따라 바꾸지 않는다.** 강도가 줌마다 달라지면 같은 색이 줌마다 다른 건수를
+      // 뜻하게 되어 범례의 "1건 ~ N건" 눈금이 거짓말이 된다.
+      "heatmap-intensity": 1,
+      // 저줌에서 반경이 작으면 발사장마다 작은 과녁이 되어 밀도 차가 안 읽힌다(2026-09-12 캡처).
+      "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 14, 4, 26, 9, 36],
+      "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"],
+        0, "rgba(0,0,0,0)",        // 다크 배경에 묻히게 완전 투명에서 시작
+        0.2, "rgba(37,99,235,0.55)",
+        0.4, "rgba(14,165,233,0.7)",
+        0.6, "rgba(34,197,94,0.78)",
+        0.8, "rgba(250,204,21,0.85)",
+        1, "rgba(239,68,68,0.9)"],
+      // 고줌에선 개별 마커가 이미 정확하다 → 히트맵을 물려 마커를 가리지 않게 한다.
+      "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.9, 9, 0.35],
+    },
+  });
+}
+
+/**
+ * 히트맵 색 눈금 — **가장 붐비는 발사장이 색의 끝**이 되게 가중치를 맞춘다. 순수 함수.
+ *
+ * 가중치를 1 로 고정하면 점 하나로 이미 색이 포화해 **1건짜리와 30건짜리가 똑같이 빨강**이 된다
+ * (2026-09-12 캡처에서 실제로 그랬다 — 예외도 없고 히트맵은 멀쩡히 그려진다).
+ * 좌표는 소수 2자리(≈1km)로 묶는다: 같은 발사장의 패드끼리 갈라지면 건수가 쪼개진다.
+ */
+// MapLibre 히트맵 커널이 점마다 얹는 값은 weight 가 아니라 `weight × 이 계수`다
+// (heatmap.vertex.glsl 의 GAUSS_COEF = 1/√(2π)). 이걸 빼면 최다 발사장이 램프의 40% 에서
+// 멈춰 색이 끝까지 안 간다 — 2026-09-12 캡처에서 21건짜리가 파랑이었다.
+const HEAT_GAUSS_COEF = 0.3989422804014327;
+
+function heatScale(list) {
+  const counts = new Map();
+  let max = 0;
+  for (const d of (list || []).filter(hasCoords)) {
+    const k = `${d.lng.toFixed(2)},${d.lat.toFixed(2)}`;
+    const n = (counts.get(k) || 0) + 1;
+    counts.set(k, n);
+    if (n > max) max = n;
+  }
+  return { max, weight: max > 0 ? 1 / (max * HEAT_GAUSS_COEF) : 1 };
+}
+
+/** 히트맵을 켜면 클러스터 원을 반투명하게 낮춘다.
+ *  **숨기지 않는다** — 클러스터를 숨기면 그 안에 든 발사는 개별 점으로도 안 나오므로
+ *  저줌에서 클릭할 대상이 통째로 사라진다(클러스터 소스의 성질). */
+const CLUSTER_OPACITY = { on: 0.3, off: 0.92 };
+
+function setHeatVisible(on) {
+  heatOn = !!on;
+  if (!map || !map.getLayer("launch-heat")) return;
+  map.setLayoutProperty("launch-heat", "visibility", heatOn ? "visible" : "none");
+  map.setPaintProperty("clusters", "circle-opacity", heatOn ? CLUSTER_OPACITY.on : CLUSTER_OPACITY.off);
+  map.setPaintProperty("clusters", "circle-stroke-opacity", heatOn ? 0.45 : 1);
+  applyFilters();   // 켠 순간 소스를 채우고 범례를 그린다
+}
+
+/** 범례 — 색 눈금과 **무엇을 세고 있는지**(모수).
+ *  아카이브 없이 켜면 라이브 100건만 그려지는데 히트맵은 그걸 "여기가 발사 중심"으로
+ *  보여준다. 통계 패널(P12-7)과 같은 조용한 거짓말이라 같은 모수 문구를 재사용한다. */
+function renderHeatLegend(list, scale) {
+  const el = document.getElementById("heat-legend");
+  if (!el) return;
+  el.classList.toggle("hidden", !heatOn);
+  if (!heatOn) return;
+  // **지도에 실제로 찍힌 것만** 센다 — 좌표 없는 발사까지 세면 범례 자체가 거짓말이 된다.
+  const plotted = (list || []).filter(hasCoords);
+  const sc = statsScope(plotted, completeYears(), new Date().getFullYear());
+  const max = (scale && scale.max) || 0;
+  // 눈금을 건수로 적는다 — "적음/많음"은 아무 말도 안 한 것과 같다.
+  const ends = max > 1 ? `<span>1건</span><span>한 발사장 최다 ${max}건</span>`
+                       : `<span>적음</span><span>많음</span>`;
+  el.innerHTML =
+    `<div class="hl-title">🔥 발사 밀도</div>` +
+    `<div class="hl-bar"></div>` +
+    `<div class="hl-ends">${ends}</div>` +
+    scopeNoteHtml(sc);
+}
+
 /** 발사 배열 → GeoJSON. 좌표 없는 발사는 제외. 상세는 id로 원본을 되찾는다. */
 function launchesToFC(list) {
   return {
     type: "FeatureCollection",
     features: list
-      .filter((d) => typeof d.lat === "number" && typeof d.lng === "number")
+      .filter(hasCoords)
       .map((d) => ({
         type: "Feature",
         geometry: { type: "Point", coordinates: [d.lng, d.lat] },
@@ -150,6 +264,15 @@ function applyFilters() {
   const filtered = allLaunches.filter((d) => launchPasses(d, active, q));
   const src = map.getSource("launches");
   if (src) src.setData(launchesToFC(filtered));  // 클러스터는 자동 재계산
+  // 히트맵도 **같은** filtered 로 채운다 — 갈라지면 한 지도의 두 표현이 서로 다른 말을 한다.
+  const hsrc = map.getSource("launch-heat");
+  if (hsrc) hsrc.setData(heatOn ? launchesToHeatFC(filtered) : EMPTY_FC);
+  // 색 눈금은 지금 보고 있는 집합에 맞춰 다시 잡는다(필터·아카이브로 최다 건수가 바뀐다).
+  const scale = heatOn ? heatScale(filtered) : null;
+  if (scale && map.getLayer && map.getLayer("launch-heat")) {
+    map.setPaintProperty("launch-heat", "heatmap-weight", scale.weight);
+  }
+  renderHeatLegend(filtered, scale);
   renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
 }
 
