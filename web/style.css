@@ -348,6 +348,40 @@ html, body {
 .offline-badge:hover { border-color: #a06f28; }
 .offline-badge.hidden { display: none; }
 
+/* 관측 위치 지정 팝오버 (P13-6) */
+.obs-popover {
+  position: absolute;
+  left: 50%; bottom: 96px; transform: translateX(-50%);
+  z-index: 32;
+  width: 320px;
+  background: rgba(19, 26, 43, .97);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 12px;
+}
+.obs-popover.hidden { display: none; }
+.obs-head { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+.obs-cur { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.obs-cur b { color: var(--text); }
+.obs-input {
+  width: 100%; box-sizing: border-box;
+  background: #0e1524; border: 1px solid var(--line); color: var(--text);
+  border-radius: 7px; padding: 6px 9px; font-size: 12px; margin-bottom: 6px;
+}
+.obs-results { max-height: 180px; overflow-y: auto; margin-bottom: 6px; }
+.obs-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  background: none; border: 0; color: var(--text); cursor: pointer;
+  text-align: left; padding: 5px 7px; border-radius: 6px; font-size: 12px;
+}
+.obs-row:hover { background: rgba(77, 163, 255, .12); }
+.obs-name { flex: 1; }
+.obs-sub { font-size: 10px; color: var(--muted); }
+.obs-empty { font-size: 11px; color: var(--muted); padding: 4px 2px; }
+.obs-msg { font-size: 10px; color: #fcd34d; min-height: 13px; margin-bottom: 4px; }
+.obs-btns { display: flex; gap: 6px; }
+
 /* 발사 순서표 (P13-1) */
 .sq-wrap { margin: 14px 0 4px; }
 .sq-head { font-size: 12px; color: var(--accent); margin-bottom: 6px; }

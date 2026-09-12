@@ -87,7 +87,7 @@
   <div id="sat-ctrl" class="sat-ctrl hidden">
     <span id="sat-ctrl-name" class="sat-ctrl-name"></span>
     <button id="sat-track-btn" class="btn sm" title="지도 중심을 위성에 고정">추적</button>
-    <button id="sat-obs-btn" class="btn sm" title="지도를 클릭해 관측 위치 지정">📍 관측</button>
+    <button id="sat-obs-btn" class="btn sm" title="관측 위치 지정 (도시 검색 · 좌표 입력 · 지도 클릭)">📍 관측</button>
     <button id="sat-pass-btn" class="btn sm" title="관측지 기준 통과 예측" disabled>통과 예측</button>
     <span class="sat-ahead-wrap" title="궤적을 앞으로 늘려 보고, 그 시각 위치를 표시">
       <input id="sat-ahead" type="range" min="0" max="360" step="5" value="0" />
@@ -95,6 +95,9 @@
     </span>
     <button id="sat-ctrl-close" class="sat-ctrl-close" title="선택 해제">✕</button>
   </div>
+
+  <!-- 관측 위치 지정 팝오버 (P13-6) — 도시·발사장 검색 / 좌표 입력 / 지도 클릭 -->
+  <div id="obs-popover" class="obs-popover hidden"></div>
 
   <!-- 통과 예측 패널 -->
   <aside id="pass-panel" class="panel hidden">
@@ -131,6 +134,7 @@
   <script src="js/satfilter.js"></script>
   <script src="js/sattrack.js"></script>
   <script src="js/satpass.js"></script>
+  <script src="js/observer.js"></script>
   <script src="js/trajectory.js"></script>
   <script src="js/panels.js"></script>
   <script src="js/keys.js"></script>

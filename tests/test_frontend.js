@@ -1682,5 +1682,113 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("입력 중 t 는 글자다",
     ctx.keyAction({ key: "t", target: { tagName: "INPUT" } }), null);
 }
+
+// ── 관측 위치 지정 (P13-6) ───────────────────────────────────────────────────
+// 통과 예측·오늘 밤은 관측 위치가 있어야 도는데 길이 지도 클릭 하나뿐이었고,
+// 안내는 "위성 패널의 관측지 지정을 누르라"인데 **그 버튼은 위성을 골라야 나타난다** —
+// 시작할 수 없는 안내였다. 조용히 깨지는 자리: 위도/경도 순서와 남/서 부호.
+{
+  const { ctx, state: st0 } = loadApp();
+  group("좌표 입력 (parseLatLng)");
+  const P = (t) => ctx.parseLatLng(t);
+  check("쉼표 구분", P("37.5665, 126.978"), { lat: 37.5665, lng: 126.978 });
+  check("공백 구분", P("37.5665 126.978"), { lat: 37.5665, lng: 126.978 });
+  check("첫 숫자가 위도다(뒤집히면 엉뚱한 하늘을 계산한다)", P("35.0 139.0").lat, 35);
+  check("음수", P("-33.87, 151.21"), { lat: -33.87, lng: 151.21 });
+  check("남/서 표기를 음수로", P("S33.87 E151.21"), { lat: -33.87, lng: 151.21 });
+  check("W 는 경도를 음수로", P("40.71 W74.01"), { lat: 40.71, lng: -74.01 });
+  check("범위를 벗어나면 거부", [P("91, 0"), P("0, 181"), P("-91, 0")], [null, null, null]);
+  check("숫자가 모자라면 거부", [P("37.5"), P("서울"), P(""), P(null)], [null, null, null, null]);
+
+  group("장소 검색 (searchPlaces)");
+  const LAUNCHES = [
+    { location_name: "Kennedy Space Center, FL, USA", lat: 28.5, lng: -80.6 },
+    { location_name: "Kennedy Space Center, FL, USA", lat: 28.5, lng: -80.6 },  // 중복
+    { location_name: "좌표 없는 발사장", lat: null, lng: null },
+  ];
+  check("한글 도시", ctx.searchPlaces("서울", []).map((r) => r.name), ["서울"]);
+  check("영문 이름으로도", ctx.searchPlaces("seoul", []).map((r) => r.name), ["서울"]);
+  check("부분 일치", ctx.searchPlaces("san", []).length > 0, true);
+  check("이미 가진 발사장도 함께 찾는다(데이터가 있으니 요청이 0이다)",
+    ctx.searchPlaces("kennedy", LAUNCHES).map((r) => [r.name, r.sub]),
+    [["Kennedy Space Center, FL, USA", "발사장"]]);
+  check("같은 발사장은 한 번만", ctx.searchPlaces("kennedy", LAUNCHES).length, 1);
+  check("좌표 없는 발사장은 후보가 아니다", ctx.searchPlaces("좌표 없는", LAUNCHES), []);
+  check("빈 검색어는 아무것도 안 낸다", [ctx.searchPlaces("", LAUNCHES), ctx.searchPlaces("  ", [])], [[], []]);
+  check("결과는 상한까지만", ctx.searchPlaces("a", []).length <= 8, true);
+
+  group("도시 목록 불변식");
+  // 손으로 적은 표라 오타가 조용히 섞인다 — 좌표가 지구 위인지, 한국 도시가 한국에 있는지 잰다.
+  check("모든 좌표가 유효 범위", st0.CITIES.every((c) => ctx.validLatLng(c.lat, c.lng)), true);
+  check("이름이 겹치지 않는다",
+    new Set(st0.CITIES.map((c) => c.ko)).size, st0.CITIES.length);
+  const KR = ["서울", "부산", "제주", "속초", "여수"];
+  check("한국 도시는 한반도 범위 안에 있다",
+    KR.every((n) => {
+      const c = st0.CITIES.find((x) => x.ko === n);
+      return c && c.lat > 33 && c.lat < 39 && c.lng > 124 && c.lng < 132;
+    }), true);
+  check("남반구 도시는 위도가 음수다",
+    ["시드니", "산티아고", "케이프타운"].every((n) => st0.CITIES.find((x) => x.ko === n).lat < 0), true);
+  check("서반구 도시는 경도가 음수다",
+    ["뉴욕", "리마", "밴쿠버"].every((n) => st0.CITIES.find((x) => x.ko === n).lng < 0), true);
+
+  group("관측 위치 세우기 (setObserver)");
+  const { ctx: c2, state, el, map, sel } = loadApp({ api: { save_settings: (p) => saved.push(p) } });
+  var saved = [];
+  state.map = map;
+  state.sidebarTab = "sats";
+  state.allLaunches = [];
+  c2.setObserver(37.5665, 126.9780, "서울");
+  check("좌표를 세운다(소수 4자리로 맞춘다)", state.observer, { lat: 37.5665, lng: 126.978, label: "서울" });
+  check("설정에 저장한다", saved.some((p) => p.observer && p.observer.label === "서울"), true);
+  check("사람이 읽는 말로", c2.observerLabel(), "서울 (37.57°, 126.98°)");
+  check("이름이 없으면 좌표만", (c2.setObserver(0, 0), c2.observerLabel()), "0.00°, 0.00°");
+  check("범위 밖은 세우지 않는다(옛 위치가 남는다)",
+    [c2.setObserver(999, 0), state.observer.lat], [false, 0]);
+
+  group("관측 위치 배선 (팝오버 · 오늘 밤 · 지도 클릭)");
+  var saved3 = [];
+  const { ctx: c3, state: s3, el: e3, map: m3, doc } = loadApp({
+    api: { save_settings: (p) => saved3.push(p) },
+  });
+  s3.map = m3;
+  s3.allLaunches = [];
+  s3.sidebarTab = "tonight";
+  s3.satrecs = [];
+  c3.bindUI();
+  check("bindUI 가 관측 버튼에 클릭을 붙인다", !!e3("sat-obs-btn").handlers.click, true);
+  check("처음엔 팝오버가 닫혀 있다", e3("obs-popover").hidden, true);
+  e3("sat-obs-btn").fire("click");
+  check("버튼이 팝오버를 연다(예전엔 곧바로 지도 클릭 모드였다)", e3("obs-popover").hidden, false);
+  check("팝오버에 검색·좌표·지도 클릭이 다 있다",
+    ["obs-search", "obs-coord", "obs-map-btn"].every((id) => e3("obs-popover").innerHTML.includes(id)), true);
+  e3("sat-obs-btn").fire("click");
+  check("다시 누르면 닫힌다", e3("obs-popover").hidden, true);
+
+  // 오늘 밤 탭 — 위성을 고르지 않아도 여기서 관측지를 정할 수 있어야 한다
+  s3.observer = null;
+  c3.renderTonightList();
+  check("관측지가 없으면 바로 정할 버튼을 준다(예전 안내는 시작할 수 없었다)",
+    e3("sidebar-list").innerHTML.includes("tonight-obs-btn"), true);
+
+  // 지도 클릭도 같은 한 곳(setObserver)을 탄다.
+  // **핸들러를 다는 것은 setupSatelliteLayer 의 책임**이라 그 경로를 실제로 태운다 —
+  // 직접 onMapClickForObserver 를 부르면 "지도에 붙었는가"는 못 재고 로직만 재게 된다.
+  c3.setupSatelliteLayer();
+  check("지도에 click 핸들러가 붙는다", m3.has("click"), true);
+  s3.settingObserver = true;
+  m3.fire("click", { lngLat: { lat: 35.1, lng: 129.0 } });
+  check("지도 클릭도 같은 경로로 세운다", [s3.observer.lat, s3.observer.lng], [35.1, 129]);
+  check("클릭 모드가 풀린다", s3.settingObserver, false);
+  // setObserver 를 타야 하는 **이유**를 잰다 — 좌표만 보면 직접 대입해도 통과한다.
+  check("지도 클릭도 설정에 저장한다", saved3.some((p) => p.observer && p.observer.lat === 35.1), true);
+  check("지도 클릭도 통과 예측 버튼을 켠다", e3("sat-pass-btn").disabled, false);
+
+  group("Esc 우선순위에 팝오버가 낀다");
+  check("팝오버가 사이드바보다 먼저 닫힌다",
+    ctx.escapeTarget({ obsPopover: true, sidebar: true }), "obsPopover");
+  check("상세 패널이 팝오버보다 먼저", ctx.escapeTarget({ obsPopover: true, panel: true }), "panel");
+}
   done();
 })();

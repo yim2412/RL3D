@@ -106,7 +106,9 @@ function setSidebarTab(tab) {
 /** 계산 전제가 갖춰지지 않았을 때의 안내. 갖춰졌으면 null. */
 function tonightBlocker() {
   if (!observer) {
-    return "관측 위치가 필요합니다.<br />🛰 위성 패널의 <b>관측지 지정</b>을 눌러 지도를 클릭하세요.";
+    // 예전 안내는 "위성 패널의 관측지 지정을 누르라"였는데, **그 버튼은 위성을 골라야 나타난다** —
+    // 시작할 수 없는 안내였다(P13-6). 여기서 바로 정하게 한다.
+    return `관측 위치가 필요합니다.<br /><button id="tonight-obs-btn" class="btn sm">📍 관측 위치 정하기</button>`;
   }
   if (!satrecs.length) {
     return "위성 데이터가 아직 없습니다.<br />위성 레이어를 켜면 목록이 채워집니다.";
@@ -121,6 +123,8 @@ function renderTonightList() {
   if (blocked) {
     countEl.textContent = "—";
     cont.innerHTML = `<div class="sb-empty">${blocked}</div>`;
+    const b = document.getElementById("tonight-obs-btn");
+    if (b) b.addEventListener("click", openObsPopover);
     return;
   }
   const rows = computeTonight(observer);

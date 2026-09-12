@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "sequence.js", "focus.js",
-  "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
+  "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "observer.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -31,7 +31,9 @@ const STATE_KEYS = [
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
   "trackAheadMin", "futureMarker",
-  "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId",
+  "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId", "settingObserver", "observerMarker",
+  // 읽기 전용 표도 여기로 꺼낸다 — 최상위 const 는 컨텍스트 객체에 안 보인다
+  "CITIES",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
@@ -149,9 +151,18 @@ function loadApp(options = {}) {
   );
 
   const map = {
-    on: (ev, fn) => { mapHandlers[ev] = fn; },
-    fire: (ev, arg) => { if (mapHandlers[ev]) mapHandlers[ev](arg); },
-    has: (ev) => !!mapHandlers[ev],
+    // 실제 MapLibre 는 `on(ev, fn)` 과 `on(ev, 레이어, fn)` 을 둘 다 받고, **같은 이벤트에
+    // 여러 핸들러**를 단다(클러스터 클릭·마커 클릭·관측지 지정이 전부 "click" 이다).
+    // 스텁이 하나만 담으면 마지막 것만 남아 배선 테스트가 거짓으로 통과한다(P13-6 에서 드러났다).
+    on: (ev, a, b) => {
+      const fn = typeof a === "function" ? a : b;
+      const layer = typeof a === "string" ? a : null;
+      const key = layer ? ev + ":" + layer : ev;
+      (mapHandlers[key] = mapHandlers[key] || []).push(fn);
+    },
+    /** 레이어 없는 핸들러를 전부 부른다. 레이어별은 fire("click:clusters", …). */
+    fire: (ev, arg) => (mapHandlers[ev] || []).forEach((f) => { if (f) f(arg); }),
+    has: (ev) => !!(mapHandlers[ev] && mapHandlers[ev].length),
     // 앱이 쓰는 최소한의 지도 API. setData 결과는 sources 에 남겨 테스트가 검사한다.
     addSource(id) { sources[id] = null; },
     addLayer() {},

@@ -27,7 +27,7 @@ function bindUI() {
   document.getElementById("stats-close").addEventListener("click", () =>
     document.getElementById("stats-panel").classList.add("hidden"));
   document.getElementById("sat-track-btn").addEventListener("click", toggleTracking);
-  document.getElementById("sat-obs-btn").addEventListener("click", beginSetObserver);
+  document.getElementById("sat-obs-btn").addEventListener("click", toggleObsPopover);
   document.getElementById("sat-pass-btn").addEventListener("click", showPasses);
   document.getElementById("sat-ctrl-close").addEventListener("click", deselectSatellite);
   document.getElementById("sat-ahead").addEventListener("input", onTrackAhead);

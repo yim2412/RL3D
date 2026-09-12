@@ -26,13 +26,12 @@ function beginSetObserver() {
 
 function onMapClickForObserver(e) {
   if (!settingObserver) return;
-  observer = { lat: +e.lngLat.lat.toFixed(4), lng: +e.lngLat.lng.toFixed(4) };
-  saveSettings({ observer });  // settings.json에 저장(P8-9)
-  showObserverMarker();
   settingObserver = false;
   map.getCanvas().style.cursor = "";
   showStatus(null);
-  updateSatCtrl();  // 통과 예측 버튼 활성화
+  // 지정 경로가 셋(검색·좌표·지도 클릭)이라 **한 곳으로 모은다**(P13-6) —
+  // 갈라지면 한 경로만 저장을 빠뜨리거나 목록을 안 갱신하는 일이 조용히 생긴다.
+  setObserver(e.lngLat.lat, e.lngLat.lng);
 }
 
 // ── 가시 판정 (P12-1) ─────────────────────────────────────────────────────────

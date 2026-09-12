@@ -49,6 +49,7 @@ function escapeTarget(open) {
   if (open.panel) return "panel";
   if (open.pass) return "pass";
   if (open.stats) return "stats";
+  if (open.obsPopover) return "obsPopover";
   if (open.satGroups) return "satGroups";
   if (open.satCtrl) return "satCtrl";
   if (open.sidebar) return "sidebar";
@@ -61,6 +62,7 @@ function openOverlays() {
   return {
     help: vis("keyhelp"), panel: vis("panel"), pass: vis("pass-panel"),
     stats: vis("stats-panel"), satGroups: vis("sat-groups"),
+    obsPopover: vis("obs-popover"),
     satCtrl: vis("sat-ctrl"), sidebar: vis("sidebar"),
   };
 }
@@ -70,6 +72,7 @@ function closeOverlay(what) {
   else if (what === "panel") closePanel();
   else if (what === "pass") document.getElementById("pass-panel").classList.add("hidden");
   else if (what === "stats") document.getElementById("stats-panel").classList.add("hidden");
+  else if (what === "obsPopover") closeObsPopover();
   else if (what === "satGroups") document.getElementById("sat-groups").classList.add("hidden");
   else if (what === "satCtrl") deselectSatellite();
   else if (what === "sidebar") toggleSidebar();
