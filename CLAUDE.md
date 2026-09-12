@@ -17,8 +17,12 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `api_client.py` | 외부 API **호출·캐싱**과 설정 저장. **엔드포인트 URL 상수는 전부 이 파일 상단에**. 테스트가 `CACHE_DIR`·`_http_get` 을 **재대입해서** 격리하므로, 여기 것을 다른 모듈로 옮길 때는 전역 8번을 먼저 본다 |
 | `api_parsing.py` | 응답·문자열 → 값 (순수). `_parse_launch(es)`·`_parse_tle`·`_parse_satcat`·`parse_version`·`is_newer`. 네트워크도 캐시도 없다 |
 | `api_errors.py` | 예외 → 사람이 읽는 말. 상태코드별 문구 표를 **한 곳에** |
+| `applog.py` | 회전 로그 설정(P12-9). 핸들러는 여기서만 붙인다 — 다른 모듈은 `log` 로 기록만 |
+| `startup.py` | WebView2 런타임 확인·크래시 안내(P12-10·P12-11) |
+| `satcat_codes.py` | SATCAT 코드표(소유국·궤도·타입) — 숫자·약어를 한국어로 |
+| `RL3D.spec` | PyInstaller 산출물. `build.bat` 이 플래그로 빌드하므로 **이 파일은 쓰이지 않는다**(생성물) |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 15개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `trajectory` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 17개 파일: `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
