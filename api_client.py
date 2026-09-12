@@ -97,17 +97,58 @@ def _cache_path(name):
     return os.path.join(CACHE_DIR, name)
 
 
-def _cache_read(name):
-    """(data, age_seconds) 반환. 없으면 (None, None)."""
+# 캐시에 담긴 **정규화 결과의 모양** 버전. 파싱에 필드를 더하거나 구조를 바꾸면 올린다.
+#
+# **이게 없어서 실제로 당했다(2026-09-12)**: 하루 사이 파싱에 필드 넷을 더했는데
+# (`timeline`·`orbital_year_count`·`location_count`·`pad_turnaround_sec`),
+# **지난 연도 아카이브 캐시는 TTL 이 없어 영구**다. 그래서 2025년을 이미 불러온 사용자는
+# 그 해 발사에서 새 기능이 **영원히 안 보인다** — 오류도 경고도 없다.
+# `launches.json` 은 TTL 15분이라 저절로 나아서 개발 중에는 보이지도 않았다.
+CACHE_SCHEMA = 1
+
+
+def _cache_read(name, any_schema=False):
+    """(data, age_seconds) 반환. 없거나 **모양이 다르면** (None, None).
+
+    모양이 다른 캐시는 **없는 것으로 본다** — 읽어서 쓰면 새 필드가 빠진 채 화면에
+    나오고, 그건 오류 없이 조용히 틀린 상태다. 다시 받는 비용(요청 1회)이 훨씬 싸다.
+
+    `any_schema=True` 는 **네트워크가 실패했을 때만** 쓴다(`_stale_fallback`).
+    그 자리에서까지 버리면 오프라인 사용자는 **예전에 보이던 데이터마저 못 본다** —
+    모양이 조금 낡은 화면이 빈 화면보다 낫다.
+    """
     path = _cache_path(name)
     try:
         age = time.time() - os.path.getmtime(path)
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f), age
+            raw = json.load(f)
     except (OSError, ValueError) as e:
         # 캐시 없음은 정상(첫 실행) — 그 외 사유가 궁금해질 때를 위해 debug 로만.
         log.debug("캐시 읽기 실패 %s: %s", name, e)
         return None, None
+    if not isinstance(raw, dict) or "schema" not in raw:
+        # 봉투가 없다 = CACHE_SCHEMA 도입 전에 저장된 것. 그때는 데이터가 통째로 들어 있다.
+        if any_schema:
+            return raw, age
+        log.info("옛 캐시 형식 %s — 다시 받는다", name)
+        return None, None
+    if raw.get("schema") != CACHE_SCHEMA:
+        if any_schema:
+            return raw.get("data"), age
+        log.info("캐시 스키마 불일치 %s (%s ≠ %s) — 다시 받는다",
+                 name, raw.get("schema"), CACHE_SCHEMA)
+        return None, None
+    return raw.get("data"), age
+
+
+def _stale_fallback(name):
+    """네트워크가 실패했을 때의 마지막 보루 — **모양이 달라도** 옛 캐시를 돌려준다.
+
+    스키마가 바뀐 직후 오프라인이 되면 정상 경로는 캐시를 버리는데, 그 자리에서까지
+    버리면 **화면이 통째로 빈다**. 새 필드가 없는 화면이 빈 화면보다 낫다
+    (그 상태는 `stale=True` 로 "저장된 데이터 표시" 경고가 함께 뜬다).
+    """
+    return _cache_read(name, any_schema=True)
 
 
 # 그룹별 TLE 캐시(tle_<group>.json)로 바꾸기 전에 쓰던 파일. 코드가 더 이상 읽지
@@ -133,7 +174,8 @@ def _cache_write(name, data):
     os.makedirs(CACHE_DIR, exist_ok=True)
     try:
         with open(_cache_path(name), "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+            # 데이터를 **봉투에 담아** 모양 버전을 함께 남긴다(_cache_read 가 대조한다).
+            json.dump({"schema": CACHE_SCHEMA, "data": data}, f, ensure_ascii=False)
     except OSError as e:
         # 치명적이지 않다(다음 호출이 다시 받는다) — 다만 매번 느려지므로 기록은 남긴다.
         log.warning("캐시 쓰기 실패 %s: %s", name, e)
@@ -193,6 +235,8 @@ def get_launches(force=False):
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = api_errors._friendly_error(e)
+        if cached is None:
+            cached, age = _stale_fallback("launches.json")   # 모양이 낡아도 빈 화면보다 낫다
         log.warning("발사 조회 실패(%s) — %s", e, "오래된 캐시 사용" if cached is not None else "캐시 없음")
         if cached is not None:
             return {"launches": cached, "stale": True, "error": msg, "age": age}
@@ -247,6 +291,9 @@ def get_archive(year, force=False):
                 "truncated": truncated}
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = api_errors._friendly_error(e)
+        if cached is None:
+            cached, _ = _stale_fallback(name)
+            cached, cached_truncated = _unpack_archive_cache(cached)
         log.warning("아카이브 %s 조회 실패: %s", year, e)
         if cached is not None:
             return {"launches": cached, "year": year, "stale": True, "error": msg,
@@ -283,6 +330,8 @@ def _get_group_tle(group, force=False):
         return sats, False, None
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = api_errors._friendly_error(e)
+        if cached is None:
+            cached, _ = _stale_fallback(name)
         log.warning("TLE 그룹 %s 조회 실패: %s", group, e)
         if cached is not None:
             return cached, True, msg
@@ -336,6 +385,8 @@ def _get_group_satcat(group, force=False):
         return meta, False, None
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
         msg = api_errors._friendly_error(e)
+        if cached is None:
+            cached, _ = _stale_fallback(name)
         log.warning("SATCAT 그룹 %s 조회 실패: %s", group, e)
         if cached is not None:
             return cached, True, msg

@@ -411,5 +411,100 @@ class TestCheckUpdate(CacheTestBase):
         self.assertIn("403", api_client.check_update("1.13.0")["error"])
 
 
+class SchemaVersion(CacheTestBase):
+    """캐시 스키마 버전 (2026-09-12).
+
+    **실제로 당한 것**: 하루 사이 파싱에 필드 넷을 더했는데 지난 연도 아카이브 캐시는
+    TTL 이 없어 **영구**다. 이미 불러온 해에서는 새 필드가 **영원히 안 보이고**
+    오류도 경고도 없다. `launches.json` 은 TTL 15분이라 저절로 나아 개발 중에는
+    보이지도 않았다 — 그래서 이 테스트가 없으면 다음에도 똑같이 당한다.
+    """
+
+    def _write_raw(self, name, obj):
+        """봉투를 거치지 않고 파일에 그대로 쓴다(옛 캐시·손상된 캐시 재현)."""
+        os.makedirs(api_client.CACHE_DIR, exist_ok=True)
+        with open(api_client._cache_path(name), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+
+    def test_write_puts_data_in_a_versioned_envelope(self):
+        api_client._cache_write("x.json", [1, 2, 3])
+        with open(api_client._cache_path("x.json"), encoding="utf-8") as f:
+            raw = json.load(f)
+        self.assertEqual(raw, {"schema": api_client.CACHE_SCHEMA, "data": [1, 2, 3]})
+
+    def test_round_trip(self):
+        api_client._cache_write("x.json", {"a": 1})
+        data, age = api_client._cache_read("x.json")
+        self.assertEqual(data, {"a": 1})
+        self.assertIsNotNone(age)
+
+    def test_envelopeless_cache_is_ignored(self):
+        """봉투가 없는 = 스키마 도입 전 캐시. 읽어 쓰면 새 필드가 빠진 채 화면에 나온다."""
+        self._write_raw("x.json", [{"id": "옛날 것"}])
+        self.assertEqual(api_client._cache_read("x.json"), (None, None))
+
+    def test_other_schema_is_ignored(self):
+        self._write_raw("x.json", {"schema": api_client.CACHE_SCHEMA + 1, "data": [1]})
+        self.assertEqual(api_client._cache_read("x.json"), (None, None))
+        self._write_raw("x.json", {"schema": None, "data": [1]})
+        self.assertEqual(api_client._cache_read("x.json"), (None, None))
+
+    def test_past_year_archive_is_refetched_when_schema_differs(self):
+        """**이 테스트가 이 항목의 이유다.** 지난 연도 아카이브는 TTL 이 없어 영구인데,
+        모양이 바뀌면 그래도 다시 받아야 한다."""
+        year = time.gmtime().tm_year - 1
+        name = "archive_{}.json".format(year)
+        self._write_raw(name, {"launches": [{"id": "옛날 것"}], "truncated": False})
+        self.serve(_page(2, tag="new"))
+        res = api_client.get_archive(year)
+        self.assertEqual(len(self.calls), 1, "옛 모양인데 다시 안 받았다")
+        self.assertEqual(len(res["launches"]), 2)
+        # 다시 받은 뒤에는 봉투가 생겨 두 번째 호출은 캐시를 쓴다(지난 연도라 영구)
+        api_client.get_archive(year)
+        self.assertEqual(len(self.calls), 1, "이번엔 캐시를 썼어야 한다")
+
+    def test_current_schema_past_year_archive_still_permanent(self):
+        """스키마가 같으면 지난 연도는 여전히 영구 캐시다(요청을 늘리지 않는다)."""
+        year = time.gmtime().tm_year - 1
+        self.serve(_page(1, tag="a"))
+        api_client.get_archive(year)
+        self.age_cache("archive_{}.json".format(year), 400 * 86400)
+        api_client.get_archive(year)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_offline_with_old_shaped_cache_still_shows_something(self):
+        """**스키마 검사의 가장 위험한 부작용**: 모양이 다르다고 버리면 오프라인 사용자는
+        예전에 보이던 데이터마저 못 본다. 실패 경로에서는 모양이 낡아도 돌려줘야 한다."""
+        self._write_raw("launches.json", [{"id": "옛날 것", "name": "옛 발사", "outcome": "success"}])
+        self.fail_with(urllib.error.URLError("오프라인"))
+        res = api_client.get_launches()
+        self.assertEqual(len(res["launches"]), 1, "빈 화면이 됐다 — 옛 캐시라도 보여줘야 한다")
+        self.assertTrue(res["stale"], "오래된 데이터라는 표시가 없다")
+        self.assertIsNotNone(res["error"])
+
+    def test_offline_past_year_archive_falls_back_too(self):
+        year = time.gmtime().tm_year - 1
+        self._write_raw("archive_{}.json".format(year),
+                        {"launches": [{"id": "옛날 것"}], "truncated": False})
+        self.fail_with(urllib.error.URLError("오프라인"))
+        res = api_client.get_archive(year)
+        self.assertEqual(len(res["launches"]), 1)
+        self.assertTrue(res["stale"])
+
+    def test_online_prefers_refetch_over_old_shape(self):
+        """온라인이면 옛 모양을 **쓰지 않는다** — 폴백은 실패했을 때만이다."""
+        self._write_raw("launches.json", [{"id": "옛날 것", "name": "옛 발사"}])
+        self.serve(_page(1, tag="new"), _page(1, tag="new2"))
+        res = api_client.get_launches()
+        self.assertFalse(res["stale"])
+        self.assertTrue(all(d["id"] != "옛날 것" for d in res["launches"]))
+
+    def test_launches_cache_also_versioned(self):
+        self._write_raw("launches.json", [{"id": "옛날 것", "name": "n"}])
+        self.serve(json.dumps({"results": []}), json.dumps({"results": []}))
+        api_client.get_launches()
+        self.assertEqual(len(self.calls), 2, "옛 모양 캐시를 그대로 썼다")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
