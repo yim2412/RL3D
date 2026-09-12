@@ -1790,5 +1790,71 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ctx.escapeTarget({ obsPopover: true, sidebar: true }), "obsPopover");
   check("상세 패널이 팝오버보다 먼저", ctx.escapeTarget({ obsPopover: true, panel: true }), "panel");
 }
+
+// ── 발사대 재사용 간격·발사장 통산 (P13-3) ──────────────────────────────────
+// 실측(라이브 100건): 재사용 간격 92/100(2.79일 ~ 1541일) · 발사장 통산 100/100.
+// 조용히 깨지는 자리: 단위 선택(둘 다 "일"로 찍으면 어느 쪽도 안 읽힌다)과
+// 예정 발사의 번호를 통산에 섞는 것(P13-2 에서 이미 141건을 부풀렸던 그 함정).
+{
+  const { ctx } = loadApp();
+  group("재사용 간격 표기 (turnaroundText)");
+  const T2 = (sec) => ctx.turnaroundText(sec);
+  check("한 시간 미만은 분", T2(35 * 60), "35분");
+  check("하루 미만은 시간", T2(7 * 3600), "7시간");
+  check("열흘 미만은 소수 한 자리(2.79일이 실측 최단이다)", T2(2.79 * 86400), "2.8일");
+  check("열흘 이상은 정수 일", T2(41 * 86400), "41일");
+  check("두 달 넘으면 개월", T2(200 * 86400), "7개월");
+  check("두 해 넘으면 년(1541일이 실측 최장이다)", T2(1541 * 86400), "4.2년");
+  check("없거나 이상한 값은 말하지 않는다",
+    [T2(0), T2(-5), T2(null), T2(undefined), T2(NaN), T2("63일")],
+    [null, null, null, null, null, null]);
+
+  group("발사장 통산 (siteTotals)");
+  const L = [
+    { outcome: "success", location_count: 1686 },
+    { outcome: "failure", location_count: 1687 },
+    { outcome: "upcoming", location_count: 1690 },   // 아직 일어나지 않았다
+    { outcome: "success" },                          // 기준값 없음
+  ];
+  check("이미 일어난 발사만 통산으로 본다", ctx.siteTotals(L).total, 1687);
+  check("우리 표본은 일어난 것만 센다", ctx.siteTotals(L).ours, 3);
+  check("기준값이 없으면 말하지 않는다",
+    [ctx.siteTotals([{ outcome: "success" }]), ctx.siteTotals([]), ctx.siteTotals(null)],
+    [null, null, null]);
+  check("예정뿐이면 말하지 않는다",
+    ctx.siteTotals([{ outcome: "upcoming", location_count: 9 }]), null);
+  const html = ctx.siteTotalsHtml(L);
+  check("통산과 우리 몫을 적는다", html.includes("<b>1,687회</b>") && html.includes("<b>3건</b>"), true);
+  check("기준이 무엇인지 밝힌다", html.includes("가장 최근 발사"), true);
+  check("기준값이 없으면 빈 문자열", ctx.siteTotalsHtml([]), "");
+
+  group("배선 (상세 패널 맥락 · 발사장 관점 화면)");
+  const { ctx: c2, state, el, map } = loadApp();
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-track");
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+  const d = { id: "1", name: "테스트", outcome: "success", net: "2026-05-01T00:00:00Z",
+              lat: 34.6, lng: -120.6, location_name: "Vandenberg SFB, CA, USA",
+              pad_count: 120, location_count: 812, pad_turnaround_sec: 2.79 * 86400 };
+  c2.openPanel(d);
+  const body = el("panel-body").innerHTML;
+  check("맥락 줄에 재사용 간격이 실린다", body.includes("직전 발사로부터 2.8일 만"), true);
+  check("맥락 줄에 발사장 통산이 실린다", body.includes("이 발사장 통산 812번째"), true);
+  check("기존 항목(발사대 순번)도 그대로", body.includes("이 발사대 120번째"), true);
+
+  state.allLaunches = [d];
+  c2.showEntityStats("site", "Vandenberg SFB, CA, USA");
+  check("발사장 관점 화면에 통산이 실린다",
+    el("stats-body").innerHTML.includes("이 발사장은 통산"), true);
+  // 로켓·기관 관점에는 발사장 통산이 의미가 없다 — 붙이면 거짓말이 된다
+  c2.showEntityStats("rocket", "없는 로켓");
+  const before = el("stats-body").innerHTML;
+  state.allLaunches = [Object.assign({}, d, { rocket: "Falcon 9" })];
+  c2.showEntityStats("rocket", "Falcon 9");
+  check("로켓 관점에는 붙지 않는다",
+    el("stats-body").innerHTML.includes("이 발사장은 통산"), false);
+}
   done();
 })();

@@ -155,6 +155,11 @@ def _parse_launch(item):
         "programs": [p.get("name") for p in (item.get("program") or [])
                      if isinstance(p, dict) and p.get("name")],
         "pad_count": item.get("pad_launch_attempt_count"),
+        # 이 발사장 통산 발사 횟수(P13-3). 실측 50/50 채워짐 — 우리 표본보다 정확한 외부 기준값이다.
+        "location_count": item.get("location_launch_attempt_count"),
+        # 이 발사대의 **직전 발사로부터 경과**(초). `P63DT20M36S` 같은 ISO-8601 기간으로 온다.
+        # 순서표(P13-1)에서 쓰던 파서를 그대로 쓴다 — 같은 형식을 두 번 읽지 않는다.
+        "pad_turnaround_sec": parse_relative_time(item.get("pad_turnaround")),
         "agency_year_count": item.get("agency_launch_attempt_count_year"),
         # 올해 전 세계 **궤도** 발사 중 몇 번째인가(P13-2). 실측 49/50 채워짐.
         # 통계 패널의 모수를 "불러온 N건" 너머로 넓히는 유일한 외부 기준값이다.

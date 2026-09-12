@@ -294,9 +294,29 @@ function vidLinksBlock(d) {
 }
 
 /** "이 발사대 285번째 · SpaceX 올해 90번째" — 숫자 하나로 맥락이 생긴다. */
+/**
+ * 발사대 재사용 간격 → 사람이 읽는 말 (P13-3). 순수 함수.
+ *
+ * 실측(라이브 100건)에서 **2.79일 ~ 1541일**까지 온다 — 같은 단위로는 둘 다 안 읽힌다
+ * (`0.008년` 도 `1541.0일` 도 못 읽는다). 크기에 따라 단위를 바꾼다.
+ */
+function turnaroundText(sec) {
+  if (typeof sec !== "number" || !isFinite(sec) || sec <= 0) return null;
+  const days = sec / 86400;
+  if (days < 1 / 24) return `${Math.round(sec / 60)}분`;
+  if (days < 1) return `${Math.round(days * 24)}시간`;
+  if (days < 10) return `${days.toFixed(1)}일`;
+  if (days < 60) return `${Math.round(days)}일`;
+  if (days < 730) return `${Math.round(days / 30.44)}개월`;
+  return `${(days / 365.25).toFixed(1)}년`;
+}
+
 function contextText(d) {
   const parts = [];
   if (d.pad_count) parts.push(`이 발사대 ${Number(d.pad_count).toLocaleString()}번째`);
+  const ta = turnaroundText(d.pad_turnaround_sec);
+  if (ta) parts.push(`직전 발사로부터 ${ta} 만`);
+  if (d.location_count) parts.push(`이 발사장 통산 ${Number(d.location_count).toLocaleString()}번째`);
   if (d.agency_year_count) parts.push(`${d.provider || "이 기관"} 올해 ${d.agency_year_count}번째`);
   if (d.orbital_year_count) parts.push(`전 세계 올해 ${d.orbital_year_count}번째 궤도 발사`);
   return parts.length ? parts.join(" · ") : null;
@@ -584,6 +604,34 @@ function entityBars(kind, list, s) {
 }
 
 /** 발사장·기관·로켓 중 하나를 기준으로 그 대상만의 성적·목록을 낸다. */
+/**
+ * 발사장의 **통산 발사 횟수**와 우리 표본 — 순수 함수 (P13-3). 기준값이 없으면 null.
+ *
+ * P13-2 와 같은 논리다: 우리 통계는 "불러온 N건"까지만 말할 수 있는데, LL2 의
+ * `location_launch_attempt_count`(실측 100/100)가 그 발사장의 **통산 횟수**를 알려준다.
+ * **이미 일어난 발사만 센다** — 예정 발사에 붙은 번호는 아직 일어나지 않은 수다.
+ */
+function siteTotals(list) {
+  let total = 0, ours = 0;
+  for (const d of list || []) {
+    if (!d || d.outcome === "upcoming") continue;
+    ours++;
+    if (typeof d.location_count === "number" && d.location_count > total) total = d.location_count;
+  }
+  return total > 0 ? { total, ours } : null;
+}
+
+/** 위 값을 문장으로. 없으면 빈 문자열(없는 말을 지어내지 않는다). */
+function siteTotalsHtml(list) {
+  const t = siteTotals(list);
+  if (!t) return "";
+  const pct = Math.round(t.ours / t.total * 100);
+  return `<div class="st-world">🏗 이 발사장은 통산 <b>${t.total.toLocaleString()}회</b> 발사했습니다` +
+    ` — 그중 <b>${t.ours}건</b>(${pct}%)을 불러왔습니다</div>` +
+    `<div class="st-world-src">기준: Launch Library 2 의 발사장 통산 횟수` +
+    ` (우리가 가진 <b>가장 최근 발사</b>까지의 집계다)</div>`;
+}
+
 function showEntityStats(kind, value) {
   const view = ENTITY_VIEWS[kind];
   if (!view || !value) return;
@@ -614,6 +662,7 @@ function showEntityStats(kind, value) {
   document.getElementById("stats-body").innerHTML =
     `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
     scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear())) +
+    (kind === "site" ? siteTotalsHtml(list) : "") +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
       `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +

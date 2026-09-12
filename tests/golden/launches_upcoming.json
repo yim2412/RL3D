@@ -7,6 +7,7 @@
   "image": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/images/starship_on_the_image_20260724044615.jpg",
   "lat": 25.99677,
   "lng": -97.15799,
+  "location_count": 22,
   "location_name": "SpaceX Starbase, TX, USA",
   "mission_desc": "13th test flight of the two-stage Starship launch vehicle. Second flight of Starship V3.\r\n\r\nFor the first time, Starship will carry 20 V3 Starlink satellites to space, which will extend solar arrays and antennas and will attempt to connect with ground stations in South Africa and the larger Starlink constellation via high-capacity lasers. \r\n\r\n6 of the satellites have been modified with a suite of cameras to scan Starship’s heat shield and transmit imagery down to operators to continue testing methods of analyzing Starship’s heat shield readiness for return to launch site on future missions. Several tiles on Starship have been painted white to simulate missing tiles and serve as imaging targets in the test.",
   "mission_name": "Flight 13",
@@ -19,6 +20,7 @@
   "outcome": "success",
   "pad_count": 2,
   "pad_name": "Orbital Launch Pad 2",
+  "pad_turnaround_sec": 5444436,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/starship2520if_mission_patch_20230414221655.png",
   "probability": null,
   "programs": [
@@ -253,6 +255,7 @@
   "image": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/images/falcon2520925_image_20221009234147.png",
   "lat": 34.632,
   "lng": -120.611,
+  "location_count": 901,
   "location_name": "Vandenberg SFB, CA, USA",
   "mission_desc": "A batch of 24 satellites for the Starlink mega-constellation - SpaceX's project for space-based Internet communication system.",
   "mission_name": "Starlink Group 17-51",
@@ -265,6 +268,7 @@
   "outcome": "upcoming",
   "pad_count": 285,
   "pad_name": "Space Launch Complex 4E",
+  "pad_turnaround_sec": 349307,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/space2520x252_mission_patch_20221011205756.png",
   "probability": null,
   "programs": [
@@ -432,6 +436,7 @@
   "image": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/images/falcon2520925_image_20221009234147.png",
   "lat": 34.632,
   "lng": -120.611,
+  "location_count": 902,
   "location_name": "Vandenberg SFB, CA, USA",
   "mission_desc": "A batch of 24 satellites for the Starlink mega-constellation - SpaceX's project for space-based Internet communication system.",
   "mission_name": "Starlink Group 17-52",
@@ -444,6 +449,7 @@
   "outcome": "upcoming",
   "pad_count": 286,
   "pad_name": "Space Launch Complex 4E",
+  "pad_turnaround_sec": 295719,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/space2520x252_mission_patch_20221011205756.png",
   "probability": null,
   "programs": [

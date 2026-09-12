@@ -125,6 +125,12 @@ class LaunchParsing(unittest.TestCase):
         counts = [d["orbital_year_count"] for d in parsed]
         self.assertTrue(any(isinstance(c, int) and c > 0 for c in counts),
                         "연내 궤도 발사 순번이 하나도 안 실렸다")
+        # 발사장 통산·발사대 재사용 간격(P13-3). 프론트 테스트는 합성 입력을 쓰므로
+        # **파이썬이 이 필드를 싣는지는 여기서만 드러난다**(P13-2 에서 변이를 놓쳤던 자리).
+        self.assertTrue(any(isinstance(d["location_count"], int) and d["location_count"] > 0
+                            for d in parsed), "발사장 통산 횟수가 하나도 안 실렸다")
+        self.assertTrue(any(isinstance(d["pad_turnaround_sec"], int) and d["pad_turnaround_sec"] > 0
+                            for d in parsed), "발사대 재사용 간격이 하나도 안 실렸다")
         self.assertIsInstance(starship["webcast_live"], bool)
 
     def test_relative_time_parsing(self):
