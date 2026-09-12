@@ -33,6 +33,10 @@ CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT
 # 위성 메타데이터(P12-5). TLE 와 같은 GROUP 단위로 받아 같은 단위로 캐싱한다 —
 # 전체 satcat.csv 는 6.7MB 지만 그룹별은 2KB~1MB 다(2026-09-11 실측).
 CELESTRAK_SATCAT = "https://celestrak.org/satcat/records.php?GROUP={group}&FORMAT=csv"
+# 업데이트 확인(P12-12). 비인증 GitHub API 는 IP 당 시간당 60회라 TTL 하루면 넉넉하다.
+# 이 URL 이 가리키는 릴리스가 곧 "최신" 이다 — 태그만 있고 릴리스가 없으면 보이지 않는다
+# (P12-22 가 이 항목의 선행 조건이었던 이유).
+GITHUB_LATEST_RELEASE = "https://api.github.com/repos/yim2412/RL3D/releases/latest"
 # 위성 그룹 카탈로그: key=Celestrak GROUP, label=표시명, cap=개수 상한(None=무제한).
 # cap 은 **지도에 그릴 개수**만 줄인다 — 응답 전체를 받은 뒤 자르므로 다운로드는 줄지 않는다.
 # 값 근거(2026-07-26 실측, P11-6): 위성 8,000개에서도 초당 갱신이 동기 28ms·화면 반영 33ms 라
@@ -72,6 +76,7 @@ TTL_TLE = 2 * 60 * 60       # TLE 2시간
 TTL_SATCAT = 24 * 60 * 60   # 위성 메타데이터 24시간
 # 아카이브: 지난 연도는 영구 캐시(과거 발사는 안 변함), 올해만 TTL 갱신.
 TTL_ARCHIVE_CURRENT = 6 * 60 * 60   # 올해 아카이브 6시간(연중 새 발사 추가)
+TTL_UPDATE = 24 * 60 * 60           # 업데이트 확인 하루 1회(P12-12)
 ARCHIVE_MAX_PAGES = 5               # 연도당 최대 페이지(요청 폭주 방지)
 ARCHIVE_PAGE_DELAY = 2              # 페이지 사이 딜레이(초) — 레이트리밋 보호
 
@@ -518,6 +523,89 @@ def get_satcat(groups=None, force=False):
     return {"satcat": merged, "stale": stale, "error": error}
 
 
+# ── 업데이트 확인 (P12-12) ────────────────────────────────────────────────────
+def parse_version(text):
+    """`v1.13.0` · `1.13.0` → (1, 13, 0). 읽을 수 없으면 None.
+
+    None 은 "모른다"는 뜻이고, 비교하는 쪽은 모를 때 **업데이트 없음**으로 본다 —
+    알 수 없는 태그(`nightly` 등) 때문에 없는 새 버전을 알리는 것이 더 나쁘다.
+    """
+    if not isinstance(text, str):
+        return None
+    t = text.strip().lstrip("vV")
+    parts = t.split(".")
+    out = []
+    for part in parts[:3]:
+        # 1.13.0-rc1 처럼 꼬리가 붙어도 앞의 숫자까지는 읽는다
+        num = ""
+        for ch in part:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        if not num:
+            return None
+        out.append(int(num))
+    if not out:
+        return None
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out)
+
+
+def is_newer(latest, current):
+    """latest 가 current 보다 높은 버전인가. 어느 한쪽이라도 못 읽으면 False."""
+    a, b = parse_version(latest), parse_version(current)
+    if a is None or b is None:
+        return False
+    return a > b
+
+
+def check_update(current_version, force=False):
+    """GitHub 최신 릴리스와 현재 버전을 비교한다.
+
+    반환: {"current", "latest", "update_available", "url", "name",
+           "stale": bool, "error": str|None, "age": float|None}
+
+    **update_available 은 캐시에 저장하지 않고 매번 다시 계산한다.** bool 을 굳혀 두면
+    사용자가 새 버전으로 바꾼 뒤에도 TTL(하루) 동안 계속 "새 버전이 있다"고 말한다 —
+    예외도 안 나고 화면만 조용히 틀린다.
+    """
+    def result(latest, url, name, stale, error, age):
+        return {
+            "current": current_version,
+            "latest": latest,
+            "update_available": is_newer(latest, current_version),
+            "url": url,
+            "name": name,
+            "stale": stale,
+            "error": error,
+            "age": age,
+        }
+
+    cached, age = _cache_read("update.json")
+    if not force and isinstance(cached, dict) and age is not None and age < TTL_UPDATE:
+        return result(cached.get("latest"), cached.get("url"), cached.get("name"),
+                      False, None, age)
+
+    try:
+        payload = json.loads(_http_get(GITHUB_LATEST_RELEASE))
+        latest = payload.get("tag_name")
+        url = payload.get("html_url")
+        name = payload.get("name")
+        _cache_write("update.json", {"latest": latest, "url": url, "name": name})
+        return result(latest, url, name, False, None, 0)
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+        msg = _friendly_error(e)
+        log.warning("업데이트 확인 실패(%s) — %s", e,
+                    "오래된 캐시 사용" if isinstance(cached, dict) else "캐시 없음")
+        if isinstance(cached, dict):
+            return result(cached.get("latest"), cached.get("url"), cached.get("name"),
+                          True, msg, age)
+        # 업데이트 확인 실패는 앱 기능이 아니다 — 화면에 에러를 띄우지 않고 조용히 넘긴다.
+        return result(None, None, None, False, msg, None)
+
+
 # ── 에러 메시지(사람이 읽는 말로) ─────────────────────────────────────────────
 # HTTP 상태코드 → 사용자 문구. 새 코드를 만나면 여기에만 추가한다.
 # 403 은 이 앱이 실제로 겪는 실패다 — Celestrak 은 같은 대형 그룹(Starlink 1.7MB)을
@@ -612,6 +700,16 @@ if __name__ == "__main__":
         if iss:
             print(f"        예: {iss['name']} — {iss['type']} · {iss['owner']} · "
                   f"{iss['launch_date']} · {iss['launch_site']} · 크기 {iss['size']}")
+
+    # 업데이트 확인(P12-12): **소스 도달 여부만** 잰다. 현재 버전은 앱(main.py)이 넘기는
+    # 것이라 여기서 읽지 않는다 — main 을 import 하면 스모크가 webview(GUI)에 딸려간다.
+    r = check_update("0.0.0")
+    if r["error"] and not r["latest"]:
+        print(f"[FAIL] update - {r['error']}")
+    else:
+        tag = "OK(stale)" if r["stale"] else "OK"
+        print(f"[{tag}] update - 최신 릴리스 {r['latest']}"
+              + (f" (경고: {r['error']})" if r["error"] else ""))
 
     # 아카이브: 작년치 1개 연도만(최초 1회 API, 이후 영구 캐시라 무료 스모크)
     last_year = time.gmtime().tm_year - 1

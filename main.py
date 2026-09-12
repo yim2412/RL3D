@@ -19,7 +19,7 @@ import startup
 
 log = logging.getLogger(__name__)
 
-__version__ = "1.13.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.14.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -143,6 +143,10 @@ class Api:
             return False
         webbrowser.open(parsed.geturl())
         return True
+
+    def check_update(self, force=False):
+        """GitHub 최신 릴리스와 이 앱의 버전을 비교한다(P12-12)."""
+        return api_client.check_update(__version__, force)
 
     def ping(self):
         return "pong"

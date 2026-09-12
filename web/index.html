@@ -42,6 +42,9 @@
   <!-- 배경 타일을 못 받을 때(오프라인) 안내 배지 — 클릭하면 닫힌다 -->
   <button id="offline-badge" class="offline-badge hidden" title="눌러서 닫기"></button>
 
+  <!-- 새 버전 안내 배지 (P12-12) — 본문을 누르면 릴리스 페이지, ✕ 는 그 버전만 닫는다 -->
+  <div id="update-badge" class="update-badge hidden"></div>
+
   <!-- 발사 임박 집중 화면 (P12-3) — T-60분 안쪽 발사가 있을 때만 보인다 -->
   <div id="focus" class="focus hidden"></div>
 
@@ -122,6 +125,7 @@
   <script src="js/panels.js"></script>
   <script src="js/keys.js"></script>
   <script src="js/settings.js"></script>
+  <script src="js/update.js"></script>
   <script src="js/boot.js"></script>
 </body>
 </html>

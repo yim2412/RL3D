@@ -1063,5 +1063,101 @@ const { loadApp, group, check, done } = require("./harness");
     check("그 해는 완전으로 센다", [...ctx.completeYears()], [2018]);
     check("평범한 안내만 한다", el("status").textContent.includes("일부만"), false);
   }
+
+  // ── 업데이트 확인 배지 (P12-12) ─────────────────────────────────────────────
+  // 순수 판정(shouldShowUpdate·updateBadgeText)과 **배선**을 따로 잰다 — 판정이 다 맞아도
+  // initUpdateCheck 가 안 불리거나 클릭 핸들러가 없으면 앱에서는 아무 일도 안 일어난다.
+  {
+    const { ctx } = loadApp();
+    group("업데이트 판정 (shouldShowUpdate)");
+    const info = { update_available: true, latest: "v1.14.0", current: "1.13.0",
+                   url: "https://example.invalid/r" };
+    check("새 버전이면 띄운다", ctx.shouldShowUpdate(info, ""), true);
+    check("업데이트 없음이면 안 띄운다",
+      ctx.shouldShowUpdate({ ...info, update_available: false }, ""), false);
+    check("latest 가 비면 안 띄운다", ctx.shouldShowUpdate({ ...info, latest: null }, ""), false);
+    check("info 가 없으면 조용히 false", ctx.shouldShowUpdate(null, ""), false);
+    check("닫은 버전과 같으면 안 띄운다", ctx.shouldShowUpdate(info, "1.14.0"), false);
+    check("닫은 버전의 v 접두 차이를 흡수한다", ctx.shouldShowUpdate(info, "v1.14.0"), false);
+    check("닫은 것보다 더 새 버전이면 다시 띄운다",
+      ctx.shouldShowUpdate({ ...info, latest: "v1.15.0" }, "1.14.0"), true);
+
+    group("업데이트 문구 (updateBadgeText)");
+    check("새 버전과 현재 버전을 함께 적는다",
+      ctx.updateBadgeText(info), "⬆ 새 버전 v1.14.0 가 있습니다 (현재 v1.13.0) — 눌러서 받기");
+    check("현재 버전을 모르면 빈 괄호를 남기지 않는다",
+      ctx.updateBadgeText({ latest: "v1.14.0" }).includes("("), false);
+    check("태그의 v 접두는 한 번만 붙는다",
+      ctx.updateBadgeText({ latest: "1.14.0", current: "1.13.0" }).includes("vv"), false);
+  }
+  {
+    // 배선 ①: **부트(pywebviewready)가 실제로 부르는가.** 함수를 직접 부르면 판정은 보이지만
+    // boot.js 의 호출 한 줄이 빠져도 통과한다 — 그 구멍은 이 프로젝트에서 이미 세 번 났다.
+    const info = { update_available: true, latest: "v1.14.0", current: "1.13.0",
+                   url: "https://example.invalid/r" };
+    let asked = 0;
+    const { ctx, el, state, win } = loadApp({
+      api: { check_update: async () => { asked++; return info; } },
+    });
+    group("업데이트 배선 (부트 경로)");
+    check("부트 전에는 배지에 클릭 핸들러가 없다", !!el("update-badge").handlers.click, false);
+    check("부트 전에는 확인하지 않는다", asked, 0);
+    await win.fire("pywebviewready");
+    await new Promise((r) => setImmediate(r));
+    check("bindUI 가 배지에 클릭을 붙인다", !!el("update-badge").handlers.click, true);
+    check("부트가 업데이트 확인을 부른다", asked, 1);
+    check("배지가 보인다", el("update-badge").hidden, false);
+    check("문구에 새 버전이 적힌다", el("update-badge").innerHTML.includes("v1.14.0"), true);
+    check("닫기 버튼이 함께 그려진다", el("update-badge").innerHTML.includes("ub-close"), true);
+    check("나중에 쓰려고 결과를 들고 있는다", state.latestUpdateInfo.latest, "v1.14.0");
+    check("확인을 기다리느라 지도를 막지 않는다", state.map !== null, true);
+  }
+  {
+    // 배선 ②: 본문 클릭 → 릴리스 페이지 열기
+    const info = { update_available: true, latest: "v1.14.0", current: "1.13.0",
+                   url: "https://example.invalid/r" };
+    const opened = [];
+    const { ctx, el } = loadApp({ api: {
+      check_update: async () => info,
+      open_url: (u) => { opened.push(u); return true; },
+    } });
+    ctx.bindUpdateBadge();
+    await ctx.initUpdateCheck();
+    el("update-badge").fire("click", { target: { classList: { contains: () => false } } });
+    check("본문을 누르면 릴리스 페이지를 연다", opened, ["https://example.invalid/r"]);
+  }
+  {
+    // 배선 ③: ✕ → 그 버전만 닫고 설정에 남긴다(다음 실행에도 안 뜨게)
+    const info = { update_available: true, latest: "v1.14.0", current: "1.13.0",
+                   url: "https://example.invalid/r" };
+    const saved = [];
+    const opened = [];
+    const { ctx, el, state } = loadApp({ api: {
+      check_update: async () => info,
+      save_settings: (p) => saved.push(p),
+      open_url: (u) => { opened.push(u); return true; },
+    } });
+    ctx.bindUpdateBadge();
+    await ctx.initUpdateCheck();
+    el("update-badge").fire("click", { target: { classList: { contains: (c) => c === "ub-close" } } });
+    check("배지가 닫힌다", el("update-badge").hidden, true);
+    check("닫은 버전을 설정에 남긴다", saved, [{ dismissedUpdate: "v1.14.0" }]);
+    check("닫기는 페이지를 열지 않는다", opened, []);
+    check("상태에도 반영된다", state.settingsDismissedUpdate, "v1.14.0");
+  }
+  {
+    // 배선 ④: 저장된 dismissedUpdate 가 복원돼 배지를 막는다
+    const info = { update_available: true, latest: "v1.14.0", current: "1.13.0", url: "u" };
+    const { ctx, el } = loadApp({ api: { check_update: async () => info } });
+    ctx.applySettings({ dismissedUpdate: "v1.14.0" });
+    await ctx.initUpdateCheck();
+    check("이미 닫은 버전은 다음 실행에도 안 뜬다", el("update-badge").hidden, true);
+  }
+  {
+    // 확인 실패는 앱 기능이 아니다 — 조용히 넘어가야 한다
+    const { ctx, el } = loadApp({ api: { check_update: async () => { throw new Error("net"); } } });
+    await ctx.initUpdateCheck();
+    check("확인이 실패해도 배지는 안 뜬다", el("update-badge").hidden, true);
+  }
   done();
 })();

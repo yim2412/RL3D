@@ -50,6 +50,11 @@ let lastLaunchLoad = null;  // 마지막 발사 데이터 기준 시각(ms) — 
 let favLaunches = new Set();
 let favSats = new Set();
 
+// 업데이트 확인(P12-12). dismissedUpdate 는 "이 버전 배지는 그만 보겠다"는 뜻이라
+// 설정에 저장한다 — 세션 한정으로 두면 실행할 때마다 같은 배지를 다시 닫아야 한다.
+let latestUpdateInfo = null;
+let settingsDismissedUpdate = "";
+
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
 let timelineInited = false;

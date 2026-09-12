@@ -1,6 +1,6 @@
 # RL3D — 로켓 발사 & 위성 추적
 
-**v1.9.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
+**v1.14.0** · [변경 이력](CHANGELOG.md) · [![tests](https://github.com/yim2412/RL3D/actions/workflows/tests.yml/badge.svg)](https://github.com/yim2412/RL3D/actions/workflows/tests.yml)
 
 전 세계 로켓 발사를 **2D 지도**에 표시하고, 위성을 실시간으로 움직이게 보여주는 Windows 데스크톱 앱.
 뉴스 상황판 감성의 다크 테마. pywebview + MapLibre GL 로 만든 단일 exe(설치 불필요).
@@ -39,6 +39,8 @@
   Starlink만 2,000개 상한(전체 10,000여 개를 거듭 받으면 Celestrak이 요청을 막는다), 나머지는 전부 표시
 - 🛰 **궤도 대역 필터** — 툴바 `그룹 ▾` 안에서 저궤도(LEO)·중궤도(MEO)·정지궤도(GEO)를 켜고 끈다.
   이미 받아둔 TLE만 걸러내므로 재요청 없이 즉시 반영되고, 툴바에 `(보이는 수/전체)`로 표시된다(관심 위성은 필터와 무관하게 남는다)
+- ⬆ **새 버전 확인** — 시작할 때 GitHub 최신 릴리스를 확인하고, 지금 버전보다 높으면 지도 좌하단에 안내 배지.
+  누르면 릴리스 페이지가 열리고 `✕` 는 **그 버전만** 닫는다(다음 버전이 나오면 다시 뜬다). 하루 1회만 확인하며, 실패해도 화면에는 아무 영향이 없다
 - 🕒 **갱신 시각 표시 / 설정 저장** — "N분 전 갱신" 상시 표시. 필터·토글·위성 그룹·궤도 대역·관측 위치·관심 목록·지도 위치·창 위치/크기를 저장해 다음 실행에 복원
 - 🔄 **자동 갱신** — 5분마다 백그라운드 폴링, 새 발사·상태 변화(예정→성공 등)를 화면 하단에 표시
 - 🛰 **위성 레이어(선택)** — Celestrak TLE + satellite.js(SGP4)로 위성 실시간 위치. **기본 OFF**, 툴바에서 켜기.

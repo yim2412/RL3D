@@ -294,5 +294,121 @@ class TestSatelliteGroups(CacheTestBase):
         self.assertEqual(len(self.calls), 2)
 
 
+def _release(tag="v1.14.0", url="https://example.invalid/r/v1.14.0", name="RL3D v1.14.0"):
+    return json.dumps({"tag_name": tag, "html_url": url, "name": name})
+
+
+class TestVersionCompare(unittest.TestCase):
+    """버전 비교는 **틀려도 예외가 안 난다** — 없는 업데이트를 알리거나 있는 것을 놓칠 뿐이다."""
+
+    def test_parses_with_and_without_v(self):
+        self.assertEqual(api_client.parse_version("v1.13.0"), (1, 13, 0))
+        self.assertEqual(api_client.parse_version("1.13.0"), (1, 13, 0))
+
+    def test_pads_missing_parts(self):
+        self.assertEqual(api_client.parse_version("2"), (2, 0, 0))
+        self.assertEqual(api_client.parse_version("1.4"), (1, 4, 0))
+
+    def test_unreadable_is_none(self):
+        for bad in ("nightly", "", None, "v", "..", 13):
+            self.assertIsNone(api_client.parse_version(bad), bad)
+
+    def test_numeric_not_lexicographic(self):
+        # 문자열 비교면 "1.9.0" > "1.13.0" 이 된다 — 실제로 이 앱이 지나온 구간이다
+        self.assertTrue(api_client.is_newer("v1.13.0", "1.9.0"))
+        self.assertFalse(api_client.is_newer("v1.9.0", "1.13.0"))
+
+    def test_same_version_is_not_newer(self):
+        self.assertFalse(api_client.is_newer("v1.13.0", "1.13.0"))
+
+    def test_older_release_is_not_newer(self):
+        # 개발 중(코드가 릴리스보다 앞선) 상태에서 "업데이트 있음"이 뜨면 거꾸로 동작하는 것
+        self.assertFalse(api_client.is_newer("v1.2.0", "1.13.0"))
+
+    def test_unreadable_side_never_claims_update(self):
+        self.assertFalse(api_client.is_newer("nightly", "1.13.0"))
+        self.assertFalse(api_client.is_newer("v1.14.0", "알 수 없음"))
+
+    def test_prerelease_tail_reads_leading_number(self):
+        self.assertEqual(api_client.parse_version("1.14.0-rc1"), (1, 14, 0))
+
+
+class TestCheckUpdate(CacheTestBase):
+    def test_reports_update_when_release_is_newer(self):
+        self.serve(_release())
+        r = api_client.check_update("1.13.0")
+        self.assertTrue(r["update_available"])
+        self.assertEqual(r["latest"], "v1.14.0")
+        self.assertEqual(r["url"], "https://example.invalid/r/v1.14.0")
+        self.assertIsNone(r["error"])
+
+    def test_no_update_when_same_version(self):
+        self.serve(_release(tag="v1.13.0"))
+        self.assertFalse(api_client.check_update("1.13.0")["update_available"])
+
+    def test_ttl_reuses_cache(self):
+        self.serve(_release())
+        api_client.check_update("1.13.0")
+        api_client.check_update("1.13.0")
+        self.assertEqual(len(self.calls), 1, "TTL 안인데 다시 요청했다")
+        self.age_cache("update.json", api_client.TTL_UPDATE + 1)
+        api_client.check_update("1.13.0")
+        self.assertEqual(len(self.calls), 2, "TTL 이 지났는데 캐시를 그대로 썼다")
+
+    def test_force_bypasses_cache(self):
+        self.serve(_release())
+        api_client.check_update("1.13.0")
+        api_client.check_update("1.13.0", force=True)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_cached_result_is_recompared_against_current_version(self):
+        """**이 항목이 이 기능의 조용한 실패다.**
+
+        update_available 을 캐시에 굳혀 두면, 사용자가 새 버전으로 바꾼 뒤에도 TTL(하루)
+        동안 "새 버전이 있다"고 계속 말한다. 캐시된 latest 와 **지금의** current 로
+        매번 다시 비교해야 한다.
+        """
+        self.serve(_release(tag="v1.14.0"))
+        self.assertTrue(api_client.check_update("1.13.0")["update_available"])
+        again = api_client.check_update("1.14.0")      # 사용자가 업데이트했다
+        self.assertEqual(len(self.calls), 1, "캐시를 써야 하는 구간이다")
+        self.assertFalse(again["update_available"],
+                         "캐시된 판정을 그대로 돌려줬다 — 이미 받은 버전을 또 권한다")
+
+    def test_falls_back_to_stale_cache_on_failure(self):
+        self.serve(_release())
+        api_client.check_update("1.13.0")
+        self.age_cache("update.json", api_client.TTL_UPDATE + 1)
+        self.fail_with(urllib.error.URLError("offline"))
+        r = api_client.check_update("1.13.0")
+        self.assertTrue(r["stale"])
+        self.assertTrue(r["update_available"], "오래된 캐시라도 알던 최신 버전은 남아야 한다")
+        self.assertIsNotNone(r["error"])
+
+    def test_failure_without_cache_is_quiet(self):
+        self.fail_with(urllib.error.URLError("offline"))
+        r = api_client.check_update("1.13.0")
+        self.assertFalse(r["update_available"])
+        self.assertIsNone(r["latest"])
+        self.assertFalse(r["stale"])
+
+    def test_missing_fields_do_not_raise(self):
+        # 릴리스에 name·html_url 이 없을 수 있다 — 1건 파싱 실패가 전체를 죽이면 안 된다
+        self.serve(json.dumps({"tag_name": "v1.14.0"}))
+        r = api_client.check_update("1.13.0")
+        self.assertTrue(r["update_available"])
+        self.assertIsNone(r["url"])
+
+    def test_broken_payload_is_quiet(self):
+        self.serve("<html>rate limited</html>")
+        r = api_client.check_update("1.13.0")
+        self.assertFalse(r["update_available"])
+        self.assertIsNotNone(r["error"])
+
+    def test_http_403_is_friendly(self):
+        self.fail_with(urllib.error.HTTPError("u", 403, "Forbidden", {}, None))
+        self.assertIn("403", api_client.check_update("1.13.0")["error"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

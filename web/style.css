@@ -346,6 +346,33 @@ html, body {
 .offline-badge:hover { border-color: #a06f28; }
 .offline-badge.hidden { display: none; }
 
+/* 새 버전 안내 배지 (P12-12) — 오프라인 배지와 같은 좌하단이라 위로 비켜 둔다.
+   둘이 동시에 뜨는 상황(오프라인인데 캐시된 업데이트 정보가 있다)이 실제로 가능하다. */
+.update-badge {
+  position: absolute;
+  left: 14px; bottom: 118px;
+  z-index: 24;
+  max-width: 520px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; line-height: 1.4;
+  color: #cfe6ff;
+  background: rgba(14, 32, 54, .94);
+  border: 1px solid #2b5a8c;
+  border-radius: 8px;
+  padding: 8px 11px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.update-badge .ub-text { cursor: pointer; }
+.update-badge .ub-text:hover { text-decoration: underline; }
+.update-badge .ub-close {
+  flex: 0 0 auto;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.update-badge .ub-close:hover { color: var(--text); }
+.update-badge.hidden { display: none; }
+
 /* 발사 통계 패널 */
 .st-note { font-size: 11px; color: var(--muted); margin: -4px 0 12px; }
 .st-tiles { display: flex; gap: 8px; margin-bottom: 14px; }

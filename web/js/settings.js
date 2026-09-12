@@ -56,6 +56,7 @@ function applySettings(s) {
       && typeof cam.zoom === "number" && isFinite(cam.lng) && isFinite(cam.lat)) {
     savedCamera = { lng: cam.lng, lat: cam.lat, zoom: Math.min(Math.max(cam.zoom, 0), 20) };
   }
+  if (typeof s.dismissedUpdate === "string") settingsDismissedUpdate = s.dismissedUpdate;
   if (s.favorites) {
     if (Array.isArray(s.favorites.launches)) favLaunches = new Set(s.favorites.launches.map(String));
     if (Array.isArray(s.favorites.sats)) favSats = new Set(s.favorites.sats.map(String));

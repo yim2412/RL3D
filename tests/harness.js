@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "focus.js",
-  "sats.js", "panels.js", "keys.js", "settings.js", "boot.js",
+  "sats.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -31,6 +31,7 @@ const STATE_KEYS = [
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
   "trackAheadMin", "futureMarker",
+  "latestUpdateInfo", "settingsDismissedUpdate",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
@@ -101,6 +102,7 @@ function loadApp(options = {}) {
     get_satellite_groups: async () => [],
     get_archive: async () => ({ launches: [] }),
     open_url: () => true,
+    check_update: async () => null,
   }, options.api || {});
 
   const ctx = {
@@ -164,11 +166,31 @@ function loadApp(options = {}) {
   // realm 안의 Date 를 꺼내 주어 테스트가 같은 realm 의 시각을 만들 수 있게 한다.
   const RealmDate = vm.runInContext("Date", ctx);
 
+  // 지도 라이브러리 스텁. **이게 있어야 `pywebviewready` 부트 경로 전체를 잴 수 있다** —
+  // initMap 이 `new maplibregl.Map` 에서 던지면 부트가 거기서 멈춰, 그 앞뒤 배선
+  // (initUpdateCheck·bindUI)이 실제로 불리는지 테스트가 볼 수 없다. 호출자가 직접
+  // 넘긴 maplibregl 이 있으면 그쪽을 존중한다.
+  if (!options.maplibregl) {
+    const marker = () => ({
+      setLngLat() { return this; }, addTo() { return this; }, remove() {},
+      getElement: () => makeEl("marker"),
+    });
+    ctx.maplibregl = {
+      Map: function () { return map; },
+      NavigationControl: function () { return {}; },
+      Marker: function () { return marker(); },
+    };
+  }
+
   return {
     ctx, state: ctx.__state, el, map, api, sel: selectors,
     /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
     date: (ms) => new RealmDate(ms),
-    win: { fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a) },
+    win: {
+      fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a),
+      /** window 에 붙은 핸들러가 있는지(배선 여부) */
+      has: (ev) => !!winHandlers[ev],
+    },
     /** document 에 붙은 핸들러 — has 로 배선 여부를, fire 로 실제 동작을 잰다. */
     doc: {
       has: (ev) => !!docHandlers[ev],

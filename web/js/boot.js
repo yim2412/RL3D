@@ -52,6 +52,7 @@ function bindUI() {
   document.getElementById("arch-load").addEventListener("click", () =>
     loadArchive(+document.getElementById("arch-year").value));
   document.getElementById("refresh").addEventListener("click", forceRefresh);
+  bindUpdateBadge();   // 새 버전 배지(P12-12)
   // 단축키(P12-14) — 판정은 keys.js 의 순수 함수가 한다
   document.addEventListener("keydown", handleKey);
 }
@@ -70,5 +71,6 @@ window.addEventListener("pywebviewready", async () => {
   applySettings(settings);       // 필터·토글·그룹·관측 위치 복원(지도 초기화 전)
   await initSatGroups();         // 그룹 체크박스를 satGroups 기준으로 생성
   setInterval(updateFreshness, 30000);  // "N분 전 갱신" 주기 갱신(P7-7)
+  initUpdateCheck();             // 새 버전 확인(P12-12) — await 하지 않는다(지도 시작을 막지 않게)
   initMap();
 });
