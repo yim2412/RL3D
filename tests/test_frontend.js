@@ -6,6 +6,12 @@
  * 오프라인 판정, 이스케이프, 통계 집계처럼 눈으로는 틀린 걸 알아채기 어려운 것들.
  * 로딩·스텁은 harness.js 에 있다(app.js 구조가 바뀌면 그 파일만 고친다).
  */
+// **실행 PC 의 시간대에 기대지 않는다.** 시간대 테스트(P13-5)는 "현지 시각과 UTC 가 다르다"를
+// 재는데, CI 러너는 **UTC** 라 그 둘이 같아져 조용히 실패한다 — 2026-09-12 에 실제로 당했다
+// (로컬 530 통과 / CI 526 통과·4 실패가 다섯 커밋 동안 이어졌다).
+// 여기서 고정해 어느 환경에서든 UTC 와 9시간 차이가 나게 한다.
+process.env.TZ = "Asia/Seoul";
+
 const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────────
@@ -1601,6 +1607,10 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 {
   const { ctx, state, el, sel, map } = loadApp();
   group("시간대 전환 (fmtDate · fmtClock · fmtPassTime)");
+  // 아래 단언들은 "현지 ≠ UTC" 를 전제한다. 그 전제부터 확인한다 —
+  // 전제가 깨진 환경(UTC 러너)에서는 테스트가 **통과처럼 보이지 않고** 여기서 먼저 걸린다.
+  check("테스트 시간대가 UTC 가 아닌 곳으로 고정돼 있다",
+    new Date("2026-05-01T23:30:00Z").getHours() !== 23, true);
   // UTC 기준 23:30 — 현지(UTC+9)로는 **다음 날**이 되어 날짜까지 갈린다(경계를 일부러 만든다)
   const ISO = "2026-05-01T23:30:00Z";
   state.timeZoneMode = "utc";
