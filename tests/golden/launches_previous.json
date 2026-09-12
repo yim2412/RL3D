@@ -27,6 +27,168 @@
   "provider_country": "USA",
   "rocket": "Starship V3",
   "status": "Launch Successful",
+  "timeline": [
+   {
+    "abbrev": "GO for Prop Load",
+    "desc": "Launch director verifies go for propellant load",
+    "t": -3000
+   },
+   {
+    "abbrev": "Stage 1 LOX Load",
+    "desc": "Start of liquid oxygen loading in the first stage",
+    "t": -2193
+   },
+   {
+    "abbrev": "Stage 1 LNG Load",
+    "desc": "Start of liquid methane loading in the first stage",
+    "t": -2100
+   },
+   {
+    "abbrev": "Stage 2 LNG Load",
+    "desc": "Start of liquid methane loading in the second stage",
+    "t": -2054
+   },
+   {
+    "abbrev": "Stage 2 LOX Load",
+    "desc": "Start of liquid oxygen loading in the second stage",
+    "t": -2053
+   },
+   {
+    "abbrev": "Engine Chill",
+    "desc": "Start of engine chilling",
+    "t": -1300
+   },
+   {
+    "abbrev": "Stage 1 Propellant Load Complete",
+    "desc": "End of propellant loading in the first stage",
+    "t": -170
+   },
+   {
+    "abbrev": "Stage 2 Propellant Load Complete",
+    "desc": "End of propellant loading in the second stage",
+    "t": -130
+   },
+   {
+    "abbrev": "GO for Launch",
+    "desc": "Launch director verifies go for launch",
+    "t": -30
+   },
+   {
+    "abbrev": "Flame Deflector Activation",
+    "desc": "Activation of the flame deflector ahead of engine ignition",
+    "t": -17
+   },
+   {
+    "abbrev": "Ignition",
+    "desc": "Start of the engine ignition sequence",
+    "t": -3
+   },
+   {
+    "abbrev": "Excitement Guaranteed",
+    "desc": "Excitement guaranteed",
+    "t": 0
+   },
+   {
+    "abbrev": "Liftoff",
+    "desc": "First upwards movement of the rocket",
+    "t": 0
+   },
+   {
+    "abbrev": "Max-Q",
+    "desc": "Maximum dynamic pressure",
+    "t": 58
+   },
+   {
+    "abbrev": "MECO",
+    "desc": "Cut-off of the main engine",
+    "t": 138
+   },
+   {
+    "abbrev": "Stage 2 Separation",
+    "desc": "Separation of the second stage from the first",
+    "t": 141
+   },
+   {
+    "abbrev": "Booster Boostback Burn Startup",
+    "desc": "Start of the booster boostback burn",
+    "t": 145
+   },
+   {
+    "abbrev": "Booster Boostback Burn Shutdown",
+    "desc": "End of the booster boostback burn",
+    "t": 183
+   },
+   {
+    "abbrev": "Stage 1 Landing Burn",
+    "desc": "Start of the first stage landing burn",
+    "t": 387
+   },
+   {
+    "abbrev": "Stage 1 Landing",
+    "desc": "Landing of the first stage",
+    "t": 413
+   },
+   {
+    "abbrev": "SECO-1",
+    "desc": "First cut-off of the second engine",
+    "t": 485
+   },
+   {
+    "abbrev": "Payload Deployment Sequence Start",
+    "desc": "Start of the payload deployment sequence",
+    "t": 1000
+   },
+   {
+    "abbrev": "Payload Deployment Sequence End",
+    "desc": "End of the payload deployment sequence.",
+    "t": 1659
+   },
+   {
+    "abbrev": "SEB-2",
+    "desc": "2nd burn of the second engine",
+    "t": 2338
+   },
+   {
+    "abbrev": "Atmospheric Entry",
+    "desc": "Start of the atmospheric re-entry",
+    "t": 2850
+   },
+   {
+    "abbrev": "Starship Transonic",
+    "desc": "Starship passing through the transonic regime",
+    "t": 3743
+   },
+   {
+    "abbrev": "Starship Subsonic",
+    "desc": "Starship reaches a subsonic velocity",
+    "t": 3781
+   },
+   {
+    "abbrev": "Starship Landing Burn",
+    "desc": "Start of the Starship orbital stage landing burn",
+    "t": 3901
+   },
+   {
+    "abbrev": "Landing Flip",
+    "desc": "Flip maneuver to set the orientation for landing",
+    "t": 3903
+   },
+   {
+    "abbrev": "Starship Landing",
+    "desc": "Landing of the Starship orbital stage",
+    "t": 3912
+   },
+   {
+    "abbrev": "Starship Landing",
+    "desc": "Landing of the Starship orbital stage",
+    "t": 3919
+   },
+   {
+    "abbrev": "Starship Landing",
+    "desc": "Landing of the Starship orbital stage",
+    "t": 3921
+   }
+  ],
   "updates": [
    {
     "comment": "Ship has splashed down.",
@@ -108,6 +270,7 @@
   "provider_country": "CHN",
   "rocket": "Kinetica 1",
   "status": "Launch Successful",
+  "timeline": [],
   "updates": [
    {
     "comment": "Launch success.",
@@ -172,6 +335,7 @@
   "provider_country": "CHN",
   "rocket": "Long March 3B/E",
   "status": "Launch Successful",
+  "timeline": [],
   "updates": [
    {
     "comment": "Launch success.",

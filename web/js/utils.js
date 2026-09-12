@@ -103,6 +103,53 @@ const COUNTRY_KO = {
   IRN: "이란", ISR: "이스라엘", BRA: "브라질", CAN: "캐나다", AUS: "호주",
 };
 
+// 발사 순서 이벤트 이름(P13-1). LL2 `type.abbrev` 는 영어 약어라 그대로는 안 읽힌다.
+// **표에 없으면 원문 그대로 나간다**(`tr`) — 새 이벤트가 생겨도 화면이 비지 않는다.
+const TIMELINE_KO = {
+  "GO for Prop Load": "추진제 주입 승인",
+  "Stage 1 LOX Load": "1단 액체산소 주입",
+  "Stage 2 LOX Load": "2단 액체산소 주입",
+  "Stage 1 LNG Load": "1단 액화천연가스 주입",
+  "Stage 2 LNG Load": "2단 액화천연가스 주입",
+  "Stage 1 RP-1 Load": "1단 등유(RP-1) 주입",
+  "Stage 2 RP-1 Load": "2단 등유(RP-1) 주입",
+  "Stage 1 Propellant Load Complete": "1단 주입 완료",
+  "Stage 2 Propellant Load Complete": "2단 주입 완료",
+  "Engine Chill": "엔진 예냉",
+  "GO for Launch": "발사 승인",
+  "Flame Deflector Activation": "화염 유도판 가동",
+  "Ignition": "점화",
+  "Liftoff": "리프토프",
+  "Max-Q": "최대 동압(Max-Q)",
+  "MECO": "1단 엔진 정지(MECO)",
+  "Stage 1 Separation": "1단 분리",
+  "Stage 2 Separation": "2단 분리",
+  "Fairing Separation": "페어링 분리",
+  "SES-1": "2단 엔진 점화",
+  "SES-2": "2단 엔진 재점화",
+  "SECO-1": "2단 엔진 정지(SECO)",
+  "SECO-2": "2단 엔진 2차 정지",
+  "SEB-2": "2단 엔진 2차 연소",
+  "Booster Boostback Burn Startup": "부스터 귀환 연소 시작",
+  "Booster Boostback Burn Shutdown": "부스터 귀환 연소 종료",
+  "Entry Burn Startup": "재진입 연소 시작",
+  "Entry Burn Shutdown": "재진입 연소 종료",
+  "Stage 1 Landing Burn": "1단 착륙 연소",
+  "Stage 1 Landing": "1단 착륙",
+  "Atmospheric Entry": "대기권 재진입",
+  "Landing Flip": "착륙 자세 전환",
+  "Payload Separation": "탑재체 분리",
+  "Payload Deployment Sequence Start": "탑재체 전개 시작",
+  "Payload Deployment Sequence End": "탑재체 전개 종료",
+};
+
+/** 절대 시각의 시:분:초 — 순서표에서 "몇 시에 일어나나"를 보여줄 때만 쓴다(P13-1). */
+function fmtClock(ms) {
+  const d = new Date(ms);
+  if (isNaN(d)) return "";
+  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 function tr(map, v) {
   if (v == null) return v;
   return map[v] || v;  // 매핑 없으면 원문 유지

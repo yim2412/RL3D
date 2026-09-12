@@ -11,6 +11,7 @@ Launch Library 2 / Celestrak 응답과 버전 문자열을 **값으로 바꾸는
 import csv
 import io
 import logging
+import re
 
 import satcat_codes
 
@@ -30,6 +31,54 @@ def _outcome_from_status(status_abbrev):
 
 MAX_VID_URLS = 4     # 중계 링크는 상위 몇 개만(응답에 10개 넘게 오는 건도 있다)
 MAX_UPDATES = 6      # 발사 소식도 최신 몇 건만 — 캐시 파일이 커지는 걸 막는다
+MAX_TIMELINE = 60    # 발사 순서표(P13-1). 실측 최대 32개(Starship) — 상한은 폭주 방지용이다
+
+
+# ISO-8601 기간(`-PT50M` · `P0D` · `PT1H2M23S`) → 초. 앞의 `-` 는 리프토프 이전이다.
+_DURATION_RE = re.compile(
+    r"^(?P<sign>-)?P(?:(?P<days>\d+)D)?(?:T(?:(?P<h>\d+)H)?(?:(?P<m>\d+)M)?(?:(?P<s>\d+(?:\.\d+)?)S)?)?$"
+)
+
+
+def parse_relative_time(text):
+    """`-PT50M` → -3000. 읽을 수 없으면 None.
+
+    **None 은 "모른다"는 뜻이고 그 이벤트는 버린다** — 0 으로 두면 리프토프 순간에
+    정체불명의 이벤트가 끼어든다(시각을 지어내는 쪽이 빠뜨리는 쪽보다 나쁘다).
+    """
+    m = _DURATION_RE.match((text or "").strip())
+    if not m or not (m.group("days") or m.group("h") or m.group("m") or m.group("s")
+                     or (text or "").strip() in ("P0D", "PT0S")):
+        return None
+    total = (int(m.group("days") or 0) * 86400 + int(m.group("h") or 0) * 3600
+             + int(m.group("m") or 0) * 60 + float(m.group("s") or 0))
+    # 초 단위 정수로 둔다 — 소수 초는 실제로 오지 않고, float 로 두면 캐시 JSON 만 커진다
+    total = int(round(total))
+    return -total if m.group("sign") else total
+
+
+def _parse_timeline(item):
+    """발사 순서표 → [{t, abbrev, desc}] (t = 리프토프 기준 초). 시간순 정렬.
+
+    **응답이 정렬돼 있다고 가정하지 않는다** — 순서가 어긋나면 "다음 이벤트" 판정이
+    조용히 틀리고, 화면에는 그럴듯한 목록이 그대로 나온다.
+    **내용은 손보지 않는다**: 실제 응답에 `Excitement Guaranteed` 가 있고
+    `Starship Landing` 이 3초 간격으로 세 번 온다 — 우리가 지울 근거가 없다.
+    """
+    out = []
+    for e in (item.get("timeline") or []):
+        if not isinstance(e, dict):
+            continue
+        t = parse_relative_time(e.get("relative_time"))
+        if t is None:
+            continue
+        typ = e.get("type") or {}
+        abbrev = typ.get("abbrev")
+        if not abbrev:
+            continue
+        out.append({"t": t, "abbrev": abbrev, "desc": typ.get("description")})
+    out.sort(key=lambda x: x["t"])
+    return out[:MAX_TIMELINE]
 
 
 def _parse_vid_urls(item):
@@ -97,6 +146,8 @@ def _parse_launch(item):
         "webcast_live": bool(item.get("webcast_live")),
         "patch": ((item.get("mission_patches") or [{}])[0] or {}).get("image_url"),
         "updates": _parse_updates(item),
+        # 발사 순서표(P13-1) — 실측 10% 에만 있다. 없으면 빈 리스트고, 화면은 블록을 안 그린다.
+        "timeline": _parse_timeline(item),
         "window_start": item.get("window_start"),
         "window_end": item.get("window_end"),
         # net 이 어디까지 확정인지(Second/Hour/Day/Month…) — 카운트다운의 신뢰도

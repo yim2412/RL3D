@@ -348,6 +348,7 @@ function openPanel(d) {
     ${row("기록", contextText(d))}
     ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
     ${updatesBlock(d)}
+    ${timelineHtml(d, launchElapsed(d))}
   `;
   // 링크는 파이썬 브릿지로만 연다(창 안에서 열리면 지도로 못 돌아온다)
   body.querySelectorAll(".vid-btn, .up-link").forEach((b) =>

@@ -47,6 +47,7 @@ function renderFocus(d) {
     (d.patch ? `<img class="focus-patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : "") +
     `<div id="focus-cd" class="focus-cd">${escapeHtml(countdown(d.net))}</div>` +
     `<div class="focus-name">${escapeHtml(d.name)}</div>` +
+    `<div id="focus-phase-slot">${phaseLineHtml(d, Date.now())}</div>` +
     (where ? `<div class="focus-sub">${where}</div>` : "") +
     `<div class="focus-btns">` +
     (vid ? `<button id="focus-live-btn" class="btn sm" data-url="${escapeHtml(vid.url)}">▶ ${escapeHtml(vid.title)}</button>` : "") +
@@ -80,6 +81,10 @@ function updateFocus() {
   } else {
     const cdEl = document.getElementById("focus-cd");
     if (cdEl) cdEl.textContent = countdown(d.net);
+    // 순서표가 있으면 "지금 어느 단계"도 매초 갱신한다 — 카운트다운만 움직이면
+    // 리프토프 뒤에는 카드가 멈춘 것처럼 보인다(P13-1).
+    const phEl = document.getElementById("focus-phase-slot");
+    if (phEl) phEl.innerHTML = phaseLineHtml(d, Date.now());
   }
   box.classList.remove("hidden");
 }

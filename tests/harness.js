@@ -11,7 +11,7 @@ const vm = require("vm");
 /** index.html 의 <script> 순서와 같아야 한다 — 클래식 스크립트라 순서가 곧 의존 관계다.
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
-  "state.js", "utils.js", "map.js", "launches.js", "focus.js",
+  "state.js", "utils.js", "map.js", "launches.js", "sequence.js", "focus.js",
   "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");

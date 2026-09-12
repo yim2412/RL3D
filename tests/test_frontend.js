@@ -1425,5 +1425,113 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("모든 파일이 실제로 있다",
     inHtml.filter((f) => !fs.existsSync(path.join(__dirname, "..", "web", "js", f))), []);
 }
+
+// ── 발사 순서표 (P13-1) ──────────────────────────────────────────────────────
+// 조용히 깨지는 자리: "지금 어느 단계" 판정의 경계(리프토프 순간)와, net 이 부정확한
+// 발사에 절대 시각을 붙이는 것. 둘 다 화면에는 그럴듯한 목록이 그대로 나온다.
+// **시각은 전부 주입한다** — Date.now() 에 기대면 오전엔 통과하고 저녁엔 실패한다.
+{
+  const { ctx, state, el, map } = loadApp();
+  group("T± 표기 (tMinus)");
+  const T = (s) => ctx.tMinus(s);
+  check("리프토프 전", T(-3000), "T-50:00");
+  check("리프토프 후", T(138), "T+2:18");
+  check("한 시간을 넘으면 시:분:초", T(3743), "T+1:02:23");
+  check("0 은 T± (전도 후도 아니다)", T(0), "T±0:00");
+  check("한 자리 초도 두 자리로", T(58), "T+0:58");
+
+  group("지금 어느 단계 (currentPhase)");
+  const TL = [
+    { t: -3000, abbrev: "GO for Prop Load" },
+    { t: -3, abbrev: "Ignition" },
+    { t: 0, abbrev: "Liftoff" },
+    { t: 58, abbrev: "Max-Q" },
+    { t: 138, abbrev: "MECO" },
+  ];
+  const P = (elapsed) => {
+    const r = ctx.currentPhase(TL, elapsed);
+    return [r.past && r.past.abbrev, r.next && r.next.abbrev];
+  };
+  check("아직 아무것도 안 지났으면 past 는 null", P(-4000), [null, "GO for Prop Load"]);
+  check("중간 — 아직 안 온 이벤트가 next 다", P(-10), ["GO for Prop Load", "Ignition"]);
+  check("점화를 지난 뒤", P(-1), ["Ignition", "Liftoff"]);
+  // 경계 — 리프토프 순간에 Liftoff 가 "다음"으로 남아 있으면 틀려 보인다
+  check("같은 시각 이벤트는 지난 것으로 본다", P(0), ["Liftoff", "Max-Q"]);
+  check("마지막을 지나면 next 는 null", P(9999), ["MECO", null]);
+  check("빈 순서표에서도 죽지 않는다", P.call(null, 0) && ctx.currentPhase(null, 0).past, null);
+
+  group("절대 시각을 붙여도 되는가 (canShowClock)");
+  // 날짜만 확정된 발사에 "05:12:58 MECO" 를 찍는 것은 없는 정밀도를 지어내는 것이다(P12-3).
+  check("초·분 단위 확정이면 붙인다",
+    [ctx.canShowClock("Second"), ctx.canShowClock("Minute")], [true, true]);
+  check("시·일·달 단위면 안 붙인다",
+    [ctx.canShowClock("Hour"), ctx.canShowClock("Day"), ctx.canShowClock("Month")],
+    [false, false, false]);
+  check("모르면 안 붙인다", [ctx.canShowClock(null), ctx.canShowClock(undefined)], [false, false]);
+
+  group("순서표 HTML (timelineHtml)");
+  const base = Date.parse("2026-05-01T00:00:00Z");
+  const withTl = (extra) => Object.assign({ id: "1", name: "테스트", net: "2026-05-01T00:00:00Z",
+                                            net_precision: "Second", timeline: TL }, extra || {});
+  const html = ctx.timelineHtml(withTl(), 0);
+  check("순서표가 없으면 아무것도 안 그린다(없는 게 정상인 필드다)",
+    ctx.timelineHtml(withTl({ timeline: [] }), 0), "");
+  check("이벤트 수만큼 줄이 생긴다", (html.match(/class="sq-row/g) || []).length, 5);
+  check("표에 있는 이름은 한국어로", html.includes("리프토프"), true);
+  check("표에 없는 이름은 원문 그대로(표가 낡아도 화면이 안 빈다)",
+    ctx.timelineHtml(withTl({ timeline: [{ t: 0, abbrev: "Brand New Event" }] }), null)
+      .includes("Brand New Event"), true);
+  check("지난 것과 다음 것을 각각 표시한다",
+    [html.includes("sq-past"), html.includes("sq-next")], [true, true]);
+  check("net 이 초 단위 확정이면 시계도 적는다", html.includes("sq-clock"), true);
+  check("net 이 날짜까지만이면 시계를 안 적는다",
+    ctx.timelineHtml(withTl({ net_precision: "Day" }), 0).includes("sq-clock"), false);
+  check("경과를 모르면 강조하지 않는다",
+    ctx.timelineHtml(withTl(), null).includes("sq-next"), false);
+  check("설명은 title 로 (XSS 방어 경로를 탄다)",
+    ctx.timelineHtml(withTl({ timeline: [{ t: 0, abbrev: "x", desc: '<img src=x onerror=1>' }] }), null)
+      .includes("<img src=x"), false);
+
+  group("집중 화면 한 줄 (phaseLineHtml)");
+  const L = (sec) => ctx.phaseLineHtml(withTl(), base + sec * 1000);
+  check("리프토프 직후", [L(1).includes("리프토프"), L(1).includes("최대 동압")], [true, true]);
+  check("남은 시간을 초로 적는다", L(1).includes("57초 뒤"), true);
+  check("순서표가 없으면 빈 문자열", ctx.phaseLineHtml(withTl({ timeline: [] }), base), "");
+  // new Date(null) 은 NaN 이 아니라 epoch 0 이다 — 막지 않으면 1970년 기준으로 "MECO 지남"이 찍힌다
+  check("발사 시각이 미정이면 빈 문자열", ctx.phaseLineHtml(withTl({ net: null }), base), "");
+  check("읽을 수 없는 net 도 빈 문자열", ctx.phaseLineHtml(withTl({ net: "언젠가" }), base), "");
+  check("미정이면 순서표에 시계도 안 붙는다",
+    ctx.timelineHtml(withTl({ net: null }), 0).includes("sq-clock"), false);
+  check("다 끝났으면 지난 것만", [L(99999).includes("MECO"), L(99999).includes("다음")], [true, false]);
+
+  group("순서표 배선 (상세 패널 · 집중 화면)");
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-track");
+  const soon = new Date(Date.now() + 30 * 60 * 1000).toISOString();   // 30분 뒤 = 집중 화면 대상
+  const d = { id: "9", name: "임박 발사", outcome: "upcoming", net: soon, net_precision: "Second",
+              lat: 28.5, lng: -80.6, orbit: "Low Earth Orbit", timeline: TL };
+  ctx.openPanel(d);
+  check("상세 패널에 순서표가 실린다", el("panel-body").innerHTML.includes("발사 순서"), true);
+  check("순서표가 없는 발사에는 블록이 없다",
+    (ctx.openPanel(Object.assign({}, d, { timeline: [] })),
+     el("panel-body").innerHTML.includes("발사 순서")), false);
+
+  state.allLaunches = [d];
+  state.focusDismissed = new Set();
+  state.focusShownId = null;
+  ctx.updateFocus();
+  check("집중 화면이 뜬다", el("focus").hidden, false);
+  check("집중 화면에 '지금 어느 단계'가 실린다",
+    el("focus").innerHTML.includes("focus-phase-slot"), true);
+  check("T-30분이면 첫 이벤트가 아직 안 지났다",
+    el("focus").innerHTML.includes("추진제 주입 승인"), true);
+  // 매초 갱신 경로 — 카운트다운만 갱신하면 리프토프 뒤 카드가 멈춘 것처럼 보인다
+  const slot = el("focus-phase-slot");
+  slot.innerHTML = "";
+  ctx.updateFocus();
+  check("두 번째 호출은 단계 줄만 갈아 끼운다(다시 그리지 않는다)",
+    slot.innerHTML.includes("추진제 주입 승인"), true);
+}
   done();
 })();

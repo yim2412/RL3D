@@ -122,6 +122,64 @@ class LaunchParsing(unittest.TestCase):
         self.assertEqual(starship["net_precision"], "Second")
         self.assertIsInstance(starship["webcast_live"], bool)
 
+    def test_relative_time_parsing(self):
+        """ISO-8601 기간 → 초. 읽을 수 없으면 None(그 이벤트는 버린다)."""
+        f = api_parsing.parse_relative_time
+        self.assertEqual(f("-PT50M"), -3000)
+        self.assertEqual(f("P0D"), 0)          # 리프토프 순간
+        self.assertEqual(f("PT58S"), 58)
+        self.assertEqual(f("PT1H2M23S"), 3743)
+        self.assertEqual(f("-PT36M33S"), -2193)
+        self.assertEqual(f("P1DT2H"), 93600)
+        # 소수 초는 반올림해 정수로 — float 로 두면 캐시 JSON 만 커진다
+        self.assertEqual(f("PT2.4S"), 2)
+        self.assertIsInstance(f("PT58S"), int)
+        for bad in ("", "  ", "garbage", None, "PT", "P"):
+            self.assertIsNone(f(bad), bad)
+
+    def test_timeline_sorted_and_kept_verbatim(self):
+        """순서표는 시간순으로 **정렬**되고, 내용은 손대지 않는다."""
+        parsed = api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json")))
+        d = next(x for x in parsed if x["timeline"])
+        tl = d["timeline"]
+        self.assertEqual(len(tl), 32)
+        self.assertTrue(all(tl[i]["t"] <= tl[i + 1]["t"] for i in range(len(tl) - 1)),
+                        "정렬되지 않았다 — '다음 이벤트' 판정이 조용히 틀린다")
+        self.assertEqual(tl[0]["abbrev"], "GO for Prop Load")
+        self.assertEqual(tl[0]["t"], -3000)
+        self.assertEqual(set(tl[0]), {"t", "abbrev", "desc"})
+        # 같은 이름이 세 번 오는 것도 그대로 둔다(우리가 지울 근거가 없다)
+        self.assertEqual(sum(1 for e in tl if e["abbrev"] == "Starship Landing"), 3)
+
+    def test_timeline_unsorted_input_is_sorted(self):
+        item = {"timeline": [
+            {"relative_time": "PT58S", "type": {"abbrev": "Max-Q"}},
+            {"relative_time": "-PT50M", "type": {"abbrev": "GO for Prop Load"}},
+            {"relative_time": "P0D", "type": {"abbrev": "Liftoff"}},
+        ]}
+        self.assertEqual([e["abbrev"] for e in api_parsing._parse_timeline(item)],
+                         ["GO for Prop Load", "Liftoff", "Max-Q"])
+
+    def test_timeline_drops_unreadable_entries(self):
+        """읽을 수 없는 시각은 **버린다** — 0 으로 두면 리프토프 순간에 정체불명 이벤트가 낀다."""
+        item = {"timeline": [
+            {"relative_time": "nonsense", "type": {"abbrev": "정체불명"}},
+            {"relative_time": "PT10S", "type": {}},              # 이름이 없다
+            {"relative_time": "PT20S", "type": {"abbrev": "OK"}},
+            "문자열이 들어온 경우",
+        ]}
+        self.assertEqual(api_parsing._parse_timeline(item), [{"t": 20, "abbrev": "OK", "desc": None}])
+
+    def test_timeline_absent_is_empty_list(self):
+        """실측 10% 에만 있다 — 없는 것이 정상이고, 그때 빈 리스트여야 화면이 블록을 안 그린다."""
+        self.assertEqual(api_parsing._parse_timeline({}), [])
+        self.assertEqual(api_parsing._parse_timeline({"timeline": None}), [])
+
+    def test_timeline_capped(self):
+        item = {"timeline": [{"relative_time": "PT{}S".format(i), "type": {"abbrev": "e"}}
+                             for i in range(200)]}
+        self.assertEqual(len(api_parsing._parse_timeline(item)), api_parsing.MAX_TIMELINE)
+
     def test_vid_urls_capped_and_cleaned(self):
         item = {"vidURLs": [{"url": "https://e/{}".format(i), "title": "t{}".format(i),
                              "description": "x" * 500} for i in range(10)]}
