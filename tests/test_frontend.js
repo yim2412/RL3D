@@ -6,7 +6,7 @@
  * 오프라인 판정, 이스케이프, 통계 집계처럼 눈으로는 틀린 걸 알아채기 어려운 것들.
  * 로딩·스텁은 harness.js 에 있다(app.js 구조가 바뀌면 그 파일만 고친다).
  */
-const { loadApp, group, check, done } = require("./harness");
+const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────────
 {
@@ -1409,6 +1409,21 @@ const { loadApp, group, check, done } = require("./harness");
   check("탄도 비행은 선도 문구도 없다",
     [map.data("launch-track"), el("panel-body").innerHTML.includes("가정: 경사")],
     [{ type: "FeatureCollection", features: [] }, false]);
+}
+
+// ── 로드 순서 일치 (P12-23) ──────────────────────────────────────────────────
+// 파일을 쪼갤 때마다 생기는 구멍: 하네스(APP_FILES)에만 넣고 **index.html 에 빠뜨리면**
+// 테스트는 전부 통과하고 앱만 깨진다 — 클래식 스크립트라 "함수가 없다"로 죽는다.
+// 순서까지 같아야 한다: 순서가 곧 의존 관계다(최상위 const 는 호이스팅되지 않는다).
+{
+  const fs = require("fs");
+  const path = require("path");
+  group("로드 순서 일치 (index.html ↔ harness)");
+  const html = fs.readFileSync(path.join(__dirname, "..", "web", "index.html"), "utf8");
+  const inHtml = [...html.matchAll(/<script src="js\/([^"]+)"><\/script>/g)].map((m) => m[1]);
+  check("index.html 과 하네스가 같은 파일을 같은 순서로 읽는다", inHtml, APP_FILES);
+  check("모든 파일이 실제로 있다",
+    inHtml.filter((f) => !fs.existsSync(path.join(__dirname, "..", "web", "js", f))), []);
 }
   done();
 })();

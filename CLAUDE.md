@@ -16,7 +16,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `main.py` | pywebview 창 생성 + `Api` 브릿지 클래스(JS→파이썬 호출 창구) |
 | `api_client.py` | 외부 API 호출·정규화·디스크 캐싱. **엔드포인트 URL 상수는 전부 이 파일 상단에** |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 11개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 15개 파일: `state` → `utils` → `map` → `launches` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `trajectory` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
@@ -72,6 +72,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **`web/js/` 를 건드렸으면 `node tests/test_frontend.js`** — 스텁 DOM 위에서 함수를 직접 호출한다
   (브라우저·네트워크·마우스 불필요). 새 로직을 넣었으면 **여기에 항목을 추가**한다. 대상은
   "깨져도 화면으로는 알아채기 어려운" 것 — 분류·필터·설정 복원 방어·집계. 스텁과 로더는 `tests/harness.js` 에만 둔다.
+- **파일을 쪼갰으면 `index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고
+  `index.html` 에 빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
+  두 목록이 같은 파일을 같은 순서로 읽는지는 이제 `test_frontend.js` 가 잰다(P12-23).
 - **순수 함수를 떼어냈으면 그 함수를 부르는 쪽도 같이 잰다.** 판정 로직이 전부 맞아도
   `addEventListener` 한 줄이 없으면 앱에서는 아무 일도 안 일어나는데, **순수 함수 테스트는
   전부 통과한다.** 2026-09-11 하루에 세 번 연속 같은 구멍이 났다 — `keydown`(P12-14) ·

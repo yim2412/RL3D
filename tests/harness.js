@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "focus.js",
-  "sats.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
+  "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "trajectory.js", "panels.js", "keys.js", "settings.js", "update.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -230,4 +230,4 @@ function done() {
   process.exit(results.fail ? 1 : 0);
 }
 
-module.exports = { loadApp, group, check, done };
+module.exports = { loadApp, group, check, done, APP_FILES };
