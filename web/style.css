@@ -609,6 +609,14 @@ html, body {
   background: rgba(245, 158, 11, .1); border: 1px solid rgba(245, 158, 11, .3);
   border-radius: 7px; padding: 6px 8px; margin: 0 0 6px;
 }
+.st-world {
+  font-size: 11px; line-height: 1.6; color: var(--text);
+  background: rgba(52, 211, 153, .08); border: 1px solid rgba(52, 211, 153, .28);
+  border-radius: 7px; padding: 6px 8px; margin: 0 0 6px;
+}
+.st-world b { color: #6ee7b7; }
+.st-world-src { font-size: 10px; line-height: 1.5; color: var(--muted); margin: 0 0 10px; }
+
 .st-full { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .st-sub { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; }
 

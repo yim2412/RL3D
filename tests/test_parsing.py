@@ -120,6 +120,11 @@ class LaunchParsing(unittest.TestCase):
         self.assertTrue(starship["updates"])
         self.assertEqual(starship["programs"], ["SpaceX Starship"])
         self.assertEqual(starship["net_precision"], "Second")
+        # 전 세계 연내 궤도 발사 순번(P13-2) — 통계의 모수를 "불러온 N건" 너머로 넓히는
+        # 유일한 외부 기준값이다. 안 실으면 화면에서 **조용히 사라진다**.
+        counts = [d["orbital_year_count"] for d in parsed]
+        self.assertTrue(any(isinstance(c, int) and c > 0 for c in counts),
+                        "연내 궤도 발사 순번이 하나도 안 실렸다")
         self.assertIsInstance(starship["webcast_live"], bool)
 
     def test_relative_time_parsing(self):

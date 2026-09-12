@@ -293,6 +293,7 @@ function contextText(d) {
   const parts = [];
   if (d.pad_count) parts.push(`이 발사대 ${Number(d.pad_count).toLocaleString()}번째`);
   if (d.agency_year_count) parts.push(`${d.provider || "이 기관"} 올해 ${d.agency_year_count}번째`);
+  if (d.orbital_year_count) parts.push(`전 세계 올해 ${d.orbital_year_count}번째 궤도 발사`);
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -627,6 +628,60 @@ function showEntityStats(kind, value) {
   panel.classList.remove("hidden");
 }
 
+/**
+ * 연도별 "전 세계 궤도 발사 몇 건 중 우리가 몇 건인가" — 순수 함수 (P13-2).
+ *
+ * P12-7 은 통계의 모수를 밝혔지만 **"불러온 N건"이라고 말하는 것이 전부**였다.
+ * 그 N 이 전체의 얼마인지는 우리 데이터 안에 답이 없다. LL2 `orbital_launch_attempt_count_year`
+ * (실측 98% 채워짐)가 **유일한 외부 기준값**이다.
+ *
+ * **이미 일어난 발사와 예정 발사를 나눠 센다.** 카운터 최대값을 통째로 쓰면 예정 발사의
+ * 번호(연말 예상치)가 섞여 **"올해 지금까지 356건 발사됐다"는 거짓말**이 된다
+ * (2026-09-12 실측: 일어난 것 215 · 예정 포함 356 — 141건 차이).
+ *
+ * 우리 쪽 건수는 **궤도 발사만** 센다 — LL2 카운터가 궤도 발사만 세므로,
+ * 탄도 비행을 섞으면 분자와 분모의 기준이 달라진다.
+ */
+function orbitalYearStats(list, nowYear) {
+  const by = {};
+  for (const d of list || []) {
+    if (!d || !d.net) continue;
+    const y = new Date(d.net).getFullYear();
+    if (!isFinite(y)) continue;
+    const b = (by[y] = by[y] || { year: y, done: 0, planned: 0, ours: 0, oursDone: 0 });
+    const n = d.orbital_year_count;
+    const isDone = d.outcome !== "upcoming";
+    if (d.orbit !== "Suborbital") {
+      b.ours++;
+      if (isDone) b.oursDone++;
+    }
+    if (typeof n === "number" && n > 0) {
+      if (n > b.planned) b.planned = n;
+      if (isDone && n > b.done) b.done = n;
+    }
+  }
+  return Object.values(by)
+    .filter((b) => b.done > 0)          // 기준값이 없으면 말할 것이 없다
+    .sort((a, b) => b.year - a.year)
+    .map((b) => Object.assign({ current: b.year === nowYear }, b));
+}
+
+/** 위 통계를 문장으로. 기준값이 없으면 빈 문자열(없는 말을 지어내지 않는다). */
+function orbitalYearNoteHtml(list, nowYear) {
+  const rows = orbitalYearStats(list, nowYear);
+  if (!rows.length) return "";
+  const lines = rows.map((b) => {
+    const pct = b.done ? Math.round(b.oursDone / b.done * 100) : 0;
+    const when = b.current ? "지금까지" : "총";
+    const plan = b.current && b.planned > b.done
+      ? ` · 예정까지 포함하면 연말 <b>${b.planned}건</b>` : "";
+    return `<div class="st-world">🌍 ${b.year}년 전 세계 궤도 발사 ${when} <b>${b.done}건</b>` +
+      ` — 그중 <b>${b.oursDone}건</b>(${pct}%)을 불러왔습니다${plan}</div>`;
+  }).join("");
+  return lines + `<div class="st-world-src">기준: Launch Library 2 의 연내 궤도 발사 순번 ` +
+    `(우리가 가진 <b>가장 최근 발사</b>까지의 집계다 — 그 뒤의 발사는 안 세어진다)</div>`;
+}
+
 /** 연도별 막대 라벨 — 부분 표본인 해는 이름 옆에 표시한다(막대 모양만으로는 구분이 안 된다). */
 function yearEntries(years, sc) {
   const partial = new Set(sc.partial);
@@ -645,6 +700,7 @@ function showStats() {
   document.getElementById("stats-body").innerHTML =
     `<h2>📊 발사 통계</h2>` +
     scopeNoteHtml(scope) +
+    orbitalYearNoteHtml(allLaunches, new Date().getFullYear()) +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
       `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +

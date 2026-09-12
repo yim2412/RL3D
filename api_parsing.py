@@ -156,6 +156,9 @@ def _parse_launch(item):
                      if isinstance(p, dict) and p.get("name")],
         "pad_count": item.get("pad_launch_attempt_count"),
         "agency_year_count": item.get("agency_launch_attempt_count_year"),
+        # 올해 전 세계 **궤도** 발사 중 몇 번째인가(P13-2). 실측 49/50 채워짐.
+        # 통계 패널의 모수를 "불러온 N건" 너머로 넓히는 유일한 외부 기준값이다.
+        "orbital_year_count": item.get("orbital_launch_attempt_count_year"),
         "probability": item.get("probability"),
         "weather_concerns": item.get("weather_concerns"),
     }

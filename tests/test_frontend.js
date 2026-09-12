@@ -1533,5 +1533,64 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("두 번째 호출은 단계 줄만 갈아 끼운다(다시 그리지 않는다)",
     slot.innerHTML.includes("추진제 주입 승인"), true);
 }
+
+// ── 전 세계 궤도 발사 모수 (P13-2) ───────────────────────────────────────────
+// P12-7 은 "불러온 N건"까지만 말할 수 있었다. 그 N 이 전체의 얼마인지는 우리 데이터 안에
+// 답이 없고, LL2 의 연내 순번이 유일한 외부 기준값이다.
+// 조용히 깨지는 자리: **예정 발사의 번호를 "지금까지 발사된 수"로 세는 것**.
+// 2026-09-12 실측으로 일어난 것 215 · 예정 포함 356 — 141건을 부풀리게 된다.
+{
+  const { ctx } = loadApp();
+  group("궤도 발사 모수 (orbitalYearStats)");
+  const L = [
+    { net: "2026-03-01T00:00:00Z", outcome: "success", orbit: "Low Earth Orbit", orbital_year_count: 100 },
+    { net: "2026-06-01T00:00:00Z", outcome: "failure", orbit: "Low Earth Orbit", orbital_year_count: 215 },
+    { net: "2026-12-01T00:00:00Z", outcome: "upcoming", orbit: "Low Earth Orbit", orbital_year_count: 356 },
+    { net: "2026-04-01T00:00:00Z", outcome: "success", orbit: "Suborbital", orbital_year_count: null },
+    { net: "2025-05-01T00:00:00Z", outcome: "success", orbit: "Low Earth Orbit", orbital_year_count: 263 },
+  ];
+  const rows = ctx.orbitalYearStats(L, 2026);
+  const y26 = rows.find((r) => r.year === 2026);
+  check("이미 일어난 발사만 '지금까지'로 센다(예정 번호는 연말 예상치다)", y26.done, 215);
+  check("예정까지 포함한 수는 따로 든다", y26.planned, 356);
+  check("우리 쪽은 궤도 발사만 센다(탄도 비행을 섞으면 분모와 기준이 달라진다)", y26.ours, 3);
+  check("그중 이미 일어난 것", y26.oursDone, 2);
+  check("올해인지 표시한다", [y26.current, rows.find((r) => r.year === 2025).current], [true, false]);
+  check("최신 연도부터", rows.map((r) => r.year), [2026, 2025]);
+  check("기준값이 없는 해는 아예 말하지 않는다",
+    ctx.orbitalYearStats([{ net: "2024-01-01T00:00:00Z", outcome: "success", orbit: "Low Earth Orbit" }], 2026), []);
+  check("빈 목록에서도 죽지 않는다", [ctx.orbitalYearStats([], 2026), ctx.orbitalYearStats(null, 2026)], [[], []]);
+
+  group("모수 문장 (orbitalYearNoteHtml)");
+  const html = ctx.orbitalYearNoteHtml(L, 2026);
+  check("올해는 '지금까지'로 적는다", html.includes("2026년 전 세계 궤도 발사 지금까지 <b>215건</b>"), true);
+  check("우리 몫과 비율을 적는다", html.includes("<b>2건</b>(1%)"), true);
+  check("예정까지 포함한 연말 수도 함께", html.includes("연말 <b>356건</b>"), true);
+  check("지난 해는 '총'으로 적는다", html.includes("2025년 전 세계 궤도 발사 총 <b>263건</b>"), true);
+  check("지난 해에는 연말 예정을 안 붙인다",
+    ctx.orbitalYearNoteHtml([L[4]], 2026).includes("연말"), false);
+  check("기준이 무엇인지 밝힌다(가장 최근 발사까지의 집계다)",
+    html.includes("가장 최근 발사"), true);
+  check("기준값이 없으면 아무 말도 안 한다(없는 말을 지어내지 않는다)",
+    ctx.orbitalYearNoteHtml([{ net: "2026-01-01T00:00:00Z", outcome: "success" }], 2026), "");
+
+  group("모수 배선 (통계 패널 · 상세 패널)");
+  const { ctx: c2, state, el, map } = loadApp();
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-track");
+  state.allLaunches = L;
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+  c2.showStats();
+  check("통계 패널에 전 세계 모수가 실린다",
+    el("stats-body").innerHTML.includes("전 세계 궤도 발사"), true);
+  check("기존 모수 안내(P12-7)도 그대로 남아 있다",
+    el("stats-body").innerHTML.includes("건 기준"), true);
+  c2.openPanel({ id: "1", name: "테스트", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
+                 lat: 28.5, lng: -80.6, orbital_year_count: 356 });
+  check("상세 패널의 맥락 줄에도 올해 순번이 실린다",
+    el("panel-body").innerHTML.includes("전 세계 올해 356번째"), true);
+}
   done();
 })();
