@@ -1510,6 +1510,70 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ctx.timelineHtml(withTl({ net: null }), 0).includes("sq-clock"), false);
   check("다 끝났으면 지난 것만", [L(99999).includes("MECO"), L(99999).includes("다음")], [true, false]);
 
+  group("로켓 제원 · 부스터 이력 (P14-1)");
+  // `flights` 는 **이번 비행 직전까지의 횟수**다 — LL2 가 flights=28 인 B1080 을 같은
+  // 응답에서 "after its 29th flight" 라고 부른다. 그대로 쓰면 매번 하나씩 어긋난다.
+  check("28회 비행한 부스터는 29번째", ctx.boosterFlightText({ flights: 28 }), "29번째 비행");
+  check("0 은 첫 비행", ctx.boosterFlightText({ flights: 0 }), "첫 비행");
+  // 0 과 null 이 같은 문장이 되면, 배정도 안 된 부스터가 "첫 비행"이라고 단언된다
+  check("미배정(null)은 횟수를 말하지 않는다", ctx.boosterFlightText({ flights: null }), null);
+
+  // 착륙 네 상태. success 만 보면 아직 날지도 않은 발사가 전부 "착륙 실패"가 된다
+  check("예정 발사는 시도 예정",
+    ctx.boosterLandingText({ landing_attempt: true, landing_success: null, landing_name: "ASOG" }),
+    "착륙 시도 예정 · ASOG");
+  check("성공", ctx.boosterLandingText({ landing_attempt: true, landing_success: true }), "착륙 성공");
+  check("실패", ctx.boosterLandingText({ landing_attempt: true, landing_success: false }), "착륙 실패");
+  check("시도 안 함", ctx.boosterLandingText({ landing_attempt: false }), "착륙 시도 안 함");
+  check("모르면 지어내지 않는다", ctx.boosterLandingText({}), null);
+
+  // `fail: 0` 은 지워야 할 빈 값이 아니라 좋은 소식이다 — 사라지면 실패 줄이 없는 것과 구분되지 않는다
+  check("통산에 실패 0 이 남는다",
+    ctx.rocketSpecBlock({ rocket_spec: { total: 15, success: 15, fail: 0 } }).includes("실패 0"), true);
+  check("연속 성공 0 은 자랑이 아니라 적지 않는다",
+    ctx.rocketSpecBlock({ rocket_spec: { total: 3, streak: 0 } }).includes("연속"), false);
+  check("제원이 없으면 빈 문자열", ctx.rocketSpecBlock({ rocket_spec: null }), "");
+  check("큰 값은 단위를 바꾼다",
+    [ctx.fmtQty(100000, "kg"), ctx.fmtQty(80807, "kN"), ctx.fmtQty(9, "m")],
+    ["100 t", "81 MN", "9 m"]);
+
+  // **"신조 · 2번째 비행"이 실제 캐시에서 나왔다(2026-09-13).** LL2 는 Pallas1 F1 을
+  // `reused=false`·`flights=1` 로 준다 — 두 값을 따로 재는 테스트는 전부 통과했고,
+  // 화면에 렌더해 보고서야 앞뒤가 안 맞는 문장인 걸 알았다.
+  const tagOf = (b) => ctx.boostersBlock({ boosters: [Object.assign({ serial: "X" }, b)] });
+  check("신조는 flights===0 일 때만", tagOf({ flights: 0, reused: false }).includes("신조"), true);
+  check("reused=false 라도 이미 난 적 있으면 신조라 하지 않는다",
+    [tagOf({ flights: 1, reused: false }).includes("신조"),
+     tagOf({ flights: 1, reused: false }).includes("2번째 비행")], [false, true]);
+  check("재사용 태그는 reused 를 따른다", tagOf({ flights: 5, reused: true }).includes("재사용"), true);
+  check("부스터가 없으면 블록이 없다", ctx.boostersBlock({ boosters: [] }), "");
+  check("필드가 아예 없어도 죽지 않는다", ctx.boostersBlock({}), "");
+
+  group("제원·부스터 배선 (상세 패널)");
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-track");
+  const dSpec = { id: "14", name: "제원 발사", outcome: "success", net: "2026-01-01T00:00:00Z",
+                  lat: 28.5, lng: -80.6,
+                  rocket_spec: { length: 70, total: 401, success: 398, fail: 3, reusable: true },
+                  boosters: [{ serial: "B1080", flights: 28, reused: true,
+                               landing_attempt: true, landing_success: true, landing_name: "ASOG" }] };
+  ctx.openPanel(dSpec);
+  check("상세 패널에 제원이 실린다", el("panel-body").innerHTML.includes("로켓 제원"), true);
+  check("상세 패널에 부스터가 실린다",
+    [el("panel-body").innerHTML.includes("B1080"),
+     el("panel-body").innerHTML.includes("29번째 비행")], [true, true]);
+  // 순수 함수가 전부 맞아도 템플릿에 끼워 넣는 줄이 빠지면 앱에서는 아무 일도 안 일어난다
+  check("제원·부스터가 없는 발사에는 블록이 없다",
+    (ctx.openPanel(Object.assign({}, dSpec, { rocket_spec: null, boosters: [] })),
+     [el("panel-body").innerHTML.includes("로켓 제원"),
+      el("panel-body").innerHTML.includes("부스터")]), [false, false]);
+  // 옛 캐시에는 두 필드가 아예 없다 — 없다고 패널이 죽으면 안 된다(하위 호환)
+  check("필드가 아예 없는 옛 캐시에서도 패널이 뜬다",
+    (ctx.openPanel({ id: "15", name: "옛 캐시", outcome: "success", net: "2026-01-01T00:00:00Z",
+                     lat: 1, lng: 2 }),
+     el("panel-body").innerHTML.includes("옛 캐시")), true);
+
   group("순서표 배선 (상세 패널 · 집중 화면)");
   state.map = map;
   map.stubSource("launches");

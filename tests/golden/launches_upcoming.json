@@ -1,6 +1,16 @@
 [
  {
   "agency_year_count": 89,
+  "boosters": [
+   {
+    "flights": 1,
+    "landing_attempt": true,
+    "landing_name": "Gulf of Mexico",
+    "landing_success": false,
+    "reused": false,
+    "serial": "Booster 20"
+   }
+  ],
   "fail_reason": "",
   "hold_reason": "",
   "id": "ac897b9f-44d2-4ff4-8416-1a0a076e98a2",
@@ -29,6 +39,21 @@
   "provider": "SpaceX",
   "provider_country": "USA",
   "rocket": "Starship V3",
+  "rocket_spec": {
+   "diameter": 9.0,
+   "fail": 0,
+   "launch_mass": 5250,
+   "length": 124.4,
+   "leo_capacity": 100000,
+   "maiden_flight": "2026-05-22",
+   "max_stage": 2,
+   "min_stage": 2,
+   "reusable": true,
+   "streak": 2,
+   "success": 2,
+   "to_thrust": 80807,
+   "total": 2
+  },
   "status": "Launch Successful",
   "timeline": [
    {
@@ -249,6 +274,16 @@
  },
  {
   "agency_year_count": 90,
+  "boosters": [
+   {
+    "flights": 7,
+    "landing_attempt": true,
+    "landing_name": "Of Course I Still Love You",
+    "landing_success": null,
+    "reused": true,
+    "serial": "B1100"
+   }
+  ],
   "fail_reason": "",
   "hold_reason": "",
   "id": "5b2f05d7-9052-49fb-9bd7-2a05d4910576",
@@ -277,6 +312,21 @@
   "provider": "SpaceX",
   "provider_country": "USA",
   "rocket": "Falcon 9 Block 5",
+  "rocket_spec": {
+   "diameter": 3.65,
+   "fail": 1,
+   "launch_mass": 549,
+   "length": 70.0,
+   "leo_capacity": 22800,
+   "maiden_flight": "2018-05-11",
+   "max_stage": 2,
+   "min_stage": 2,
+   "reusable": true,
+   "streak": 314,
+   "success": 611,
+   "to_thrust": 7607,
+   "total": 612
+  },
   "status": "Go for Launch",
   "timeline": [
    {
@@ -430,6 +480,16 @@
  },
  {
   "agency_year_count": 91,
+  "boosters": [
+   {
+    "flights": 25,
+    "landing_attempt": true,
+    "landing_name": "Of Course I Still Love You",
+    "landing_success": null,
+    "reused": true,
+    "serial": "B1081"
+   }
+  ],
   "fail_reason": "",
   "hold_reason": "",
   "id": "e7e55b53-6f69-4c22-9fc5-df00df653a3f",
@@ -458,6 +518,21 @@
   "provider": "SpaceX",
   "provider_country": "USA",
   "rocket": "Falcon 9 Block 5",
+  "rocket_spec": {
+   "diameter": 3.65,
+   "fail": 1,
+   "launch_mass": 549,
+   "length": 70.0,
+   "leo_capacity": 22800,
+   "maiden_flight": "2018-05-11",
+   "max_stage": 2,
+   "min_stage": 2,
+   "reusable": true,
+   "streak": 314,
+   "success": 611,
+   "to_thrust": 7607,
+   "total": 612
+  },
   "status": "Go for Launch",
   "timeline": [
    {

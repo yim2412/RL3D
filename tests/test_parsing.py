@@ -695,5 +695,83 @@ def main():
     unittest.main(argv=argv, exit=True)
 
 
+class TestRocketSpecAndBoosters(unittest.TestCase):
+    """P14-1 — 로켓 제원·부스터 이력. **전부 이미 받아오던 값이라 새 요청이 0이다.**"""
+
+    def _launch(self, **rocket):
+        return {"pad": {"latitude": 1.0, "longitude": 2.0}, "rocket": rocket}
+
+    def test_spec_keeps_zero(self):
+        """`fail: 0` 은 지워야 할 빈 값이 아니라 **좋은 소식**이다.
+
+        `if v` 로 걸렀다면 실패 0회인 로켓만 조용히 통산에서 빠진다 — 화면에는
+        '통산 15회 · 성공 15' 만 남아 **실패 줄이 없는 것과 구분되지 않는다.**
+        """
+        d = api_parsing._parse_launch(self._launch(
+            configuration={"total_launch_count": 15, "successful_launches": 15,
+                           "failed_launches": 0, "consecutive_successful_launches": 15}))
+        self.assertEqual(d["rocket_spec"]["fail"], 0)
+        self.assertIsNotNone(d["rocket_spec"])
+
+    def test_spec_survives_when_every_value_is_zero(self):
+        """**처녀비행 대기 중인 로켓은 통산이 0 이다** — 그래도 블록은 있어야 한다.
+
+        `all(not v ...)` 로 비었는지 판정하면 `total=0` 한 값만 있는 신형 로켓의
+        제원이 **통째로 None 이 되어** 화면에서 사라진다. 변이 실험에서 이 자리만
+        안 잡혀서 알았다(2026-09-13) — `test_spec_keeps_zero` 는 `total=15` 를
+        같이 넣고 있어 두 판정이 같은 답을 냈다.
+        """
+        d = api_parsing._parse_launch(self._launch(
+            configuration={"total_launch_count": 0, "failed_launches": 0}))
+        self.assertIsNotNone(d["rocket_spec"])
+        self.assertEqual(d["rocket_spec"]["total"], 0)
+
+    def test_spec_none_when_empty(self):
+        """제원이 하나도 없으면 None — 화면이 빈 블록을 그리지 않는다."""
+        self.assertIsNone(api_parsing._parse_launch(self._launch(configuration={}))["rocket_spec"])
+        self.assertIsNone(api_parsing._parse_launch(self._launch())["rocket_spec"])
+
+    def test_flights_zero_and_none_stay_apart(self):
+        """`0`(신조)과 `None`(부스터 미배정)은 **다른 뜻**이다.
+
+        실측으로 둘 다 온다: `Booster 21` 은 `flights=0`, `Unknown F9` 는 `flights=None`.
+        None 을 0 으로 접으면 아직 배정도 안 된 부스터가 '첫 비행'이라고 단언된다.
+        """
+        b = api_parsing._parse_launch(self._launch(launcher_stage=[
+            {"launcher": {"serial_number": "Booster 21", "flights": 0}},
+            {"launcher": {"serial_number": "Unknown F9"}},
+        ]))["boosters"]
+        self.assertEqual(b[0]["flights"], 0)
+        self.assertIsNone(b[1]["flights"])
+
+    def test_landing_four_states_survive(self):
+        """예정 발사는 `attempt=True`·`success=None` 으로 온다 — **네 상태가 구분돼야** 한다.
+
+        `success` 만 넘기면 아직 날지도 않은 발사가 화면에서 '착륙 실패'가 된다.
+        """
+        b = api_parsing._parse_launch(self._launch(launcher_stage=[
+            {"launcher": {"serial_number": "B1080", "flights": 28}, "reused": True,
+             "landing": {"attempt": True, "success": None,
+                         "location": {"name": "A Shortfall of Gravitas"}}},
+            {"launcher": {"serial_number": "B1063"}, "landing": {"attempt": False}},
+        ]))["boosters"]
+        self.assertTrue(b[0]["landing_attempt"])
+        self.assertIsNone(b[0]["landing_success"])
+        self.assertEqual(b[0]["landing_name"], "A Shortfall of Gravitas")
+        self.assertFalse(b[1]["landing_attempt"])
+
+    def test_boosters_skip_unnamed_and_cap(self):
+        """시리얼 없는 행은 버리고(화면에 빈 줄이 생긴다), 개수는 상한을 지킨다."""
+        stages = [{"launcher": {"serial_number": ""}}] +                  [{"launcher": {"serial_number": "B%d" % i}} for i in range(20)]
+        b = api_parsing._parse_launch(self._launch(launcher_stage=stages))["boosters"]
+        self.assertEqual(len(b), api_parsing.MAX_BOOSTERS)
+        self.assertEqual(b[0]["serial"], "B0")
+
+    def test_launcher_stage_garbage_does_not_kill_launch(self):
+        """리스트 안에 null 이 섞여 와도 그 발사 전체가 사라지면 안 된다."""
+        d = api_parsing._parse_launch(self._launch(launcher_stage=[None, "x", {}]))
+        self.assertEqual(d["boosters"], [])
+
+
 if __name__ == "__main__":
     main()

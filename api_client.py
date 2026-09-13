@@ -104,7 +104,8 @@ def _cache_path(name):
 # **지난 연도 아카이브 캐시는 TTL 이 없어 영구**다. 그래서 2025년을 이미 불러온 사용자는
 # 그 해 발사에서 새 기능이 **영원히 안 보인다** — 오류도 경고도 없다.
 # `launches.json` 은 TTL 15분이라 저절로 나아서 개발 중에는 보이지도 않았다.
-CACHE_SCHEMA = 1
+# v2(2026-09-13, P14-1): `rocket_spec`·`boosters` 추가.
+CACHE_SCHEMA = 2
 
 
 def _cache_read(name, any_schema=False):

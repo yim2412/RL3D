@@ -1,6 +1,16 @@
 [
  {
   "agency_year_count": 89,
+  "boosters": [
+   {
+    "flights": 1,
+    "landing_attempt": true,
+    "landing_name": "Gulf of Mexico",
+    "landing_success": false,
+    "reused": false,
+    "serial": "Booster 20"
+   }
+  ],
   "fail_reason": "",
   "hold_reason": "",
   "id": "ac897b9f-44d2-4ff4-8416-1a0a076e98a2",
@@ -29,6 +39,21 @@
   "provider": "SpaceX",
   "provider_country": "USA",
   "rocket": "Starship V3",
+  "rocket_spec": {
+   "diameter": 9.0,
+   "fail": 0,
+   "launch_mass": 5250,
+   "length": 124.4,
+   "leo_capacity": 100000,
+   "maiden_flight": "2026-05-22",
+   "max_stage": 2,
+   "min_stage": 2,
+   "reusable": true,
+   "streak": 2,
+   "success": 2,
+   "to_thrust": 80807,
+   "total": 2
+  },
   "status": "Launch Successful",
   "timeline": [
    {
@@ -249,6 +274,7 @@
  },
  {
   "agency_year_count": 5,
+  "boosters": [],
   "fail_reason": "",
   "hold_reason": "",
   "id": "fa42624c-1e30-4b4b-a06b-59b6153bc4e5",
@@ -275,6 +301,21 @@
   "provider": "CAS Space",
   "provider_country": "CHN",
   "rocket": "Kinetica 1",
+  "rocket_spec": {
+   "diameter": 2.65,
+   "fail": 1,
+   "launch_mass": 135,
+   "length": 30.0,
+   "leo_capacity": 2000,
+   "maiden_flight": "2022-07-27",
+   "max_stage": 4,
+   "min_stage": 4,
+   "reusable": false,
+   "streak": 9,
+   "success": 14,
+   "to_thrust": 1961,
+   "total": 15
+  },
   "status": "Launch Successful",
   "timeline": [],
   "updates": [
@@ -317,6 +358,7 @@
  },
  {
   "agency_year_count": 35,
+  "boosters": [],
   "fail_reason": "",
   "hold_reason": "",
   "id": "5421e43a-1623-40ac-9dac-201075064e24",
@@ -343,6 +385,21 @@
   "provider": "China Aerospace Science and Technology Corporation",
   "provider_country": "CHN",
   "rocket": "Long March 3B/E",
+  "rocket_spec": {
+   "diameter": 3.35,
+   "fail": 2,
+   "launch_mass": 456,
+   "length": 56.3,
+   "leo_capacity": 12000,
+   "maiden_flight": "2007-05-13",
+   "max_stage": 3,
+   "min_stage": 3,
+   "reusable": false,
+   "streak": 2,
+   "success": 76,
+   "to_thrust": 5924,
+   "total": 78
+  },
   "status": "Launch Successful",
   "timeline": [],
   "updates": [

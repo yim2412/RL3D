@@ -233,6 +233,86 @@ function entityRow(k, v, kind) {
     `${escapeHtml(v)} ›</button></div></div>`;
 }
 
+/** 큰 수를 자릿수에 맞는 단위로. 1,234 를 "1234" 로 찍으면 읽히지 않는다(P13-3 과 같은 갈래). */
+function fmtQty(v, unit) {
+  if (v == null || !isFinite(v)) return null;
+  if (unit === "kg" && v >= 1000) return (v / 1000).toLocaleString("ko-KR") + " t";
+  if (unit === "kN" && v >= 1000) return Math.round(v / 1000).toLocaleString("ko-KR") + " MN";
+  return v.toLocaleString("ko-KR") + " " + unit;
+}
+
+/** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
+function rocketSpecBlock(d) {
+  const sp = d.rocket_spec;
+  if (!sp) return "";
+  const items = [
+    ["길이", fmtQty(sp.length, "m")],
+    ["지름", fmtQty(sp.diameter, "m")],
+    ["이륙 질량", fmtQty(sp.launch_mass, "t")],
+    ["LEO 탑재량", fmtQty(sp.leo_capacity, "kg")],
+    ["이륙 추력", fmtQty(sp.to_thrust, "kN")],
+    ["단 수", sp.max_stage != null ? sp.max_stage + "단" : null],
+    ["첫 비행", sp.maiden_flight],
+    ["형식", sp.reusable == null ? null : (sp.reusable ? "재사용형" : "소모형")],
+  ].filter((x) => x[1]);
+  // 통산은 **0 을 살려서** 읽는다 — `fail: 0` 은 지워야 할 빈 값이 아니라 좋은 소식이다.
+  let record = "";
+  if (sp.total != null) {
+    const parts = [`통산 ${sp.total}회`];
+    if (sp.success != null) parts.push(`성공 ${sp.success}`);
+    if (sp.fail != null) parts.push(`실패 ${sp.fail}`);
+    if (sp.streak != null && sp.streak > 0) parts.push(`연속 성공 ${sp.streak}`);
+    record = `<div class="spec-record">${escapeHtml(parts.join(" · "))}</div>`;
+  }
+  if (!items.length && !record) return "";
+  const grid = items.map(([k, v]) =>
+    `<div class="spec-i"><span class="spec-k">${escapeHtml(k)}</span>` +
+    `<span class="spec-v">${escapeHtml(String(v))}</span></div>`).join("");
+  return `<div class="spec-block"><div class="spec-h">로켓 제원</div>` +
+    `${record}<div class="spec-grid">${grid}</div></div>`;
+}
+
+/** 부스터 1개의 비행 횟수 문장. **`flights` 는 이번 비행 직전까지의 횟수다.**
+ *
+ * LL2 는 `flights=28` 인 B1080 을 같은 응답에서 "after its 29th flight" 라고 부른다 —
+ * 그대로 "28번째"라고 쓰면 매번 하나씩 어긋난다.
+ * `0`(신조)과 `null`(부스터 미배정)은 **다른 뜻**이라 한 문장으로 접지 않는다.
+ */
+function boosterFlightText(b) {
+  if (b.flights == null) return null;          // 미배정 — 횟수 줄을 아예 안 낸다
+  if (b.flights === 0) return "첫 비행";
+  return `${b.flights + 1}번째 비행`;
+}
+
+/** 착륙은 **네 상태**다. 예정 발사는 `success=null`·`attempt=true` 로 오므로
+ *  `success` 만 보면 아직 날지도 않은 발사가 전부 "착륙 실패"가 된다. */
+function boosterLandingText(b) {
+  if (b.landing_attempt === false) return "착륙 시도 안 함";
+  if (b.landing_attempt !== true) return null;     // 모름 — 지어내지 않는다
+  const where = b.landing_name ? " · " + b.landing_name : "";
+  if (b.landing_success === true) return "착륙 성공" + where;
+  if (b.landing_success === false) return "착륙 실패" + where;
+  return "착륙 시도 예정" + where;
+}
+
+/** 부스터 재사용 이력(P14-1). 실측 지난 26/50 · 예정 15/50 — 없으면 블록을 안 그린다. */
+function boostersBlock(d) {
+  const list = d.boosters || [];
+  if (!list.length) return "";
+  const rows = list.map((b) => {
+    const sub = [boosterFlightText(b), boosterLandingText(b)].filter(Boolean).join(" · ");
+    // **"신조"는 `reused === false` 가 아니라 `flights === 0` 일 때만 붙인다.**
+    // LL2 는 Pallas1 F1 을 `reused=false`·`flights=1` 로 준다 — 그대로 옮기면 화면에
+    // **"신조 · 2번째 비행"** 이라는 앞뒤 안 맞는 문장이 나온다(2026-09-13 실제 캐시에서 발견).
+    // 두 값이 어긋나면 **더 구체적인 쪽(횟수)을 남기고 태그를 뺀다.**
+    const tag = b.reused === true ? `<span class="bst-tag">재사용</span>`
+              : b.flights === 0 ? `<span class="bst-tag bst-new">신조</span>` : "";
+    return `<div class="bst-row"><span class="bst-id">${escapeHtml(b.serial)}</span>${tag}` +
+      (sub ? `<span class="bst-sub">${escapeHtml(sub)}</span>` : "") + `</div>`;
+  }).join("");
+  return `<div class="spec-block"><div class="spec-h">부스터</div>${rows}</div>`;
+}
+
 /** 외부 링크는 파이썬 브릿지로 기본 브라우저에서 연다(http/https만 허용됨). */
 function openExternal(url) {
   if (!url) return;
@@ -364,6 +444,8 @@ function openPanel(d) {
     ${row("발사 윈도우", windowText(d))}
     ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
     ${entityRow("로켓", d.rocket, "rocket")}
+    ${rocketSpecBlock(d)}
+    ${boostersBlock(d)}
     ${entityRow("기관", d.provider, "provider")}
     ${row("국가", countryKo(d.provider_country))}
     ${row("미션", d.mission_name)}

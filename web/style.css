@@ -696,3 +696,28 @@ html, body {
   font-size: 11px; color: var(--muted);
   min-width: 62px; text-align: left; white-space: nowrap;
 }
+
+/* 로켓 제원 · 부스터 이력 (P14-1) — 상세 패널의 로켓이 이름 한 줄뿐이었다 */
+.spec-block {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: rgba(255,255,255,.02);
+}
+.spec-h { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
+.spec-record { font-size: 12px; color: var(--text); margin-bottom: 6px; }
+/* 2열 고정이 아니라 auto-fit — 좁은 창에서 값이 라벨과 겹치지 않게 한 열로 접힌다 */
+.spec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 3px 10px; }
+.spec-i { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.spec-k { color: var(--muted); }
+.spec-v { color: var(--text); text-align: right; }
+.bst-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; padding: 3px 0; }
+.bst-row + .bst-row { border-top: 1px solid var(--line); }
+.bst-id { font-weight: 700; color: var(--text); }
+.bst-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.bst-new { color: var(--muted); background: rgba(255,255,255,.06); }
+.bst-sub { color: var(--muted); }

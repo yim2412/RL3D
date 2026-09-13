@@ -105,6 +105,73 @@ def _parse_updates(item):
              "info_url": u.get("info_url")} for u in items[:MAX_UPDATES]]
 
 
+MAX_BOOSTERS = 6     # Falcon Heavy 가 3개, Starship 이 2개. 상한은 폭주 방지용이다
+
+
+def _parse_rocket_spec(config):
+    """로켓 제원·통산 성적 → dict. 값이 하나도 없으면 None(화면이 빈 블록을 안 그린다).
+
+    **`0` 을 버리지 않는다** — `failed_launches` 는 0 이 정상값이고, 그게 좋은 소식이다.
+    그래서 `if v` 가 아니라 `v is not None` 으로 거른다.
+    """
+    if not isinstance(config, dict):
+        return None
+    spec = {
+        "length": config.get("length"),
+        "diameter": config.get("diameter"),
+        "launch_mass": config.get("launch_mass"),
+        "leo_capacity": config.get("leo_capacity"),
+        "to_thrust": config.get("to_thrust"),
+        "min_stage": config.get("min_stage"),
+        "max_stage": config.get("max_stage"),
+        "maiden_flight": config.get("maiden_flight"),
+        "reusable": config.get("reusable"),
+        "total": config.get("total_launch_count"),
+        "success": config.get("successful_launches"),
+        "fail": config.get("failed_launches"),
+        "streak": config.get("consecutive_successful_launches"),
+    }
+    if all(v is None for v in spec.values()):
+        return None
+    return spec
+
+
+def _parse_boosters(rocket):
+    """부스터 재사용 이력 → [{serial, flights, reused, landing_*}].
+
+    실측(2026-09-13 라이브 100건): 지난 발사 26/50 · 예정 15/50 에 들어 있다.
+
+    **`flights` 는 "이번 비행 직전까지의 횟수"다.** 같은 응답의 `landing.description` 이
+    `flights=28` 인 B1080 을 "after its 29th flight" 라고 부른다 — 그대로 "N번째"라고
+    쓰면 한 번씩 어긋난다. 화면 문장은 JS 가 조립하고, 여기서는 **값만** 넘긴다.
+
+    `flights` 가 `0`(신조 Starship Booster 21)이거나 `None`(부스터 미배정 `Unknown F9`)인
+    행이 실제로 온다 — 둘은 다른 뜻이라 **`None` 을 0 으로 접지 않는다**.
+    """
+    out = []
+    for st in (rocket.get("launcher_stage") or []):
+        if not isinstance(st, dict):
+            continue
+        launcher = st.get("launcher") or {}
+        serial = launcher.get("serial_number")
+        if not serial:
+            continue
+        landing = st.get("landing") if isinstance(st.get("landing"), dict) else {}
+        out.append({
+            "serial": serial,
+            "flights": launcher.get("flights"),
+            "reused": st.get("reused"),
+            # 착륙은 **네 상태**다: 시도 안 함 / 시도 예정(success=None) / 성공 / 실패.
+            # 예정 발사는 attempt=True·success=None 으로 오므로 success 만 보면 전부 "실패"가 된다.
+            "landing_attempt": landing.get("attempt"),
+            "landing_success": landing.get("success"),
+            "landing_name": ((landing.get("location") or {}).get("name")),
+        })
+        if len(out) >= MAX_BOOSTERS:
+            break
+    return out
+
+
 def _parse_launch(item):
     """LL2 발사 1건 → 정규화 dict. 좌표 없으면 None(지도에 못 찍음)."""
     pad = item.get("pad") or {}
@@ -166,6 +233,10 @@ def _parse_launch(item):
         "orbital_year_count": item.get("orbital_launch_attempt_count_year"),
         "probability": item.get("probability"),
         "weather_concerns": item.get("weather_concerns"),
+        # 로켓 제원·통산 성적(P14-1). 실측 90~100% 채워짐 — 상세 패널의 로켓이 이름 한 줄뿐이었다.
+        "rocket_spec": _parse_rocket_spec(config),
+        # 부스터 재사용 이력(P14-1). 없으면 빈 리스트고, 화면은 블록을 안 그린다.
+        "boosters": _parse_boosters(rocket),
     }
 
 
