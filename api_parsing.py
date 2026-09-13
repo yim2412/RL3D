@@ -302,6 +302,10 @@ def _parse_launch(item):
         "mission_agencies": _parse_mission_agencies(item),
         # 이 발사 기관의 착륙 통산(P15-3) — 기관 관점 화면이 쓴다.
         "provider_landings": _parse_provider_landings(item),
+        # LL2 가 **이 발사 정보를 마지막으로 고친** 시각(P15-7). 앱의 "N분 전 갱신"은
+        # **내가 언제 받아왔나**라 다른 값이다. 실측 라이브 100건 전부 채워지고 전부 다른 값이며,
+        # 예정 발사는 중앙값 27일 · 지난 발사는 0.6일이다 — 예정 쪽에서 일정의 신선도가 드러난다.
+        "last_updated": item.get("last_updated"),
         "programs": [p.get("name") for p in (item.get("program") or [])
                      if isinstance(p, dict) and p.get("name")],
         "pad_count": item.get("pad_launch_attempt_count"),

@@ -1648,6 +1648,21 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("비용만 있고 탑재량이 없으면 kg 당 줄이 없다",
     ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000 } }).includes("kg당"), false);
 
+  // ── 정보 갱신 시각 (P15-7) ────────────────────────────────────────────────
+  const agoIso = (days) => new Date(Date.now() - days * 86400000).toISOString();
+  check("분·시간·일", [ctx.agoText(agoIso(0.002)), ctx.agoText(agoIso(0.2)), ctx.agoText(agoIso(3))],
+    ["2분 전", "4시간 전", "3일 전"]);
+  // 실측 예정 발사에 1,164일 전 갱신된 것이 있었다(H3-24) — 날짜 수로는 안 읽힌다
+  check("1년이 넘으면 연 단위", ctx.agoText(agoIso(1164)), "3.2년 전");
+  check("364일은 아직 날짜로", ctx.agoText(agoIso(364)), "364일 전");
+  check("365일에서 바뀐다", ctx.agoText(agoIso(365)), "1.0년 전");
+  check("정보 갱신 줄은 상대시간만", ctx.freshnessText(agoIso(27)), "27일 전");
+  // 날짜를 붙였다면 로캘을 타게 된다 — Node 는 PM, WebView2 는 오후를 낸다
+  check("괄호로 날짜를 붙이지 않는다", ctx.freshnessText(agoIso(27)).includes("("), false);
+  check("없거나 이상하면 null",
+    [ctx.freshnessText(null), ctx.freshnessText("헛소리"), ctx.freshnessText("")], [null, null, null]);
+  check("행 자체가 안 그려진다", ctx.row("정보 갱신", ctx.freshnessText(null)), "");
+
   // ── 착륙 통산 (P15-3) ─────────────────────────────────────────────────────
   const LR = ctx.landingRecord;
   check("성공률까지 적는다", LR(620, 615, 5, 315), "착륙 620회 시도 · 성공 615 (99%) · 실패 5 · 연속 315");
@@ -2115,6 +2130,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
               rocket_spec: { cost: 52000000, leo_capacity: 22800, gto_capacity: 8300,
                              total: 500, fail: 0, land_att: 620, land_ok: 615, land_streak: 315 },
               provider_landings: { att: 699, ok: 671, fail: 29, streak: 20 },
+              last_updated: new Date(Date.now() - 3 * 86400000).toISOString(),
               mission_agencies: [{ name: "United States Space Force", abbrev: "USSF", type: "Government" }] };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
@@ -2133,6 +2149,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("패널에 GTO 탑재량이 실린다", body.includes("GTO 탑재량") && body.includes("8.3 t"), true);
   check("패널에 참여 기관이 실린다", body.includes("참여 기관") && body.includes("USSF (정부)"), true);
   check("패널에 로켓 착륙 통산이 실린다", body.includes("착륙 620회 시도"), true);
+  check("패널에 정보 갱신 시각이 실린다", body.includes("정보 갱신") && body.includes("3일 전"), true);
   // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
   c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
                  pad_count: 120, location_count: 812 });

@@ -77,6 +77,27 @@ function landingRecord(att, ok, fail, streak) {
   return parts.join(" · ");
 }
 
+/**
+ * "3일 전 (2026-09-10)" — LL2 가 이 발사 정보를 마지막으로 고친 때(P15-7).
+ *
+ * 툴바의 `N분 전 갱신` 은 **내가 언제 받아왔나**라 다른 값이다. 예정 발사는 실측
+ * 중앙값이 **27일**이라, 이 줄이 곧 **일정을 얼마나 믿을 수 있나**가 된다.
+ *
+ * **경고로 만들지 않았다.** 30일 넘게 안 바뀐 예정 발사 23건 중 **22건은 이미
+ * `net_precision` 경고가 떠 있다** — 경고를 더하면 대부분 겹쳐 울리고 새로 알려 주는 것은
+ * 한 건뿐이다. 사실만 적고 판단은 읽는 쪽에 맡긴다.
+ *
+ * **날짜는 안 붙인다.** 이 줄이 답하는 것은 "언제였나"가 아니라 "얼마나 오래됐나"라
+ * 상대시간으로 족하고, 그러면 **시간대 스위치(P13-5)와 로캘 표기**를 통째로 피한다
+ * (Node 는 `PM 11:55`, WebView2 는 `오후 11:55` 를 낸다 — 단언이 환경을 타게 된다).
+ */
+function freshnessText(iso) {
+  // 잘못된 날짜 방어는 **`agoText` 한 곳에만** 둔다. 여기에 `isFinite` 를 겹쳐 놨더니
+  // 그 줄을 지우는 변이가 `agoText` 에 막혀 전부 통과했다 — 방어를 뜯어도 테스트가 조용했다.
+  // `agoText` 는 못 읽는 날짜에 `""` 를 돌려주므로 `|| null` 한 줄로 이어받는다.
+  return iso ? (agoText(iso) || null) : null;
+}
+
 /** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
 function rocketSpecBlock(d) {
   const sp = d.rocket_spec;
@@ -322,6 +343,7 @@ function openPanel(d) {
     ${entityRow("발사장", d.location_name, "site")}
     ${row("패드", d.pad_name)}
     ${row("기록", contextText(d))}
+    ${row("정보 갱신", freshnessText(d.last_updated))}
     ${d.mission_desc ? `<div class="mission-desc">${escapeHtml(d.mission_desc)}</div>` : ""}
     ${updatesBlock(d)}
     ${timelineHtml(d, launchElapsed(d))}
