@@ -129,6 +129,10 @@ def _parse_rocket_spec(config):
         "diameter": config.get("diameter"),
         "launch_mass": config.get("launch_mass"),
         "leo_capacity": config.get("leo_capacity"),
+        # 정지천이궤도 탑재량(P15-6). 통신위성 발사를 읽을 때 쓰는 수치다.
+        # 라이브 43종 중 정상값 15 · 0 이 1(Long March 2D) · 없음 27.
+        # **LEO 가 0 인데 GTO 는 있는 로켓이 셋**(GSLV Mk. II·H3-22·H3-24) — 한쪽으로 못 채운다.
+        "gto_capacity": config.get("gto_capacity"),
         "to_thrust": config.get("to_thrust"),
         "min_stage": config.get("min_stage"),
         "max_stage": config.get("max_stage"),

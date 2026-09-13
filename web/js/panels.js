@@ -47,6 +47,9 @@ function rocketSpecBlock(d) {
     ["지름", fmtQty(sp.diameter, "m")],
     ["이륙 질량", fmtQty(sp.launch_mass, "t")],
     ["LEO 탑재량", fmtQty(sp.leo_capacity, "kg")],
+    // 정지천이궤도 탑재량(P15-6). LEO 와 짝이라 바로 뒤에 둔다.
+    // **LEO 가 0(모름)인데 GTO 는 있는 로켓이 있다** — 둘을 따로 걸러야 한다.
+    ["GTO 탑재량", fmtQty(sp.gto_capacity, "kg")],
     ["이륙 추력", fmtQty(sp.to_thrust, "kN")],
     // 공시 발사가와 그 kg 당 값(P15-2). 재사용 로켓의 경제성이 여기서 드러난다 —
     // 실측 Electron $20,000/kg 대 Falcon Heavy $1,411/kg 로 14배 차이다.

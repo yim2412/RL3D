@@ -1648,6 +1648,18 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("비용만 있고 탑재량이 없으면 kg 당 줄이 없다",
     ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000 } }).includes("kg당"), false);
 
+  // ── GTO 탑재량 (P15-6) ────────────────────────────────────────────────────
+  const spec = (o) => ctx.rocketSpecBlock({ rocket_spec: o });
+  check("GTO 탑재량이 제원에 실린다", spec({ gto_capacity: 8300 }).includes("GTO 탑재량"), true);
+  check("t 단위로 바뀐다", spec({ gto_capacity: 26700 }).includes("26.7 t"), true);
+  check("1,000 kg 미만은 kg 로 남는다", spec({ gto_capacity: 900 }).includes("900 kg"), true);
+  check("GTO 가 0 이면 안 뜬다(Long March 2D)", spec({ gto_capacity: 0 }).includes("GTO"), false);
+  check("GTO 가 없으면 안 뜬다", spec({ gto_capacity: null, length: 50 }).includes("GTO"), false);
+  // LEO 가 0 인데 GTO 는 있는 로켓이 셋 있다(GSLV Mk. II·H3-22·H3-24) — 한쪽으로 다른 쪽을 지우면 안 된다
+  const only = spec({ leo_capacity: 0, gto_capacity: 5400 });
+  check("LEO 가 0 이어도 GTO 는 살아남는다", only.includes("GTO 탑재량") && only.includes("5.4 t"), true);
+  check("그때 LEO 줄은 없다", only.includes("LEO 탑재량"), false);
+
   // **"신조 · 2번째 비행"이 실제 캐시에서 나왔다(2026-09-13).** LL2 는 Pallas1 F1 을
   // `reused=false`·`flights=1` 로 준다 — 두 값을 따로 재는 테스트는 전부 통과했고,
   // 화면에 렌더해 보고서야 앞뒤가 안 맞는 문장인 걸 알았다.
@@ -2049,7 +2061,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
               pad_year_count: 9, location_year_count: 31, provider: "SpaceX",
               agency_year_count: 108, agency_count: 727,
               orbital_year_count: 214, orbital_count: 7387,
-              rocket_spec: { cost: 52000000, leo_capacity: 22800, total: 500, fail: 0 } };
+              rocket_spec: { cost: 52000000, leo_capacity: 22800, gto_capacity: 8300,
+                             total: 500, fail: 0 } };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
   check("맥락 줄에 재사용 간격이 실린다", body.includes("직전 발사로부터 2.8일 만"), true);
@@ -2064,6 +2077,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   // 제원 블록의 새 두 줄이 패널까지 실제로 오는가(P15-2) — 직접 부르는 단언만으로는 안 잡힌다
   check("패널에 공시 발사가가 실린다", body.includes("5,200만 달러"), true);
   check("패널에 kg 당이 실린다", body.includes("$2,281"), true);
+  check("패널에 GTO 탑재량이 실린다", body.includes("GTO 탑재량") && body.includes("8.3 t"), true);
   // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
   c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
                  pad_count: 120, location_count: 812 });
