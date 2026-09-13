@@ -17,6 +17,17 @@ import satcat_codes
 
 log = logging.getLogger(__name__)
 
+def _dict(v):
+    """dict 가 아니면 빈 dict(전역 7번 — 1건 파싱 실패가 나머지를 날리지 않는다).
+
+    **`x or {}` 로는 부족하다.** 그 관용구는 `None`·`{}`·`""` 만 막고, **비어 있지 않은
+    문자열·리스트는 그대로 통과시킨다** — 그러면 바로 다음 줄의 `.get()` 이 `AttributeError`
+    로 터지고 **그 발사 한 건이 아니라 페이지 전체가 날아간다**.
+    2026-09-13 P15-3 의 방어 테스트(`launch_service_provider: "문자열"`)가 실제로 잡았다.
+    """
+    return v if isinstance(v, dict) else {}
+
+
 def _outcome_from_status(status_abbrev):
     """LL2 status.abbrev → 정규화된 outcome."""
     s = (status_abbrev or "").lower()
@@ -72,7 +83,7 @@ def _parse_timeline(item):
         t = parse_relative_time(e.get("relative_time"))
         if t is None:
             continue
-        typ = e.get("type") or {}
+        typ = _dict(e.get("type"))
         abbrev = typ.get("abbrev")
         if not abbrev:
             continue
@@ -108,6 +119,27 @@ def _parse_updates(item):
 MAX_BOOSTERS = 6     # Falcon Heavy 가 3개, Starship 이 2개. 상한은 폭주 방지용이다
 
 
+def _parse_provider_landings(item):
+    """기관의 착륙 통산(P15-3) → dict 또는 None.
+
+    **합을 계산하지 않는다.** 실측 SpaceX 가 `시도 699 · 성공 671 · 실패 29` 로 오는데
+    671+29 = 700 이라 **LL2 값끼리 안 맞는다.** 받은 값을 그대로 옮기고, 화면도
+    실패를 `시도-성공` 으로 유도하지 않는다 — 유도하면 우리가 틀린 숫자를 지어내게 된다.
+    """
+    p = item.get("launch_service_provider")
+    if not isinstance(p, dict):
+        return None
+    att = p.get("attempted_landings")
+    if not att:          # 0 이거나 없으면 말할 것이 없다(착륙을 안 하는 기관)
+        return None
+    return {
+        "att": att,
+        "ok": p.get("successful_landings"),
+        "fail": p.get("failed_landings"),
+        "streak": p.get("consecutive_successful_landings"),
+    }
+
+
 def _parse_mission_agencies(item):
     """미션 참여 기관(P15-5) → [{name, abbrev, type}]. 없으면 빈 리스트.
 
@@ -115,9 +147,9 @@ def _parse_mission_agencies(item):
     59건인데 그중 **28건이 제공자 자신**이다(Starlink 자체 발사 등) — 그대로 두면
     "SpaceX 가 SpaceX 를 위해"가 되어 정보량이 0이다. 빼고 나면 실제로 남는 것은 31건.
     """
-    prov = (item.get("launch_service_provider") or {}).get("name")
+    prov = _dict(item.get("launch_service_provider")).get("name")
     out = []
-    for a in ((item.get("mission") or {}).get("agencies") or []):
+    for a in (_dict(item.get("mission")).get("agencies") or []):
         if not isinstance(a, dict):
             continue
         name = a.get("name")
@@ -166,6 +198,13 @@ def _parse_rocket_spec(config):
         "success": config.get("successful_launches"),
         "fail": config.get("failed_launches"),
         "streak": config.get("consecutive_successful_launches"),
+        # 착륙 통산(P15-3). P14-1 이 부스터 **한 대**의 착륙 결과를 넣었는데 그 위 집계가 없었다.
+        # 네 값 모두 숫자로 온다(라이브 43종에 None 0) — **0 은 "안 한다"는 사실**이라
+        # 화면이 줄을 안 그리는 것으로 처리한다. 실패는 `시도-성공` 으로 유도하지 않는다(아래 참조).
+        "land_att": config.get("attempted_landings"),
+        "land_ok": config.get("successful_landings"),
+        "land_fail": config.get("failed_landings"),
+        "land_streak": config.get("consecutive_successful_landings"),
         # 공시 발사가(P15-2). **문자열로 온다**(`"52000000"`) → int 로 바꿔 둔다.
         # 같은 로켓은 항상 같은 값이라(라이브 43종에 예외 0) **이 발사의 계약가가 아니라
         # 그 로켓의 공시가**다. 채움률은 나라마다 크게 갈린다 — 미국 49/55 · 중국 2/21.
@@ -192,7 +231,7 @@ def _parse_boosters(rocket):
     for st in (rocket.get("launcher_stage") or []):
         if not isinstance(st, dict):
             continue
-        launcher = st.get("launcher") or {}
+        launcher = _dict(st.get("launcher"))
         serial = launcher.get("serial_number")
         if not serial:
             continue
@@ -205,7 +244,7 @@ def _parse_boosters(rocket):
             # 예정 발사는 attempt=True·success=None 으로 오므로 success 만 보면 전부 "실패"가 된다.
             "landing_attempt": landing.get("attempt"),
             "landing_success": landing.get("success"),
-            "landing_name": ((landing.get("location") or {}).get("name")),
+            "landing_name": _dict(landing.get("location")).get("name"),
         })
         if len(out) >= MAX_BOOSTERS:
             break
@@ -214,17 +253,17 @@ def _parse_boosters(rocket):
 
 def _parse_launch(item):
     """LL2 발사 1건 → 정규화 dict. 좌표 없으면 None(지도에 못 찍음)."""
-    pad = item.get("pad") or {}
-    location = pad.get("location") or {}
+    pad = _dict(item.get("pad"))
+    location = _dict(pad.get("location"))
     lat, lng = pad.get("latitude"), pad.get("longitude")
     if lat is None or lng is None:
         return None
 
-    rocket = item.get("rocket") or {}
-    config = rocket.get("configuration") or {}
-    provider = item.get("launch_service_provider") or {}
-    status = item.get("status") or {}
-    mission = item.get("mission") or {}
+    rocket = _dict(item.get("rocket"))
+    config = _dict(rocket.get("configuration"))
+    provider = _dict(item.get("launch_service_provider"))
+    status = _dict(item.get("status"))
+    mission = _dict(item.get("mission"))
     image = item.get("image")
 
     return {
@@ -243,7 +282,7 @@ def _parse_launch(item):
         "mission_name": mission.get("name"),
         "mission_type": mission.get("type"),
         "mission_desc": mission.get("description"),
-        "orbit": ((mission.get("orbit") or {}).get("name")),
+        "orbit": _dict(mission.get("orbit")).get("name"),
         "image": image,
         # 실패/지연(홀드) 사유 — 있을 때만 채워짐(상세 모드)
         "fail_reason": item.get("failreason"),
@@ -251,16 +290,18 @@ def _parse_launch(item):
         # 아래는 이미 detailed 응답에 들어오던 값들(추가 요청 없음)
         "vid_urls": _parse_vid_urls(item),
         "webcast_live": bool(item.get("webcast_live")),
-        "patch": ((item.get("mission_patches") or [{}])[0] or {}).get("image_url"),
+        "patch": _dict((item.get("mission_patches") or [{}])[0]).get("image_url"),
         "updates": _parse_updates(item),
         # 발사 순서표(P13-1) — 실측 10% 에만 있다. 없으면 빈 리스트고, 화면은 블록을 안 그린다.
         "timeline": _parse_timeline(item),
         "window_start": item.get("window_start"),
         "window_end": item.get("window_end"),
         # net 이 어디까지 확정인지(Second/Hour/Day/Month…) — 카운트다운의 신뢰도
-        "net_precision": (item.get("net_precision") or {}).get("name"),
+        "net_precision": _dict(item.get("net_precision")).get("name"),
         # 누구를 위한 발사인가(P15-5). 앱은 그동안 **쏘는 쪽만** 말했다.
         "mission_agencies": _parse_mission_agencies(item),
+        # 이 발사 기관의 착륙 통산(P15-3) — 기관 관점 화면이 쓴다.
+        "provider_landings": _parse_provider_landings(item),
         "programs": [p.get("name") for p in (item.get("program") or [])
                      if isinstance(p, dict) and p.get("name")],
         "pad_count": item.get("pad_launch_attempt_count"),

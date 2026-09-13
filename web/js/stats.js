@@ -154,6 +154,33 @@ function siteTotalsHtml(list) {
     ` (우리가 가진 <b>가장 최근 발사</b>까지의 집계다)</div>`;
 }
 
+/**
+ * 기관 착륙 통산(P15-3) → 그 기관 발사 중 **가장 큰 시도 횟수**를 쓴다.
+ *
+ * `siteTotals` 와 같은 수법이다 — LL2 가 각 발사 시점의 집계를 주므로,
+ * **우리가 가진 가장 최근 발사**의 값이 곧 통산이다. 옛 발사의 값을 쓰면 과소 집계가 된다.
+ */
+function providerLandings(list) {
+  let best = null;
+  for (const d of list || []) {
+    const L = d && d.provider_landings;
+    if (!L || !L.att) continue;
+    if (!best || L.att > best.att) best = L;
+  }
+  return best;
+}
+
+function providerLandingsHtml(list) {
+  const L = providerLandings(list);
+  if (!L) return "";
+  // 실패는 받은 값만 쓴다 — 실측 SpaceX 가 699 ≠ 671+29 라 LL2 값끼리 안 맞는다(P15-3)
+  const line = landingRecord(L.att, L.ok, L.fail, L.streak);
+  if (!line) return "";
+  return `<div class="st-world">🛬 ${escapeHtml(line)}</div>` +
+    `<div class="st-world-src">기준: Launch Library 2 의 기관 착륙 통산` +
+    ` (우리가 가진 <b>가장 최근 발사</b>까지의 집계다)</div>`;
+}
+
 function showEntityStats(kind, value) {
   const view = ENTITY_VIEWS[kind];
   if (!view || !value) return;
@@ -185,6 +212,7 @@ function showEntityStats(kind, value) {
     `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
     scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear())) +
     (kind === "site" ? siteTotalsHtml(list) : "") +
+    (kind === "provider" ? providerLandingsHtml(list) : "") +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +
       `<div class="st-tile"><div class="st-num">${rate == null ? "—" : rate + "%"}</div>` +

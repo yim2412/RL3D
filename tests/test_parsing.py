@@ -710,6 +710,73 @@ class TestPadTimezone(unittest.TestCase):
         self.assertIsNone(d["pad_timezone"])
 
 
+class TestLandingTotals(unittest.TestCase):
+    """P15-3 — 착륙 통산. P14-1 이 부스터 한 대를 넣었고, 그 위 집계가 없었다."""
+
+    def _launch(self, provider=None, config=None):
+        return {"pad": {"latitude": 1.0, "longitude": 2.0},
+                "launch_service_provider": provider or {},
+                "rocket": {"configuration": config or {}}}
+
+    def test_rocket_landing_values_are_carried(self):
+        d = api_parsing._parse_launch(self._launch(config={
+            "attempted_landings": 620, "successful_landings": 615,
+            "failed_landings": 5, "consecutive_successful_landings": 315}))
+        sp = d["rocket_spec"]
+        self.assertEqual((sp["land_att"], sp["land_ok"], sp["land_fail"], sp["land_streak"]),
+                         (620, 615, 5, 315))
+
+    def test_provider_landings_none_when_never(self):
+        """**시도가 0 이면 None.** 소모형 운용사는 착륙을 안 하는 것이지 실패한 게 아니다
+        (실측: Arianespace · ULA · ROSCOSMOS · JAXA 가 전부 0)."""
+        d = api_parsing._parse_launch(self._launch(provider={
+            "name": "Arianespace", "attempted_landings": 0, "successful_landings": 0}))
+        self.assertIsNone(d["provider_landings"])
+
+    def test_provider_landings_keeps_raw_values(self):
+        """**합을 계산하지 않는다.** 실측 SpaceX 는 699 시도인데 671+29 = 700 으로
+        LL2 값끼리 안 맞는다 — 유도하면 우리가 틀린 숫자를 지어내게 된다."""
+        d = api_parsing._parse_launch(self._launch(provider={
+            "name": "SpaceX", "attempted_landings": 699, "successful_landings": 671,
+            "failed_landings": 29, "consecutive_successful_landings": 20}))
+        self.assertEqual(d["provider_landings"], {"att": 699, "ok": 671, "fail": 29, "streak": 20})
+
+    def test_zero_success_survives(self):
+        """`2 시도 0 성공`(Starship V3)은 지워야 할 빈 값이 아니다."""
+        d = api_parsing._parse_launch(self._launch(provider={
+            "name": "SpaceX", "attempted_landings": 2, "successful_landings": 0,
+            "failed_landings": 2, "consecutive_successful_landings": 0}))
+        self.assertEqual(d["provider_landings"]["ok"], 0)
+
+    def test_garbage_provider_does_not_kill_the_launch(self):
+        """**`x or {}` 로는 부족했다.** 이 단언이 실제로 결함을 찾았다(2026-09-13) —
+        `launch_service_provider` 가 문자열이면 `provider.get("name")` 이 `AttributeError`
+        로 터져 **그 발사 한 건이 아니라 페이지 전체가 날아갔다.**
+        """
+        d = api_parsing._parse_launch({"pad": {"latitude": 1.0, "longitude": 2.0},
+                                       "launch_service_provider": "문자열"})
+        self.assertIsNone(d["provider_landings"])
+        self.assertIsNone(d["provider"])
+
+    def test_every_subdict_survives_a_string(self):
+        """하위 dict 자리에 **문자열이 와도** 발사 한 건이 살아야 한다(전역 7번).
+
+        `or {}` 는 `None`·`{}`·`""` 만 막고 **비어 있지 않은 문자열을 그대로 통과**시킨다.
+        막지 않았으면 바로 다음 `.get()` 이 `AttributeError` 로 터졌을 자리들이다.
+        """
+        for key in ("rocket", "status", "mission", "launch_service_provider", "net_precision"):
+            with self.subTest(key=key):
+                d = api_parsing._parse_launch(
+                    {"pad": {"latitude": 1.0, "longitude": 2.0}, key: "문자열"})
+                self.assertEqual(d["lat"], 1.0)   # 발사 자체는 살아 있다
+
+    def test_pad_as_string_is_skipped_not_crashed(self):
+        """`pad` 가 문자열이면 좌표가 없어 **그 한 건만** 빠진다(예외로 안 죽는다)."""
+        rows = api_parsing._parse_launches(
+            {"results": [{"pad": "문자열"}, {"pad": {"latitude": 1.0, "longitude": 2.0}}]})
+        self.assertEqual(len(rows), 1)
+
+
 class TestMissionAgencies(unittest.TestCase):
     """P15-5 — 누구를 위한 발사인가. 앱은 그동안 **쏘는 쪽만** 말했다."""
 

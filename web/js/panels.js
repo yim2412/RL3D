@@ -59,6 +59,24 @@ function missionAgenciesText(list) {
   return parts.length ? parts.join(" · ") : null;
 }
 
+/**
+ * 착륙 통산 한 줄(P15-3) — `착륙 620회 시도 · 성공 615 (99%) · 연속 315`.
+ *
+ * **시도가 0 이면 null.** 소모형 로켓·기관은 착륙을 안 하는 것이지 실패한 게 아니다
+ * (실측: Arianespace · ULA · ROSCOSMOS · JAXA 가 전부 0).
+ * **실패는 받은 값만 쓴다** — `시도-성공` 으로 유도하면 안 된다. 실측 SpaceX 가
+ * `699 시도 · 671 성공 · 29 실패` 인데 671+29 = 700 으로 **LL2 값끼리 안 맞는다.**
+ * **성공 0 은 살린다** — Starship V3 의 `2 시도 0 성공` 은 지워야 할 빈 값이 아니다.
+ */
+function landingRecord(att, ok, fail, streak) {
+  if (!att || !isFinite(att)) return null;
+  const parts = [`착륙 ${Number(att).toLocaleString()}회 시도`];
+  if (ok != null && isFinite(ok)) parts.push(`성공 ${Number(ok).toLocaleString()} (${Math.round((ok / att) * 100)}%)`);
+  if (fail != null && isFinite(fail) && fail > 0) parts.push(`실패 ${Number(fail).toLocaleString()}`);
+  if (streak != null && isFinite(streak) && streak > 0) parts.push(`연속 ${Number(streak).toLocaleString()}`);
+  return parts.join(" · ");
+}
+
 /** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
 function rocketSpecBlock(d) {
   const sp = d.rocket_spec;
@@ -89,6 +107,9 @@ function rocketSpecBlock(d) {
     if (sp.streak != null && sp.streak > 0) parts.push(`연속 성공 ${sp.streak}`);
     record = `<div class="spec-record">${escapeHtml(parts.join(" · "))}</div>`;
   }
+  // 착륙은 발사 통산과 **다른 줄**로 둔다 — 한 줄에 붙이면 일곱 조각이 되어 안 읽힌다(P15-3)
+  const land = landingRecord(sp.land_att, sp.land_ok, sp.land_fail, sp.land_streak);
+  if (land) record += `<div class="spec-record">${escapeHtml(land)}</div>`;
   if (!items.length && !record) return "";
   const grid = items.map(([k, v]) =>
     `<div class="spec-i"><span class="spec-k">${escapeHtml(k)}</span>` +

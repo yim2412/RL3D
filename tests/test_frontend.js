@@ -1648,6 +1648,37 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("비용만 있고 탑재량이 없으면 kg 당 줄이 없다",
     ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000 } }).includes("kg당"), false);
 
+  // ── 착륙 통산 (P15-3) ─────────────────────────────────────────────────────
+  const LR = ctx.landingRecord;
+  check("성공률까지 적는다", LR(620, 615, 5, 315), "착륙 620회 시도 · 성공 615 (99%) · 실패 5 · 연속 315");
+  check("네 자리는 쉼표", LR(1200, 1000, 200, 5).includes("1,200회"), true);
+  // 소모형 로켓·기관은 착륙을 안 하는 것이지 실패한 게 아니다(Arianespace·ULA·ROSCOSMOS)
+  check("시도 0 이면 줄이 없다", [LR(0, 0, 0, 0), LR(null, 1, 1, 1)], [null, null]);
+  // Starship V3 의 2 시도 0 성공은 지워야 할 빈 값이 아니다
+  check("성공 0 은 살린다", LR(2, 0, 2, 0), "착륙 2회 시도 · 성공 0 (0%) · 실패 2");
+  check("실패 0 이면 실패를 안 적는다", LR(5, 5, 0, 5).includes("실패"), false);
+  check("연속 0 이면 연속을 안 적는다", LR(2, 0, 2, 0).includes("연속"), false);
+  // LL2 가 699 ≠ 671+29 로 주므로 실패를 유도하면 안 된다 — 받은 29 가 그대로 나와야 한다
+  check("실패를 시도-성공 으로 유도하지 않는다", LR(699, 671, 29, 20).includes("실패 29"), true);
+  check("유도했다면 28 이 나왔을 것이다", 699 - 671, 28);
+
+  check("제원 블록에 착륙 줄이 붙는다",
+    ctx.rocketSpecBlock({ rocket_spec: { total: 630, land_att: 620, land_ok: 615 } })
+      .includes("착륙 620회 시도"), true);
+  check("착륙 0 이면 제원에 줄이 없다",
+    ctx.rocketSpecBlock({ rocket_spec: { total: 58, land_att: 0 } }).includes("착륙"), false);
+
+  const PL = (att, ok, fail, streak) => ({ provider_landings: { att, ok, fail, streak } });
+  // siteTotals 와 같은 수법 — LL2 는 각 발사 시점의 집계를 주므로 가장 최근 값이 통산이다
+  check("가장 큰 시도를 고른다",
+    ctx.providerLandings([PL(100, 90, 10, 5), PL(699, 671, 29, 20), PL(5, 5, 0, 5)]).att, 699);
+  check("옛 발사 값을 쓰면 과소 집계가 된다",
+    ctx.providerLandings([PL(100, 90, 10, 5), PL(699, 671, 29, 20)]).att !== 100, true);
+  check("착륙 없는 기관은 null", ctx.providerLandings([{ provider_landings: null }, {}]), null);
+  check("착륙 없는 기관은 빈 문자열", ctx.providerLandingsHtml([{}]), "");
+  check("기관 착륙 HTML 에 기준을 밝힌다",
+    ctx.providerLandingsHtml([PL(699, 671, 29, 20)]).includes("가장 최근 발사"), true);
+
   // ── 참여 기관 (P15-5) ─────────────────────────────────────────────────────
   const AG = (n, ab, t) => ({ name: n, abbrev: ab, type: t });
   check("긴 이름은 약어로",
@@ -2082,7 +2113,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
               agency_year_count: 108, agency_count: 727,
               orbital_year_count: 214, orbital_count: 7387,
               rocket_spec: { cost: 52000000, leo_capacity: 22800, gto_capacity: 8300,
-                             total: 500, fail: 0 },
+                             total: 500, fail: 0, land_att: 620, land_ok: 615, land_streak: 315 },
+              provider_landings: { att: 699, ok: 671, fail: 29, streak: 20 },
               mission_agencies: [{ name: "United States Space Force", abbrev: "USSF", type: "Government" }] };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
@@ -2100,6 +2132,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("패널에 kg 당이 실린다", body.includes("$2,281"), true);
   check("패널에 GTO 탑재량이 실린다", body.includes("GTO 탑재량") && body.includes("8.3 t"), true);
   check("패널에 참여 기관이 실린다", body.includes("참여 기관") && body.includes("USSF (정부)"), true);
+  check("패널에 로켓 착륙 통산이 실린다", body.includes("착륙 620회 시도"), true);
   // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
   c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
                  pad_count: 120, location_count: 812 });
@@ -2112,6 +2145,13 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   c2.showEntityStats("site", "Vandenberg SFB, CA, USA");
   check("발사장 관점 화면에 통산이 실린다",
     el("stats-body").innerHTML.includes("이 발사장은 통산"), true);
+  // 기관 관점에만 착륙 성적이 붙는다 — 발사장 관점에 붙이면 의미가 다른 숫자가 된다
+  check("발사장 관점에는 착륙 성적이 안 붙는다",
+    el("stats-body").innerHTML.includes("착륙 699회"), false);
+  state.allLaunches = [Object.assign({}, d, { provider: "SpaceX" })];
+  c2.showEntityStats("provider", "SpaceX");
+  check("기관 관점 화면에 착륙 성적이 실린다",
+    el("stats-body").innerHTML.includes("착륙 699회 시도"), true);
   // 로켓·기관 관점에는 발사장 통산이 의미가 없다 — 붙이면 거짓말이 된다
   c2.showEntityStats("rocket", "없는 로켓");
   const before = el("stats-body").innerHTML;
