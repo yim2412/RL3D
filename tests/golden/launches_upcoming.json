@@ -1,5 +1,6 @@
 [
  {
+  "agency_count": 708,
   "agency_year_count": 89,
   "boosters": [
    {
@@ -19,6 +20,7 @@
   "lng": -97.15799,
   "location_count": 22,
   "location_name": "SpaceX Starbase, TX, USA",
+  "location_year_count": 2,
   "mission_desc": "13th test flight of the two-stage Starship launch vehicle. Second flight of Starship V3.\r\n\r\nFor the first time, Starship will carry 20 V3 Starlink satellites to space, which will extend solar arrays and antennas and will attempt to connect with ground stations in South Africa and the larger Starlink constellation via high-capacity lasers. \r\n\r\n6 of the satellites have been modified with a suite of cameras to scan Starship’s heat shield and transmit imagery down to operators to continue testing methods of analyzing Starship’s heat shield readiness for return to launch site on future missions. Several tiles on Starship have been painted white to simulate missing tiles and serve as imaging targets in the test.",
   "mission_name": "Flight 13",
   "mission_type": "Test Flight",
@@ -26,12 +28,14 @@
   "net": "2026-07-24T22:51:00Z",
   "net_precision": "Second",
   "orbit": "Suborbital",
+  "orbital_count": null,
   "orbital_year_count": null,
   "outcome": "success",
   "pad_count": 2,
   "pad_name": "Orbital Launch Pad 2",
   "pad_timezone": "America/Chicago",
   "pad_turnaround_sec": 5444436,
+  "pad_year_count": 2,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/starship2520if_mission_patch_20230414221655.png",
   "probability": null,
   "programs": [
@@ -274,6 +278,7 @@
   "window_start": "2026-07-24T22:45:00Z"
  },
  {
+  "agency_count": 709,
   "agency_year_count": 90,
   "boosters": [
    {
@@ -293,6 +298,7 @@
   "lng": -120.611,
   "location_count": 901,
   "location_name": "Vandenberg SFB, CA, USA",
+  "location_year_count": 49,
   "mission_desc": "A batch of 24 satellites for the Starlink mega-constellation - SpaceX's project for space-based Internet communication system.",
   "mission_name": "Starlink Group 17-51",
   "mission_type": "Communications",
@@ -300,12 +306,14 @@
   "net": "2026-07-25T15:51:21Z",
   "net_precision": "Second",
   "orbit": "Low Earth Orbit",
+  "orbital_count": 7350,
   "orbital_year_count": 177,
   "outcome": "upcoming",
   "pad_count": 285,
   "pad_name": "Space Launch Complex 4E",
   "pad_timezone": "America/Los_Angeles",
   "pad_turnaround_sec": 349307,
+  "pad_year_count": 47,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/space2520x252_mission_patch_20221011205756.png",
   "probability": null,
   "programs": [
@@ -481,6 +489,7 @@
   "window_start": "2026-07-25T14:00:00Z"
  },
  {
+  "agency_count": 710,
   "agency_year_count": 91,
   "boosters": [
    {
@@ -500,6 +509,7 @@
   "lng": -120.611,
   "location_count": 902,
   "location_name": "Vandenberg SFB, CA, USA",
+  "location_year_count": 50,
   "mission_desc": "A batch of 24 satellites for the Starlink mega-constellation - SpaceX's project for space-based Internet communication system.",
   "mission_name": "Starlink Group 17-52",
   "mission_type": "Communications",
@@ -507,12 +517,14 @@
   "net": "2026-07-29T02:00:00Z",
   "net_precision": "Minute",
   "orbit": "Low Earth Orbit",
+  "orbital_count": 7351,
   "orbital_year_count": 178,
   "outcome": "upcoming",
   "pad_count": 286,
   "pad_name": "Space Launch Complex 4E",
   "pad_timezone": "America/Los_Angeles",
   "pad_turnaround_sec": 295719,
+  "pad_year_count": 48,
   "patch": "https://thespacedevs-prod.nyc3.digitaloceanspaces.com/media/mission_patch_images/space2520x252_mission_patch_20221011205756.png",
   "probability": null,
   "programs": [

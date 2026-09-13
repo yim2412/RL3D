@@ -224,13 +224,21 @@ def _parse_launch(item):
         "pad_count": item.get("pad_launch_attempt_count"),
         # 이 발사장 통산 발사 횟수(P13-3). 실측 50/50 채워짐 — 우리 표본보다 정확한 외부 기준값이다.
         "location_count": item.get("location_launch_attempt_count"),
+        # 네 축의 **나머지 반쪽**(P15-1). 축마다 통산/올해 중 한쪽만 읽고 있어서, 맥락 줄에
+        # 기준이 다른 숫자가 나란히 섰다. 라이브 100건 실측 채움률 100/100 · 100/100.
+        "pad_year_count": item.get("pad_launch_attempt_count_year"),
+        "location_year_count": item.get("location_launch_attempt_count_year"),
         # 이 발사대의 **직전 발사로부터 경과**(초). `P63DT20M36S` 같은 ISO-8601 기간으로 온다.
         # 순서표(P13-1)에서 쓰던 파서를 그대로 쓴다 — 같은 형식을 두 번 읽지 않는다.
         "pad_turnaround_sec": parse_relative_time(item.get("pad_turnaround")),
         "agency_year_count": item.get("agency_launch_attempt_count_year"),
+        "agency_count": item.get("agency_launch_attempt_count"),   # 통산(P15-1). 실측 100/100
         # 올해 전 세계 **궤도** 발사 중 몇 번째인가(P13-2). 실측 49/50 채워짐.
         # 통계 패널의 모수를 "불러온 N건" 너머로 넓히는 유일한 외부 기준값이다.
         "orbital_year_count": item.get("orbital_launch_attempt_count_year"),
+        # 인류 통산 궤도 발사 순번(P15-1). 라이브 실측 98/100 인데 **픽스처에는 `null` 과 `0`
+        # 이 둘 다 있다** — 옛 발사에는 안 채워진다. 화면 쪽에서 0 도 걸러야 한다.
+        "orbital_count": item.get("orbital_launch_attempt_count"),
         "probability": item.get("probability"),
         "weather_concerns": item.get("weather_concerns"),
         # 발사장 **현지** 시간대(P14-2). IANA 이름(`America/Chicago`)으로 온다. 실측 50/50.

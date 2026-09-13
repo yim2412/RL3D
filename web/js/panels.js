@@ -159,14 +159,34 @@ function turnaroundText(sec) {
   return `${(days / 365.25).toFixed(1)}년`;
 }
 
+/**
+ * "이 발사대 296번째(올해 58)" — 한 축의 두 기준을 한 조각으로(P15-1).
+ *
+ * **둘이 같으면 괄호를 안 붙인다.** 새로 만든 발사대는 `통산 1 · 올해 1` 로 와서
+ * `1번째(올해 1)` 이 되는데, 실측 라이브 100건에 그런 발사가 있었다 — 정보량 0인 괄호다.
+ * 반쪽이 없거나 0 이어도 안 붙인다(`orbital_count` 는 옛 발사에서 `null`·`0` 으로 온다).
+ */
+function countPair(label, main, sub, subLabel) {
+  if (!main) return null;
+  const head = `${label} ${Number(main).toLocaleString()}번째`;
+  if (!sub || Number(sub) === Number(main)) return head;
+  return `${head}(${subLabel} ${Number(sub).toLocaleString()})`;
+}
+
 function contextText(d) {
   const parts = [];
-  if (d.pad_count) parts.push(`이 발사대 ${Number(d.pad_count).toLocaleString()}번째`);
+  // 네 축 모두 "통산과 올해"를 함께 말한다(P15-1). 전에는 축마다 한쪽만 말해서,
+  // `이 발사장 통산 912번째 · SpaceX 올해 108번째` 처럼 **기준이 다른 숫자가 나란히** 섰다.
+  const pad = countPair("이 발사대", d.pad_count, d.pad_year_count, "올해");
+  if (pad) parts.push(pad);
   const ta = turnaroundText(d.pad_turnaround_sec);
   if (ta) parts.push(`직전 발사로부터 ${ta} 만`);
-  if (d.location_count) parts.push(`이 발사장 통산 ${Number(d.location_count).toLocaleString()}번째`);
-  if (d.agency_year_count) parts.push(`${d.provider || "이 기관"} 올해 ${d.agency_year_count}번째`);
-  if (d.orbital_year_count) parts.push(`전 세계 올해 ${d.orbital_year_count}번째 궤도 발사`);
+  const loc = countPair("이 발사장 통산", d.location_count, d.location_year_count, "올해");
+  if (loc) parts.push(loc);
+  const ag = countPair(`${d.provider || "이 기관"} 올해`, d.agency_year_count, d.agency_count, "통산");
+  if (ag) parts.push(ag);
+  const orb = countPair("전 세계 올해", d.orbital_year_count, d.orbital_count, "통산");
+  if (orb) parts.push(orb + " 궤도 발사");
   return parts.length ? parts.join(" · ") : null;
 }
 

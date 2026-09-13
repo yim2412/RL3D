@@ -106,7 +106,8 @@ def _cache_path(name):
 # `launches.json` 은 TTL 15분이라 저절로 나아서 개발 중에는 보이지도 않았다.
 # v2(2026-09-13, P14-1): `rocket_spec`·`boosters` 추가.
 # v3(2026-09-13, P14-2): `pad_timezone` 추가.
-CACHE_SCHEMA = 3
+# v4(2026-09-13, P15-1): `pad_year_count`·`location_year_count`·`agency_count`·`orbital_count` 추가.
+CACHE_SCHEMA = 4
 
 
 def _cache_read(name, any_schema=False):

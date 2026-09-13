@@ -1991,6 +1991,21 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("기준이 무엇인지 밝힌다", html.includes("가장 최근 발사"), true);
   check("기준값이 없으면 빈 문자열", ctx.siteTotalsHtml([]), "");
 
+  group("맥락 줄의 두 기준 (countPair · P15-1)");
+  check("통산과 올해를 한 조각으로",
+    ctx.countPair("이 발사대", 296, 58, "올해"), "이 발사대 296번째(올해 58)");
+  check("올해와 통산도 같은 수법으로",
+    ctx.countPair("SpaceX 올해", 108, 727, "통산"), "SpaceX 올해 108번째(통산 727)");
+  // 새로 만든 발사대는 통산 1 · 올해 1 로 온다 — 괄호가 정보량 0이다(실측에서 나왔다)
+  check("둘이 같으면 괄호를 안 붙인다", ctx.countPair("이 발사대", 1, 1, "올해"), "이 발사대 1번째");
+  check("반쪽이 없으면 괄호를 안 붙인다", ctx.countPair("이 발사대", 120, null, "올해"), "이 발사대 120번째");
+  // orbital_count 는 옛 발사에서 0 으로 온다(픽스처 실측) — null 과 같이 걸러야 한다
+  check("반쪽이 0 이어도 안 붙인다", ctx.countPair("전 세계 올해", 207, 0, "통산"), "전 세계 올해 207번째");
+  check("본체가 없으면 조각 자체가 없다", ctx.countPair("이 발사대", null, 58, "올해"), null);
+  check("본체가 0 이어도 조각이 없다", ctx.countPair("이 발사대", 0, 58, "올해"), null);
+  check("네 자리는 쉼표를 넣는다",
+    ctx.countPair("전 세계 올해", 214, 7387, "통산"), "전 세계 올해 214번째(통산 7,387)");
+
   group("배선 (상세 패널 맥락 · 발사장 관점 화면)");
   const { ctx: c2, state, el, map } = loadApp();
   state.map = map;
@@ -2000,12 +2015,28 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   state.truncatedYears = new Set();
   const d = { id: "1", name: "테스트", outcome: "success", net: "2026-05-01T00:00:00Z",
               lat: 34.6, lng: -120.6, location_name: "Vandenberg SFB, CA, USA",
-              pad_count: 120, location_count: 812, pad_turnaround_sec: 2.79 * 86400 };
+              pad_count: 120, location_count: 812, pad_turnaround_sec: 2.79 * 86400,
+              pad_year_count: 9, location_year_count: 31, provider: "SpaceX",
+              agency_year_count: 108, agency_count: 727,
+              orbital_year_count: 214, orbital_count: 7387 };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
   check("맥락 줄에 재사용 간격이 실린다", body.includes("직전 발사로부터 2.8일 만"), true);
   check("맥락 줄에 발사장 통산이 실린다", body.includes("이 발사장 통산 812번째"), true);
   check("기존 항목(발사대 순번)도 그대로", body.includes("이 발사대 120번째"), true);
+  // 네 축이 전부 두 기준을 말하는지 — 배선이 끊기면 순수 함수는 통과하고 화면만 반쪽이 된다
+  check("발사대 — 올해가 붙는다", body.includes("이 발사대 120번째(올해 9)"), true);
+  check("발사장 — 올해가 붙는다", body.includes("이 발사장 통산 812번째(올해 31)"), true);
+  check("기관 — 통산이 붙는다", body.includes("SpaceX 올해 108번째(통산 727)"), true);
+  check("전 세계 — 통산이 붙고 '궤도 발사'가 뒤에 온다",
+    body.includes("전 세계 올해 214번째(통산 7,387) 궤도 발사"), true);
+  // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
+  c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
+                 pad_count: 120, location_count: 812 });
+  const oldBody = el("panel-body").innerHTML;
+  check("옛 캐시 — 괄호 없이 예전 그대로", oldBody.includes("이 발사대 120번째 ·"), true);
+  check("옛 캐시 — 빈 괄호를 남기지 않는다", oldBody.includes("(올해"), false);
+  c2.openPanel(d);
 
   state.allLaunches = [d];
   c2.showEntityStats("site", "Vandenberg SFB, CA, USA");
