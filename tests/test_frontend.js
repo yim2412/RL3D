@@ -1618,6 +1618,36 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     [ctx.fmtQty(100000, "kg"), ctx.fmtQty(80807, "kN"), ctx.fmtQty(9, "m")],
     ["100 t", "81 MN", "9 m"]);
 
+  // ── 공시 발사가 · kg 당 (P15-2) ────────────────────────────────────────────
+  check("금액을 만 달러 단위로",
+    [ctx.fmtUsd(52000000), ctx.fmtUsd(6000000), ctx.fmtUsd(90000000)],
+    ["5,200만 달러", "600만 달러", "9,000만 달러"]);
+  check("금액이 없으면 null", [ctx.fmtUsd(null), ctx.fmtUsd(0)], [null, null]);
+  check("kg 당 값 — 실측 세 로켓",
+    [ctx.costPerKg(52000000, 22800), ctx.costPerKg(6000000, 300), ctx.costPerKg(90000000, 63800)],
+    ["$2,281", "$20,000", "$1,411"]);
+  // 막지 않았으면 무엇이 일어났을 것인가를 먼저 단언한다 — 이게 없으면 방어를 뜯어내도 통과한다
+  check("막지 않았으면 Infinity 였다", isFinite(50000000 / 0), false);
+  check("탑재량 0 이면 kg 당을 안 만든다", ctx.costPerKg(50000000, 0), null);
+  check("탑재량이 없어도 안 만든다", ctx.costPerKg(50000000, null), null);
+  check("비용이 없으면 안 만든다", ctx.costPerKg(null, 22800), null);
+
+  // ── 물리량의 0 은 "모름"이다 (P15-2) ───────────────────────────────────────
+  // "0 kg" 은 truthy 문자열이라 호출부의 .filter(x => x[1]) 를 그대로 통과했다.
+  check("물리량 0 은 버린다", [ctx.fmtQty(0, "kg"), ctx.fmtQty(0, "m")], [null, null]);
+  check("막지 않았으면 '0 kg' 이 truthy 였다", Boolean("0 kg"), true);
+  const zeroCap = ctx.rocketSpecBlock({ rocket_spec: { leo_capacity: 0, length: 63, total: 5, fail: 0 } });
+  check("LEO 탑재량 0 kg 이 화면에 안 뜬다", zeroCap.includes("LEO 탑재량"), false);
+  check("같은 블록에서 통산 실패 0 은 그대로 남는다", zeroCap.includes("실패 0"), true);
+  check("공시 발사가가 제원에 실린다",
+    ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000, leo_capacity: 22800 } })
+      .includes("5,200만 달러"), true);
+  check("kg 당도 같이 실린다",
+    ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000, leo_capacity: 22800 } })
+      .includes("$2,281"), true);
+  check("비용만 있고 탑재량이 없으면 kg 당 줄이 없다",
+    ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000 } }).includes("kg당"), false);
+
   // **"신조 · 2번째 비행"이 실제 캐시에서 나왔다(2026-09-13).** LL2 는 Pallas1 F1 을
   // `reused=false`·`flights=1` 로 준다 — 두 값을 따로 재는 테스트는 전부 통과했고,
   // 화면에 렌더해 보고서야 앞뒤가 안 맞는 문장인 걸 알았다.
@@ -2018,7 +2048,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
               pad_count: 120, location_count: 812, pad_turnaround_sec: 2.79 * 86400,
               pad_year_count: 9, location_year_count: 31, provider: "SpaceX",
               agency_year_count: 108, agency_count: 727,
-              orbital_year_count: 214, orbital_count: 7387 };
+              orbital_year_count: 214, orbital_count: 7387,
+              rocket_spec: { cost: 52000000, leo_capacity: 22800, total: 500, fail: 0 } };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
   check("맥락 줄에 재사용 간격이 실린다", body.includes("직전 발사로부터 2.8일 만"), true);
@@ -2030,6 +2061,9 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("기관 — 통산이 붙는다", body.includes("SpaceX 올해 108번째(통산 727)"), true);
   check("전 세계 — 통산이 붙고 '궤도 발사'가 뒤에 온다",
     body.includes("전 세계 올해 214번째(통산 7,387) 궤도 발사"), true);
+  // 제원 블록의 새 두 줄이 패널까지 실제로 오는가(P15-2) — 직접 부르는 단언만으로는 안 잡힌다
+  check("패널에 공시 발사가가 실린다", body.includes("5,200만 달러"), true);
+  check("패널에 kg 당이 실린다", body.includes("$2,281"), true);
   // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
   c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
                  pad_count: 120, location_count: 812 });

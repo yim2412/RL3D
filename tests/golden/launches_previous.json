@@ -45,6 +45,7 @@
   "provider_country": "USA",
   "rocket": "Starship V3",
   "rocket_spec": {
+   "cost": null,
    "diameter": 9.0,
    "fail": 0,
    "launch_mass": 5250,
@@ -312,6 +313,7 @@
   "provider_country": "CHN",
   "rocket": "Kinetica 1",
   "rocket_spec": {
+   "cost": null,
    "diameter": 2.65,
    "fail": 1,
    "launch_mass": 135,
@@ -401,6 +403,7 @@
   "provider_country": "CHN",
   "rocket": "Long March 3B/E",
   "rocket_spec": {
+   "cost": 70000000,
    "diameter": 3.35,
    "fail": 2,
    "launch_mass": 456,

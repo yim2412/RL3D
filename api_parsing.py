@@ -108,6 +108,14 @@ def _parse_updates(item):
 MAX_BOOSTERS = 6     # Falcon Heavy 가 3개, Starship 이 2개. 상한은 폭주 방지용이다
 
 
+def _to_int(v):
+    """숫자로 읽히면 int, 아니면 None. LL2 는 금액을 문자열로 준다(`"52000000"`)."""
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_rocket_spec(config):
     """로켓 제원·통산 성적 → dict. 값이 하나도 없으면 None(화면이 빈 블록을 안 그린다).
 
@@ -130,6 +138,10 @@ def _parse_rocket_spec(config):
         "success": config.get("successful_launches"),
         "fail": config.get("failed_launches"),
         "streak": config.get("consecutive_successful_launches"),
+        # 공시 발사가(P15-2). **문자열로 온다**(`"52000000"`) → int 로 바꿔 둔다.
+        # 같은 로켓은 항상 같은 값이라(라이브 43종에 예외 0) **이 발사의 계약가가 아니라
+        # 그 로켓의 공시가**다. 채움률은 나라마다 크게 갈린다 — 미국 49/55 · 중국 2/21.
+        "cost": _to_int(config.get("launch_cost")),
     }
     if all(v is None for v in spec.values()):
         return None

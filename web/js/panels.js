@@ -1,12 +1,41 @@
 /* RL3D — 발사 상세 패널. 관심/사이드바/위성/통계는 같은 이름의 파일로 분리(P14-4). */
 
 // ── 발사 상세 패널 ────────────────────────────────────────────────────────────
-/** 큰 수를 자릿수에 맞는 단위로. 1,234 를 "1234" 로 찍으면 읽히지 않는다(P13-3 과 같은 갈래). */
+/**
+ * 큰 수를 자릿수에 맞는 단위로. 1,234 를 "1234" 로 찍으면 읽히지 않는다(P13-3 과 같은 갈래).
+ *
+ * **물리량의 `0` 은 "모름"이라 버린다**(P15-2). LL2 는 안 채운 제원을 `0` 으로도 주는데,
+ * `"0 kg"` 은 **truthy 문자열이라 호출부의 `.filter(x => x[1])` 를 그대로 통과**해서
+ * `LEO 탑재량 0 kg` 이 화면에 떴다(실측: GSLV Mk. II). 길이 0m 인 로켓은 없다.
+ * 횟수의 `0` 은 여기 안 온다 — 통산 성적은 아래 `record` 가 따로 읽고, 거기선 0 이 정상값이다.
+ */
 function fmtQty(v, unit) {
-  if (v == null || !isFinite(v)) return null;
+  if (v == null || !isFinite(v) || Number(v) === 0) return null;
   if (unit === "kg" && v >= 1000) return (v / 1000).toLocaleString("ko-KR") + " t";
   if (unit === "kN" && v >= 1000) return Math.round(v / 1000).toLocaleString("ko-KR") + " MN";
   return v.toLocaleString("ko-KR") + " " + unit;
+}
+
+/** 달러 금액을 한국어 단위로 — `52000000` → `5,200만 달러`. 실측 범위 600만~9,000만. */
+function fmtUsd(v) {
+  if (v == null || !isFinite(v) || Number(v) <= 0) return null;
+  const man = Number(v) / 10000;
+  return (Number.isInteger(man) ? man.toLocaleString("ko-KR") : Math.round(man).toLocaleString("ko-KR")) + "만 달러";
+}
+
+/**
+ * 공시가 ÷ LEO 최대 탑재량 → `$2,281`(P15-2). 로켓끼리 값을 견주는 업계 표준 지표다.
+ *
+ * **탑재량이 0 이거나 없으면 안 만든다** — 0 으로 나누면 `Infinity` 가 나오는데
+ * `isFinite` 를 안 보면 `$Infinity` 가 그대로 화면에 실린다(GSLV Mk. II 가 `leo_capacity: 0`).
+ */
+function costPerKg(cost, leoKg) {
+  // 방어를 **한 줄로** 둔다. 앞에 `if (!cost || !leoKg)` 를 겹쳐 뒀더니, 둘 중 하나를
+  // 지우는 변이가 **나머지에 막혀 전부 통과**했다 — 방어를 뜯어도 테스트가 조용했다.
+  // 나눗셈 결과 하나만 보면 네 경우가 다 걸린다: 0 나눗셈·NaN·null(→0)·음수.
+  const v = Number(cost) / Number(leoKg);
+  if (!isFinite(v) || v <= 0) return null;
+  return "$" + Math.round(v).toLocaleString("ko-KR");
 }
 
 /** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
@@ -19,6 +48,10 @@ function rocketSpecBlock(d) {
     ["이륙 질량", fmtQty(sp.launch_mass, "t")],
     ["LEO 탑재량", fmtQty(sp.leo_capacity, "kg")],
     ["이륙 추력", fmtQty(sp.to_thrust, "kN")],
+    // 공시 발사가와 그 kg 당 값(P15-2). 재사용 로켓의 경제성이 여기서 드러난다 —
+    // 실측 Electron $20,000/kg 대 Falcon Heavy $1,411/kg 로 14배 차이다.
+    ["공시 발사가", fmtUsd(sp.cost)],
+    ["LEO kg당", costPerKg(sp.cost, sp.leo_capacity)],
     ["단 수", sp.max_stage != null ? sp.max_stage + "단" : null],
     ["첫 비행", sp.maiden_flight],
     ["형식", sp.reusable == null ? null : (sp.reusable ? "재사용형" : "소모형")],
