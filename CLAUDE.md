@@ -22,7 +22,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `satcat_codes.py` | SATCAT 코드표(소유국·궤도·타입) — 숫자·약어를 한국어로 |
 | `RL3D.spec` | PyInstaller 산출물. `build.bat` 이 플래그로 빌드하므로 **이 파일은 쓰이지 않는다**(생성물) |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 17개 파일: `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `panels` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 21개 파일: `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |

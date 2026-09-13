@@ -1,6 +1,6 @@
 # RL3D 개발 계획서 — 로켓 발사 & 위성 추적 데스크톱 앱
 
-> 작성일: 2026-07-24 · 갱신: 2026-09-13 · 상태: **Phase 0~13 완료 · Phase 14 진행 중 → v1.25.0 (P14-1~3 완료, 다음은 P14-4)** (Phase 4는 데이터 소스 부재로 보류)
+> 작성일: 2026-07-24 · 갱신: 2026-09-13 · 상태: **Phase 0~14 완료 → v1.25.0 (P14-1~4 완료)** (Phase 4는 데이터 소스 부재로 보류)
 > 버전·변경 이력은 `CHANGELOG.md`, 버전 상수는 `main.py`의 `__version__`.
 
 참고 사이트: `sbhnews.com` 스타일 — **전체화면 2D 인터랙티브 지도 + 상단 속보 티커 + 사이드 패널** 느낌.
@@ -118,7 +118,8 @@ RL3D/
     ├── style.css       # 다크 상황판 테마
     ├── js/             # 지도·마커·티커·위성·필터 로직 (P11-5에서 8개 파일로 분리, +focus.js)
     │   ├── state.js · utils.js · map.js · launches.js · focus.js
-    │   └── sats.js · panels.js · keys.js · settings.js · update.js · boot.js
+    │   └── sats.js · favorites.js · sidebar.js · panels.js · satpanel.js · stats.js
+    │       · keys.js · settings.js · update.js · boot.js
     └── lib/
         ├── maplibre-gl.js      # 오프라인 번들
         ├── maplibre-gl.css
@@ -387,7 +388,7 @@ Phase 11 로 원래 로드맵이 다시 소진되어 새로 뽑은 목록. **착
 
 | # | 후보 | 난이도 | 왜 / 무엇 |
 |---|------|--------|-----------|
-| ❌ **P12-18** | ~~**`panels.js` 분리**~~ | 중간 | **기각(2026-09-12 재측정).** 660줄이고 가장 자주 건드리지만(30커밋 6회) **매번 작다**(중앙값 22줄) — 분리해서 아낄 것이 별로 없다 |
+| ❌→✅ **P12-18** | ~~**`panels.js` 분리**~~ → **P14-4 에서 실행**(2026-09-13) | 중간 | **당시 기각(2026-09-12 재측정).** 660줄이고 가장 자주 건드리지만(30커밋 6회) **매번 작다**(중앙값 22줄) — 분리해서 아낄 것이 별로 없다 |
 | ✅ **P12-23** | **`sats.js` 분리** (2026-09-12) | 중간 | **762줄로 이 리포에서 가장 크고, 변경 규모도 가장 크다**(30커밋 4회·443줄). TLE 로드·렌더·지상궤적·통과예측·가시판정·대역필터·추적이 한 파일이다. 후보를 뽑던 시점(2026-09-11)에는 아직 작아서 목록에 없었다. **762 → 169+196+226+175줄 네 파일.** 앱 동작이 안 바뀌어 버전은 그대로. `index.html`↔하네스 로드 순서 일치 테스트를 같이 넣었다 |
 | ✅ **P12-19** | **`api_client.py` 분리** (2026-09-12) | 중간 | 722 → **480 + `api_parsing.py` 225 + `api_errors.py` 50**. **순수 부분만 떼어냈다** — `CACHE_DIR`·`_http_get` 은 테스트가 재대입해서 격리하는 값이라 옮기면 전역 8번에 걸린다. 앱 동작이 안 바뀌어 버전은 그대로 |
 | ✅ **P12-20** | **파이썬 테스트를 파싱 밖으로** (v1.12.0) | 중간 | 현재 회귀는 **파싱만** 덮는다. TTL 만료 판정·stale 캐시 폴백·아카이브 페이지 캡·설정 병합은 **틀려도 조용하다**(C 계열과 같은 모양) |
@@ -525,31 +526,32 @@ Phase 13 이 소진되어 다시 **측정으로** 뽑았다. 이번에는 한 �
 
 | # | 후보 | 난이도 | 실측 근거 / 무엇 |
 |---|------|--------|------------------|
-| **P14-4** | **`panels.js` 분리 재측정** | 중간 | **P12-18 의 기각을 재고한다.** 2026-09-12 에 *"30커밋 6회·중앙값 22줄이라 아낄 게 별로 없다"* 고 기각했는데, 2026-09-13 에 다시 세니 **30커밋 12회·811줄**이다 — 횟수도 규모도 두 배 넘게 늘었고 **773줄로 리포 최대 JS** 다. **P14-1~3 을 넣고 다시 재니 902줄·15회 940줄**이다(예상대로 — 앞 셋이 전부 이 파일을 키웠다). **두 번째로 큰 파일(`launches.js` 475줄)의 거의 두 배**이고, 내용은 다섯 덩어리로 뚜렷하게 갈린다: 관심 목록 83 · 사이드바 136 · 발사 상세 261 · 위성 상세 127 · 통계와 관점 화면 293줄. **후보 목록만 낡는 게 아니라 기각 근거도 낡는다**(P12-23 에서 배운 것의 뒷면) |
+| ✅ **P14-4** | **`panels.js` 분리** (앱 동작 불변 → 버전 유지) | 중간 | **P12-18 의 기각을 재고한다.** 2026-09-12 에 *"30커밋 6회·중앙값 22줄이라 아낄 게 별로 없다"* 고 기각했는데, 2026-09-13 에 다시 세니 **30커밋 12회·811줄**이다 — 횟수도 규모도 두 배 넘게 늘었고 **773줄로 리포 최대 JS** 다. **P14-1~3 을 넣고 다시 재니 902줄·15회 940줄**이다(예상대로 — 앞 셋이 전부 이 파일을 키웠다). **두 번째로 큰 파일(`launches.js` 475줄)의 거의 두 배**이고, 내용은 다섯 덩어리로 뚜렷하게 갈린다: 관심 목록 83 · 사이드바 136 · 발사 상세 261 · 위성 상세 127 · 통계와 관점 화면 293줄. **후보 목록만 낡는 게 아니라 기각 근거도 낡는다**(P12-23 에서 배운 것의 뒷면) |
 
-#### P14-4 착수 계획 — 합의된 분리 경계 (2026-09-13)
+#### P14-4 결과 — 902줄 → 여섯 파일 (2026-09-13, 앱 동작 불변이라 버전 유지)
 
-앞 셋을 끝내고 재측정한 뒤 **경계까지 합의해 둔 상태**다. 다음 세션은 여기서 바로 집으면 된다.
+| 파일 | 줄 | 들어간 것 |
+|---|---|---|
+| `favorites.js` | 84 | `isFavLaunch`·`isFavSat`·`saveFavorites`·`toggleFav*`·`updateFavBtn`·`favBtnHtml`·`bindFavBtn`·`renderFavList` |
+| `sidebar.js` | 137 | `setSidebarTab`·`tonightBlocker`·`renderTonightList`·`renderSatList`·`pickSatellite`·`renderSidebar`·`toggleSidebar` + 최상위 `basemap`·`sidebarTab` |
+| `panels.js` | 249 | 발사 상세 — `rocketSpecBlock`·`boosters*`·`windowText`·`contextText`·`updatesBlock`·`openPanel`·`closePanel` + `NET_PRECISION_KO` |
+| `satpanel.js` | 128 | `satDetails`·`apsides`·`apsidesText`·`satRowsHtml`·`satMetaHtml`·`satBadgeHtml`·`openSatPanel`·`refreshSatPanel` + `MU_EARTH`·`R_EARTH` |
+| `stats.js` | 295 | `computeStats`·`statsScope`·`scopeNoteHtml`·`statBars`·`entityBars`·`siteTotals*`·`showEntityStats`·`orbitalYear*` + `PAD_ABBREV`·`ENTITY_VIEWS`·`topEntries` |
+| `utils.js` (+18) | — | `row`·`entityRow` 를 올렸다 |
 
-| 덩어리 | 줄 | 옮길 곳 | 들어가는 것 |
-|---|---|---|---|
-| 관심 목록 | 83 | **`favorites.js`** | `isFavLaunch`·`isFavSat`·`saveFavorites`·`toggleFav*`·`updateFavBtn`·`favBtnHtml`·`bindFavBtn`·`renderFavList` |
-| 사이드바 | 136 | **`sidebar.js`** | `setSidebarTab`·`tonightBlocker`·`renderTonightList`·`renderSatList`·`pickSatellite`·`renderSidebar`·`toggleSidebar` + 최상위 `basemap`·`sidebarTab` |
-| 발사 상세 | 261 | **`panels.js`** (이름 유지) | `rocketSpecBlock`·`boosters*`·`windowText`·`contextText`·`updatesBlock`·`openPanel`·`closePanel` + `NET_PRECISION_KO` |
-| 위성 상세 | 127 | **`satpanel.js`** | `satDetails`·`apsides`·`apsidesText`·`satRowsHtml`·`satMetaHtml`·`satBadgeHtml`·`openSatPanel`·`refreshSatPanel` + `MU_EARTH`·`R_EARTH` |
-| 통계·관점 화면 | 293 | **`stats.js`** | `computeStats`·`statsScope`·`scopeNoteHtml`·`statBars`·`entityBars`·`siteTotals*`·`showEntityStats`·`orbitalYear*` + `PAD_ABBREV`·`ENTITY_VIEWS`·`topEntries` |
+로드 순서는 `panels` 자리에 **`favorites` → `sidebar` → `panels` → `satpanel` → `stats`**.
+`index.html` 과 `tests/harness.js` 를 둘 다 고쳤고, 두 목록의 일치는 `test_frontend.js` 가 잰다(P12-23).
 
-- **공용 헬퍼 `row()`·`entityRow()` 는 `utils.js` 로 올린다** — 다섯 중 셋이 쓴다.
-  지금은 발사 상세 쪽에 있어서 **위성 상세와 통계가 역방향으로 의존**하는 모양이다.
-- **`index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고 `index.html` 에
-  빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
-  두 목록의 일치는 `test_frontend.js` 가 이미 잰다(P12-23).
-- 로드 순서는 `panels` 자리에 **`favorites` → `sidebar` → `panels` → `satpanel` → `stats`**.
-  최상위 `let`/`const` 는 실행 순서를 타므로 이 순서를 지킨다.
-- **앱 동작이 안 바뀌므로 버전은 올리지 않는다**(P12-19·P12-23 과 같다).
-- 끝나고 **화면을 한 번 띄워 본다** — 분리는 테스트가 다 통과해도 앱만 죽는 전형적인 자리다.
+- **합의해 둔 근거 하나가 실측에 빗나갔다.** 계획은 *"`row()`·`entityRow()` 는 다섯 중 셋이 쓴다"* 고
+  적었지만, 세어 보니 **`row` 는 둘**(발사 상세·위성 상세), **`entityRow` 는 하나**(발사 상세)뿐이다.
+  올린 결론은 그대로 맞다 — 위성 상세가 발사 상세에 **역방향으로 의존**하던 것을 끊는 게 이유고,
+  그건 사용처가 둘이어도 성립한다. 다만 **"셋"이라는 수치는 세어 보지 않고 적은 것**이었다.
+- **검증**: 프론트 회귀 **584건 전부 통과** · 분리 전후 최상위 심볼 **누락 0·중복 0**
+  (`git show HEAD:web/js/panels.js` 와 여섯 파일의 `^function|let|const` 를 `comm` 으로 대조).
+  앱을 2번 모니터에 띄워 창 좌표 `(2880, 375)` 와 티커·툴바·지도·타임라인 렌더를 눈으로 확인,
+  `rl3d.log` 에 에러 0건.
 
-> **순서: ~~P14-1~~ → ~~P14-2~~ → ~~P14-3~~ → P14-4.**
+> **순서: ~~P14-1~~ → ~~P14-2~~ → ~~P14-3~~ → ~~P14-4~~ (전부 완료).**
 > 분리(P14-4)를 **마지막에** 두는 이유: 앞 셋이 **전부 상세 패널을 키우는** 작업이라,
 > 지금 나누면 새 기능이 어느 조각에 들어갈지 모른 채 경계를 긋게 된다.
 > P12-23(`sats.js`)도 커진 뒤에 쟀고 그래서 경계가 맞았다 — **재측정은 기능을 넣은

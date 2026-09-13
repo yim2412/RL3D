@@ -278,3 +278,19 @@ function countryKo(code) {
   if (code.includes(",")) return "다국적";
   return COUNTRY_KO[code] || code;
 }
+
+// ── 상세 패널·관점 화면 공용 행 (P14-4) ──────────────────────────────────────
+// 발사 상세와 위성 상세가 같이 쓴다 — 분리 전에는 발사 상세 쪽에 있어서
+// 위성 상세가 역방향으로 의존하는 모양이었다.
+function row(k, v) {
+  if (!v) return "";
+  return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`;
+}
+
+/** 클릭하면 그 대상(발사장·기관·로켓)만의 관점 화면으로 가는 행. */
+function entityRow(k, v, kind) {
+  if (!v) return "";
+  return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">` +
+    `<button class="site-link" data-kind="${kind}" data-val="${escapeHtml(v)}">` +
+    `${escapeHtml(v)} ›</button></div></div>`;
+}
