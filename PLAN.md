@@ -527,6 +527,28 @@ Phase 13 이 소진되어 다시 **측정으로** 뽑았다. 이번에는 한 �
 |---|------|--------|------------------|
 | **P14-4** | **`panels.js` 분리 재측정** | 중간 | **P12-18 의 기각을 재고한다.** 2026-09-12 에 *"30커밋 6회·중앙값 22줄이라 아낄 게 별로 없다"* 고 기각했는데, 2026-09-13 에 다시 세니 **30커밋 12회·811줄**이다 — 횟수도 규모도 두 배 넘게 늘었고 **773줄로 리포 최대 JS** 다. **P14-1~3 을 넣고 다시 재니 902줄·15회 940줄**이다(예상대로 — 앞 셋이 전부 이 파일을 키웠다). **두 번째로 큰 파일(`launches.js` 475줄)의 거의 두 배**이고, 내용은 다섯 덩어리로 뚜렷하게 갈린다: 관심 목록 83 · 사이드바 136 · 발사 상세 261 · 위성 상세 127 · 통계와 관점 화면 293줄. **후보 목록만 낡는 게 아니라 기각 근거도 낡는다**(P12-23 에서 배운 것의 뒷면) |
 
+#### P14-4 착수 계획 — 합의된 분리 경계 (2026-09-13)
+
+앞 셋을 끝내고 재측정한 뒤 **경계까지 합의해 둔 상태**다. 다음 세션은 여기서 바로 집으면 된다.
+
+| 덩어리 | 줄 | 옮길 곳 | 들어가는 것 |
+|---|---|---|---|
+| 관심 목록 | 83 | **`favorites.js`** | `isFavLaunch`·`isFavSat`·`saveFavorites`·`toggleFav*`·`updateFavBtn`·`favBtnHtml`·`bindFavBtn`·`renderFavList` |
+| 사이드바 | 136 | **`sidebar.js`** | `setSidebarTab`·`tonightBlocker`·`renderTonightList`·`renderSatList`·`pickSatellite`·`renderSidebar`·`toggleSidebar` + 최상위 `basemap`·`sidebarTab` |
+| 발사 상세 | 261 | **`panels.js`** (이름 유지) | `rocketSpecBlock`·`boosters*`·`windowText`·`contextText`·`updatesBlock`·`openPanel`·`closePanel` + `NET_PRECISION_KO` |
+| 위성 상세 | 127 | **`satpanel.js`** | `satDetails`·`apsides`·`apsidesText`·`satRowsHtml`·`satMetaHtml`·`satBadgeHtml`·`openSatPanel`·`refreshSatPanel` + `MU_EARTH`·`R_EARTH` |
+| 통계·관점 화면 | 293 | **`stats.js`** | `computeStats`·`statsScope`·`scopeNoteHtml`·`statBars`·`entityBars`·`siteTotals*`·`showEntityStats`·`orbitalYear*` + `PAD_ABBREV`·`ENTITY_VIEWS`·`topEntries` |
+
+- **공용 헬퍼 `row()`·`entityRow()` 는 `utils.js` 로 올린다** — 다섯 중 셋이 쓴다.
+  지금은 발사 상세 쪽에 있어서 **위성 상세와 통계가 역방향으로 의존**하는 모양이다.
+- **`index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고 `index.html` 에
+  빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
+  두 목록의 일치는 `test_frontend.js` 가 이미 잰다(P12-23).
+- 로드 순서는 `panels` 자리에 **`favorites` → `sidebar` → `panels` → `satpanel` → `stats`**.
+  최상위 `let`/`const` 는 실행 순서를 타므로 이 순서를 지킨다.
+- **앱 동작이 안 바뀌므로 버전은 올리지 않는다**(P12-19·P12-23 과 같다).
+- 끝나고 **화면을 한 번 띄워 본다** — 분리는 테스트가 다 통과해도 앱만 죽는 전형적인 자리다.
+
 > **순서: ~~P14-1~~ → ~~P14-2~~ → ~~P14-3~~ → P14-4.**
 > 분리(P14-4)를 **마지막에** 두는 이유: 앞 셋이 **전부 상세 패널을 키우는** 작업이라,
 > 지금 나누면 새 기능이 어느 조각에 들어갈지 모른 채 경계를 긋게 된다.
