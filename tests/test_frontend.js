@@ -303,6 +303,23 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("변화가 없으면 조용하다", msg(), "");
 }
 
+// ── 원지점·근지점 배선 (P14-3) — 실제 SGP4 ────────────────────────────────────
+{
+  const { ctx } = loadApp({ realSatellite: true });
+  group("원지점·근지점 배선 (실제 SGP4)");
+  const ISS_1 = "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992";
+  const ISS_2 = "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537";
+  const rec = ctx.satellite.twoline2satrec(ISS_1, ISS_2);
+  // 실제 ISS 고도는 400km 대다 — **독립적으로 아는 사실**로 잰다(상수를 바꿔도 안 따라온다)
+  const a = ctx.apsides(rec);
+  check("실제 ISS TLE 로 고도 390~430km", [a.perigee > 390, a.apogee < 430], [true, true]);
+  check("ISS 는 거의 원궤도", ctx.apsidesText(a).includes("원궤도"), true);
+  // 순수 함수가 전부 맞아도 satRowsHtml 에 끼우는 줄이 없으면 앱에서는 안 보인다
+  const html = ctx.satRowsHtml({ norad: 25544, name: "ISS", rec: rec });
+  check("위성 상세 행에 실린다", html.includes("근지점 ~ 원지점"), true);
+  check("그 줄에 km 값이 들어 있다", /\d\s*km/.test(html), true);
+}
+
 // ── 지상궤적선 (P6-1) — 실제 SGP4 ─────────────────────────────────────────────
 {
   const { ctx } = loadApp({ realSatellite: true });
@@ -1509,6 +1526,39 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("미정이면 순서표에 시계도 안 붙는다",
     ctx.timelineHtml(withTl({ net: null }), 0).includes("sq-clock"), false);
   check("다 끝났으면 지난 것만", [L(99999).includes("MECO"), L(99999).includes("다음")], [true, false]);
+
+  group("원지점 · 근지점 (P14-3)");
+  // ISS 에 가까운 값: 주기 약 92.8분 → no ≈ 0.0677 rad/min, 이심률 0.0003
+  const issRec = { no: 2 * Math.PI / 92.8, ecco: 0.0003, inclo: 0.9 };
+  const iss = ctx.apsides(issRec);
+  // 절대값을 단언하면 상수를 바꿔도 테스트가 같이 따라가 아무것도 못 잡는다.
+  // **독립적으로 아는 사실**로 잰다: ISS 는 고도 400km 대이고 거의 원궤도다.
+  check("ISS 급 궤도는 고도 380~440km", [iss.perigee > 380, iss.apogee < 440], [true, true]);
+  check("원지점이 근지점보다 높다", iss.apogee > iss.perigee, true);
+  check("거의 원궤도로 읽힌다", ctx.apsidesText(iss).includes("원궤도"), true);
+
+  // 타원 궤도(몰니야 급): 이심률이 크면 두 값이 크게 벌어져야 한다
+  const molniya = ctx.apsides({ no: 2 * Math.PI / 717, ecco: 0.74 });
+  check("타원 궤도는 두 값이 크게 벌어진다", molniya.apogee - molniya.perigee > 30000, true);
+  check("타원은 범위로 적는다",
+    [ctx.apsidesText(molniya).includes("~"), ctx.apsidesText(molniya).includes("원궤도")],
+    [true, false]);
+
+  // **이심률만으로는 궤도 모양이 안 읽힌다** — 이 줄이 있어야 하는 이유.
+  // 0.0003 과 0.74 가 각각 어떤 궤도인지는 km 로 봐야 안다.
+  check("같은 주기라도 이심률이 다르면 다른 궤도로 읽힌다",
+    ctx.apsidesText(ctx.apsides({ no: 2 * Math.PI / 717, ecco: 0.0001 })) !==
+    ctx.apsidesText(molniya), true);
+
+  // 고도는 지표 기준이다 — 지구 반지름을 안 빼면 6,378km 가 통째로 더해진다
+  check("고도는 지표 기준(장반경이 아니다)", iss.apogee < 1000, true);
+
+  // 방어: 이 값들이 오면 계산이 발산하거나 음수 제곱근이 된다
+  check("no=0 이면 null", ctx.apsides({ no: 0, ecco: 0.1 }).apogee, null);
+  check("이심률 1 이상이면 null", ctx.apsides({ no: 0.06, ecco: 1 }).apogee, null);
+  check("이심률 음수면 null", ctx.apsides({ no: 0.06, ecco: -0.1 }).apogee, null);
+  check("rec 이 없어도 죽지 않는다", ctx.apsides(null).apogee, null);
+  check("값이 없으면 줄을 안 낸다", ctx.apsidesText({ apogee: null, perigee: null }), null);
 
   group("발사장 현지 시각 (P14-2)");
   // **로캘 문자열을 비교하지 않는다** — Node 의 ICU 는 "PM 01:14", 앱(WebView2)은 "오후 01:14"
