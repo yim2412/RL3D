@@ -1648,6 +1648,26 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("비용만 있고 탑재량이 없으면 kg 당 줄이 없다",
     ctx.rocketSpecBlock({ rocket_spec: { cost: 52000000 } }).includes("kg당"), false);
 
+  // ── 참여 기관 (P15-5) ─────────────────────────────────────────────────────
+  const AG = (n, ab, t) => ({ name: n, abbrev: ab, type: t });
+  check("긴 이름은 약어로",
+    ctx.agencyLabel(AG("European Organisation for the Exploitation of Meteorological Satellites",
+                       "EUMETSAT", "Multinational")), "EUMETSAT (다국적)");
+  // 약어가 늘 나은 게 아니다 — 실측 18곳에 BlackSky→BS · HawkEye 360→he360 이 있었다
+  check("짧은 이름은 약어가 있어도 그대로",
+    ctx.agencyLabel(AG("BlackSky", "BS", "Private")), "BlackSky (민간)");
+  check("HawkEye 360 도 그대로", ctx.agencyLabel(AG("HawkEye 360", "he360", "Private")), "HawkEye 360 (민간)");
+  check("약어가 없으면 이름 그대로", ctx.agencyLabel(AG("Synspective", null, "Private")), "Synspective (민간)");
+  check("유형을 모르면 이름만", ctx.agencyLabel(AG("Foo", null, null)), "Foo");
+  check("모르는 유형은 지어내지 않는다", ctx.agencyLabel(AG("Foo", null, "Alien")), "Foo");
+  check("이름이 없으면 null", [ctx.agencyLabel(AG(null, "X", "Private")), ctx.agencyLabel(null)], [null, null]);
+  check("여럿이면 가운뎃점으로",
+    ctx.missionAgenciesText([AG("SES", "SES", "Commercial"), AG("Synspective", null, "Private")]),
+    "SES (상업) · Synspective (민간)");
+  check("없으면 null", [ctx.missionAgenciesText([]), ctx.missionAgenciesText(null)], [null, null]);
+  check("행 자체가 안 그려진다",
+    ctx.row("참여 기관", ctx.missionAgenciesText([])), "");
+
   // ── GTO 탑재량 (P15-6) ────────────────────────────────────────────────────
   const spec = (o) => ctx.rocketSpecBlock({ rocket_spec: o });
   check("GTO 탑재량이 제원에 실린다", spec({ gto_capacity: 8300 }).includes("GTO 탑재량"), true);
@@ -2062,7 +2082,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
               agency_year_count: 108, agency_count: 727,
               orbital_year_count: 214, orbital_count: 7387,
               rocket_spec: { cost: 52000000, leo_capacity: 22800, gto_capacity: 8300,
-                             total: 500, fail: 0 } };
+                             total: 500, fail: 0 },
+              mission_agencies: [{ name: "United States Space Force", abbrev: "USSF", type: "Government" }] };
   c2.openPanel(d);
   const body = el("panel-body").innerHTML;
   check("맥락 줄에 재사용 간격이 실린다", body.includes("직전 발사로부터 2.8일 만"), true);
@@ -2078,6 +2099,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("패널에 공시 발사가가 실린다", body.includes("5,200만 달러"), true);
   check("패널에 kg 당이 실린다", body.includes("$2,281"), true);
   check("패널에 GTO 탑재량이 실린다", body.includes("GTO 탑재량") && body.includes("8.3 t"), true);
+  check("패널에 참여 기관이 실린다", body.includes("참여 기관") && body.includes("USSF (정부)"), true);
   // 반쪽이 없는 옛 캐시(스키마 3)로도 죽지 않고 예전 문장을 낸다
   c2.openPanel({ id: "2", name: "옛 캐시", outcome: "success", net: "2026-05-01T00:00:00Z",
                  pad_count: 120, location_count: 812 });

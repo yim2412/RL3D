@@ -710,6 +710,47 @@ class TestPadTimezone(unittest.TestCase):
         self.assertIsNone(d["pad_timezone"])
 
 
+class TestMissionAgencies(unittest.TestCase):
+    """P15-5 — 누구를 위한 발사인가. 앱은 그동안 **쏘는 쪽만** 말했다."""
+
+    def _launch(self, provider, agencies):
+        return {"pad": {"latitude": 1.0, "longitude": 2.0},
+                "launch_service_provider": {"name": provider},
+                "mission": {"agencies": agencies}}
+
+    def test_provider_itself_is_dropped(self):
+        """**제공자 자신은 뺀다.** 라이브 100건에서 참여 기관이 있는 59건 중 **28건이
+        제공자 자신**이었다(Starlink 자체 발사 등). 안 빼면 "SpaceX 가 SpaceX 를 위해"다.
+        """
+        d = api_parsing._parse_launch(self._launch("SpaceX", [{"name": "SpaceX"}]))
+        self.assertEqual(d["mission_agencies"], [])
+
+    def test_others_survive_alongside_provider(self):
+        """제공자가 섞여 있어도 **나머지는 남는다** — 한 건이라도 남으면 보여줄 값이 있다."""
+        d = api_parsing._parse_launch(self._launch(
+            "SpaceX", [{"name": "SpaceX"}, {"name": "NASA", "abbrev": "NASA"}]))
+        self.assertEqual([a["name"] for a in d["mission_agencies"]], ["NASA"])
+
+    def test_type_is_flattened(self):
+        """`type` 은 dict 로도 문자열로도 온다 — 화면이 둘을 구분하지 않게 여기서 편다."""
+        d = api_parsing._parse_launch(self._launch(
+            "Rocket Lab", [{"name": "BlackSky", "abbrev": "BS", "type": {"name": "Private"}}]))
+        self.assertEqual(d["mission_agencies"][0]["type"], "Private")
+        d2 = api_parsing._parse_launch(self._launch(
+            "Rocket Lab", [{"name": "BlackSky", "type": "Private"}]))
+        self.assertEqual(d2["mission_agencies"][0]["type"], "Private")
+
+    def test_garbage_does_not_kill_the_launch(self):
+        """이름 없는 항목·dict 아닌 항목이 섞여도 **나머지 발사가 살아야 한다**(전역 7번)."""
+        d = api_parsing._parse_launch(self._launch(
+            "X", ["문자열", None, {"no_name": 1}, {"name": "SES"}]))
+        self.assertEqual([a["name"] for a in d["mission_agencies"]], ["SES"])
+
+    def test_missing_mission_is_empty_list(self):
+        d = api_parsing._parse_launch({"pad": {"latitude": 1.0, "longitude": 2.0}})
+        self.assertEqual(d["mission_agencies"], [])
+
+
 class TestRocketSpecAndBoosters(unittest.TestCase):
     """P14-1 — 로켓 제원·부스터 이력. **전부 이미 받아오던 값이라 새 요청이 0이다.**"""
 

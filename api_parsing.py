@@ -108,6 +108,30 @@ def _parse_updates(item):
 MAX_BOOSTERS = 6     # Falcon Heavy 가 3개, Starship 이 2개. 상한은 폭주 방지용이다
 
 
+def _parse_mission_agencies(item):
+    """미션 참여 기관(P15-5) → [{name, abbrev, type}]. 없으면 빈 리스트.
+
+    **발사 서비스 제공자와 같은 기관은 뺀다.** 라이브 100건 중 참여 기관이 있는 것은
+    59건인데 그중 **28건이 제공자 자신**이다(Starlink 자체 발사 등) — 그대로 두면
+    "SpaceX 가 SpaceX 를 위해"가 되어 정보량이 0이다. 빼고 나면 실제로 남는 것은 31건.
+    """
+    prov = (item.get("launch_service_provider") or {}).get("name")
+    out = []
+    for a in ((item.get("mission") or {}).get("agencies") or []):
+        if not isinstance(a, dict):
+            continue
+        name = a.get("name")
+        if not name or name == prov:
+            continue
+        t = a.get("type")
+        out.append({
+            "name": name,
+            "abbrev": a.get("abbrev"),
+            "type": t.get("name") if isinstance(t, dict) else t,
+        })
+    return out
+
+
 def _to_int(v):
     """숫자로 읽히면 int, 아니면 None. LL2 는 금액을 문자열로 준다(`"52000000"`)."""
     try:
@@ -235,6 +259,8 @@ def _parse_launch(item):
         "window_end": item.get("window_end"),
         # net 이 어디까지 확정인지(Second/Hour/Day/Month…) — 카운트다운의 신뢰도
         "net_precision": (item.get("net_precision") or {}).get("name"),
+        # 누구를 위한 발사인가(P15-5). 앱은 그동안 **쏘는 쪽만** 말했다.
+        "mission_agencies": _parse_mission_agencies(item),
         "programs": [p.get("name") for p in (item.get("program") or [])
                      if isinstance(p, dict) and p.get("name")],
         "pad_count": item.get("pad_launch_attempt_count"),

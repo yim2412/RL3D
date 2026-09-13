@@ -38,6 +38,27 @@ function costPerKg(cost, leoKg) {
   return "$" + Math.round(v).toLocaleString("ko-KR");
 }
 
+/**
+ * 참여 기관 한 곳의 표시 이름(P15-5).
+ *
+ * **긴 이름일 때만 약어를 쓴다.** 약어가 늘 나은 게 아니다 — 실측 18곳 중
+ * `BlackSky`→`BS` · `HawkEye 360`→`he360` 처럼 **약어가 원래 이름보다 못한** 경우가 있다.
+ * 반대로 `European Organisation for the Exploitation of Meteorological Satellites`(66자)는
+ * 줄이지 않으면 줄을 통째로 밀어낸다 → `EUMETSAT`.
+ */
+function agencyLabel(a) {
+  if (!a || !a.name) return null;
+  const label = (a.abbrev && a.name.length > 24) ? a.abbrev : a.name;
+  const t = tr(AGENCY_TYPE_KO, a.type);
+  return t && t !== a.type ? `${label} (${t})` : label;
+}
+
+/** "누구를 위한 발사인가"(P15-5). 제공자 자신은 파싱에서 이미 빠져 있다. */
+function missionAgenciesText(list) {
+  const parts = (list || []).map(agencyLabel).filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
 function rocketSpecBlock(d) {
   const sp = d.rocket_spec;
@@ -272,6 +293,7 @@ function openPanel(d) {
     ${rocketSpecBlock(d)}
     ${boostersBlock(d)}
     ${entityRow("기관", d.provider, "provider")}
+    ${row("참여 기관", missionAgenciesText(d.mission_agencies))}
     ${row("국가", countryKo(d.provider_country))}
     ${row("미션", d.mission_name)}
     ${row("종류", tr(MISSION_TYPE_KO, d.mission_type))}

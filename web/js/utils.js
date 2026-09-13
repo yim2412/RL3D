@@ -212,6 +212,15 @@ const MISSION_TYPE_KO = {
   "Tourism": "우주 관광",
   "Unknown": "미상",
 };
+// 참여 기관의 성격(P15-5). 라이브 18곳 실측에 네 값만 나왔다.
+const AGENCY_TYPE_KO = {
+  "Government": "정부",
+  "Private": "민간",
+  "Commercial": "상업",
+  "Multinational": "다국적",
+  "Educational": "교육",
+  "Unknown": "미상",
+};
 const COUNTRY_KO = {
   USA: "미국", CHN: "중국", RUS: "러시아", KOR: "대한민국", JPN: "일본",
   FRA: "프랑스", IND: "인도", DEU: "독일", ITA: "이탈리아", GBR: "영국",
