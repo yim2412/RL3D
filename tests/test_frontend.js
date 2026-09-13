@@ -1510,6 +1510,37 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ctx.timelineHtml(withTl({ net: null }), 0).includes("sq-clock"), false);
   check("다 끝났으면 지난 것만", [L(99999).includes("MECO"), L(99999).includes("다음")], [true, false]);
 
+  group("발사장 현지 시각 (P14-2)");
+  // **로캘 문자열을 비교하지 않는다** — Node 의 ICU 는 "PM 01:14", 앱(WebView2)은 "오후 01:14"
+  // 를 낸다. 단언은 차이와 구조로 한다(이 리포가 P13-5 에서 당한 자리다).
+  const utcNoon = "2026-09-14T18:14:00Z";   // 서울 9/15 03:14 · 시카고 9/14 13:14
+  const chicago = { net: utcNoon, pad_timezone: "America/Chicago" };
+  check("발사장 현지 시각이 내 시각과 다르면 낸다", typeof ctx.padLocalTimeText(chicago), "string");
+  // 날짜 자체가 다르다 — 이 기능이 있어야 하는 이유이자, 오프셋이 실제로 적용됐다는 증거.
+  // **자릿수로 자르지 않는다**: slice(0,11) 은 "2026. 09. 1" 까지만 봐서 일(日)의
+  // 마지막 자리를 놓친다(처음에 그렇게 썼다가 14일과 15일이 같다고 나왔다).
+  // ko-KR 은 연-월-일 순서이므로 **앞 세 숫자**를 뽑아 비교한다.
+  const ymd = (t) => (String(t).match(/\d+/g) || []).slice(0, 3).join("-");
+  check("내 시각과 날짜가 다르다",
+    [ymd(ctx.padLocalTimeText(chicago)), ymd(ctx.fmtDate(utcNoon))],
+    ["2026-09-14", "2026-09-15"]);
+  // 일본 발사장은 한국과 같은 GMT+9 다 — 같은 줄을 두 번 쓰면 화면만 길어진다
+  check("표기가 같으면 줄을 안 낸다",
+    ctx.padLocalTimeText({ net: utcNoon, pad_timezone: "Asia/Tokyo" }), null);
+  // Intl 은 모르는 시간대에 RangeError 를 던진다 — 그 예외 하나가 패널 전체를 날린다
+  check("모르는 시간대에도 죽지 않는다",
+    ctx.padLocalTimeText({ net: utcNoon, pad_timezone: "Mars/Olympus" }), null);
+  check("시간대가 없으면 null", ctx.padLocalTimeText({ net: utcNoon, pad_timezone: null }), null);
+  check("net 이 없으면 null", ctx.padLocalTimeText({ net: null, pad_timezone: "America/Chicago" }), null);
+  check("읽을 수 없는 net 도 null",
+    ctx.padLocalTimeText({ net: "언젠가", pad_timezone: "America/Chicago" }), null);
+  check("필드가 아예 없어도 죽지 않는다", ctx.padLocalTimeText({}), null);
+  // UTC 모드에서도 발사장 현지는 그대로 유용하다 — 오히려 더(둘 다 내 시각이 아니다)
+  check("UTC 모드에서도 낸다",
+    (ctx.setTimeZoneMode("utc"),
+     typeof ctx.padLocalTimeText(chicago) === "string"), true);
+  ctx.setTimeZoneMode("local");
+
   group("로켓 제원 · 부스터 이력 (P14-1)");
   // `flights` 는 **이번 비행 직전까지의 횟수**다 — LL2 가 flights=28 인 B1080 을 같은
   // 응답에서 "after its 29th flight" 라고 부른다. 그대로 쓰면 매번 하나씩 어긋난다.
@@ -1560,6 +1591,14 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
                                landing_attempt: true, landing_success: true, landing_name: "ASOG" }] };
   ctx.openPanel(dSpec);
   check("상세 패널에 제원이 실린다", el("panel-body").innerHTML.includes("로켓 제원"), true);
+  // 순수 함수가 맞아도 템플릿에 끼우는 줄이 없으면 앱에서는 아무 일도 안 일어난다
+  check("상세 패널에 발사장 현지 줄이 실린다",
+    (ctx.openPanel(Object.assign({}, dSpec,
+      { net: "2026-09-14T18:14:00Z", pad_timezone: "America/Chicago" })),
+     el("panel-body").innerHTML.includes("발사장 현지")), true);
+  check("시간대를 모르는 발사장에는 그 줄이 없다",
+    (ctx.openPanel(Object.assign({}, dSpec, { pad_timezone: null })),
+     el("panel-body").innerHTML.includes("발사장 현지")), false);
   check("상세 패널에 부스터가 실린다",
     [el("panel-body").innerHTML.includes("B1080"),
      el("panel-body").innerHTML.includes("29번째 비행")], [true, true]);

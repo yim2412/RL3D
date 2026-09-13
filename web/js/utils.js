@@ -103,6 +103,54 @@ function fmtDate(iso, withZone) {
   }, tzOpts())) + (withZone ? tzSuffix() : "");
 }
 
+/**
+ * **발사장 현지** 시각(P14-2) — `America/Chicago` 같은 IANA 이름으로 찍는다.
+ *
+ * 툴바 스위치(P13-5)는 일부러 안 건드린다. "발사장 현지"는 **발사마다 다른 값**이라
+ * 툴바가 상시 표시할 수 없고, 목록·타임라인에는 적용할 대상조차 정해지지 않는다
+ * (한 화면에 발사장이 여럿이다). 그래서 상세 패널 한 줄로만 둔다.
+ *
+ * **`Intl` 은 모르는 시간대 이름에 `RangeError` 를 던진다** — 실행 PC 의 ICU 판이
+ * 우리 것보다 낡으면 새로 생긴 이름에서 그렇게 되고, 그 예외 하나가 패널 전체를
+ * 날린다. 읽을 수 없으면 **null 을 돌려주고 그 줄만 빠진다.**
+ */
+function fmtDateInZone(iso, tz) {
+  if (!iso || !tz) return null;
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  try {
+    return d.toLocaleString("ko-KR", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", timeZone: tz,
+    });
+  } catch (_) { return null; }   // 모르는 시간대 — 지어내지 않는다
+}
+
+/** 그 시간대의 짧은 이름(`GMT+8`). 못 구하면 빈 문자열 — 여기서도 지어내지 않는다. */
+function zoneShortName(iso, tz) {
+  if (!tz) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("ko-KR", { timeZone: tz, timeZoneName: "short" })
+      .formatToParts(new Date(iso || Date.now()));
+    const z = parts.find((p) => p.type === "timeZoneName");
+    return (z && z.value) || "";
+  } catch (_) { return ""; }
+}
+
+/**
+ * 발사장 현지 시각 문자열 — **지금 보고 있는 표기와 같으면 null**(같은 줄을 두 번 쓰지 않는다).
+ *
+ * 오프셋을 비교하지 않고 **찍힌 문자열을 비교한다** — 결과가 같은지가 중요하지
+ * 어떤 경로로 같아졌는지는 중요하지 않다(일본 발사장은 한국과 같은 GMT+9 다).
+ */
+function padLocalTimeText(d) {
+  const t = fmtDateInZone(d && d.net, d && d.pad_timezone);
+  if (!t) return null;
+  if (t === fmtDate(d.net)) return null;     // 내 시각과 같은 줄 — 생략
+  const z = zoneShortName(d.net, d.pad_timezone);
+  return z ? t + " " + z : t;
+}
+
 /** net까지 남은 시간 → "T-02:14:33" / 지났으면 "T+…" */
 function countdown(iso) {
   if (!iso) return "";

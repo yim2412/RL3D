@@ -105,7 +105,8 @@ def _cache_path(name):
 # 그 해 발사에서 새 기능이 **영원히 안 보인다** — 오류도 경고도 없다.
 # `launches.json` 은 TTL 15분이라 저절로 나아서 개발 중에는 보이지도 않았다.
 # v2(2026-09-13, P14-1): `rocket_spec`·`boosters` 추가.
-CACHE_SCHEMA = 2
+# v3(2026-09-13, P14-2): `pad_timezone` 추가.
+CACHE_SCHEMA = 3
 
 
 def _cache_read(name, any_schema=False):

@@ -695,6 +695,21 @@ def main():
     unittest.main(argv=argv, exit=True)
 
 
+class TestPadTimezone(unittest.TestCase):
+    """P14-2 — 발사장 현지 시간대. 실측 라이브 50/50 채워짐."""
+
+    def test_timezone_name_is_carried(self):
+        d = api_parsing._parse_launch({
+            "pad": {"latitude": 1.0, "longitude": 2.0,
+                    "location": {"timezone_name": "America/Chicago"}}})
+        self.assertEqual(d["pad_timezone"], "America/Chicago")
+
+    def test_missing_timezone_is_none(self):
+        """없으면 None — 화면은 그 줄을 안 낸다(빈 문자열로 접으면 줄이 생긴다)."""
+        d = api_parsing._parse_launch({"pad": {"latitude": 1.0, "longitude": 2.0}})
+        self.assertIsNone(d["pad_timezone"])
+
+
 class TestRocketSpecAndBoosters(unittest.TestCase):
     """P14-1 — 로켓 제원·부스터 이력. **전부 이미 받아오던 값이라 새 요청이 0이다.**"""
 

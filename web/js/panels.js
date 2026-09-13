@@ -441,6 +441,7 @@ function openPanel(d) {
     ${d.hold_reason ? reasonBlock("지연·보류 사유", d.hold_reason, "warn") : ""}
     ${d.weather_concerns ? reasonBlock("기상 우려", d.weather_concerns, "warn") : ""}
     ${row("발사 시각", fmtDate(d.net, true))}
+    ${row("발사장 현지", padLocalTimeText(d))}
     ${row("발사 윈도우", windowText(d))}
     ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
     ${entityRow("로켓", d.rocket, "rocket")}

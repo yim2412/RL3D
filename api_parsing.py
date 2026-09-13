@@ -233,6 +233,9 @@ def _parse_launch(item):
         "orbital_year_count": item.get("orbital_launch_attempt_count_year"),
         "probability": item.get("probability"),
         "weather_concerns": item.get("weather_concerns"),
+        # 발사장 **현지** 시간대(P14-2). IANA 이름(`America/Chicago`)으로 온다. 실측 50/50.
+        # 툴바의 시간대 스위치(P13-5)는 현지/UTC 둘뿐이라, "발사장에서는 새벽 3시"를 알 길이 없었다.
+        "pad_timezone": location.get("timezone_name"),
         # 로켓 제원·통산 성적(P14-1). 실측 90~100% 채워짐 — 상세 패널의 로켓이 이름 한 줄뿐이었다.
         "rocket_spec": _parse_rocket_spec(config),
         # 부스터 재사용 이력(P14-1). 없으면 빈 리스트고, 화면은 블록을 안 그린다.
