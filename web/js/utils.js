@@ -296,10 +296,15 @@ function row(k, v) {
   return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
-/** 클릭하면 그 대상(발사장·기관·로켓)만의 관점 화면으로 가는 행. */
-function entityRow(k, v, kind) {
+/**
+ * 클릭하면 그 대상(발사장·기관·로켓·계열)만의 관점 화면으로 가는 행.
+ *
+ * `note` 는 **보이기만 하는 덧말**이다(P15-4 의 `변형 10종`). `data-val` 은 조회 키라
+ * 여기에 섞으면 관점 화면이 아무것도 못 찾는다 — 그래서 표시와 키를 갈라 둔다.
+ */
+function entityRow(k, v, kind, note) {
   if (!v) return "";
   return `<div class="row"><div class="k">${escapeHtml(k)}</div><div class="v">` +
     `<button class="site-link" data-kind="${kind}" data-val="${escapeHtml(v)}">` +
-    `${escapeHtml(v)} ›</button></div></div>`;
+    `${escapeHtml(v)}${note ? " · " + escapeHtml(note) : ""} ›</button></div></div>`;
 }

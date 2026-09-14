@@ -112,7 +112,8 @@ def _cache_path(name):
 # v7(2026-09-13, P15-5): `mission_agencies` 추가.
 # v8(2026-09-13, P15-3): `rocket_spec.land_*`·`provider_landings` 추가.
 # v9(2026-09-13, P15-7): `last_updated` 추가.
-CACHE_SCHEMA = 9
+# v10(2026-09-14, P15-4): `rocket_family` 추가.
+CACHE_SCHEMA = 10
 
 
 def _cache_read(name, any_schema=False):

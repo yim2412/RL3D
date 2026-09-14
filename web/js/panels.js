@@ -98,6 +98,19 @@ function freshnessText(iso) {
   return iso ? (agoText(iso) || null) : null;
 }
 
+/**
+ * 로켓 계열 행(P15-4) — **변형이 2종 이상일 때만**.
+ *
+ * 하나뿐이면 계열 관점 화면이 로켓 관점과 목록이 같아 눌러도 아무 일이 안 일어난 것처럼
+ * 보인다. LL2 가 계열을 안 주는 로켓(실측 14/100 — Electron·Spectrum 등)도 같이 걸러진다:
+ * 이름에서 계열을 지어내면 `Long March 3B/E` → `Long` 같은 것이 나온다.
+ */
+function familyRow(d) {
+  const vs = familyVariants(d.rocket_family);
+  if (vs.length < 2) return "";
+  return entityRow("계열", d.rocket_family, "family", "변형 " + vs.length + "종");
+}
+
 /** 로켓 제원·통산 성적(P14-1). 상세 패널의 로켓이 이름 한 줄뿐이었다. */
 function rocketSpecBlock(d) {
   const sp = d.rocket_spec;
@@ -332,6 +345,7 @@ function openPanel(d) {
     ${row("발사 윈도우", windowText(d))}
     ${row("발사 확률", d.probability != null && d.probability >= 0 ? d.probability + "%" : null)}
     ${entityRow("로켓", d.rocket, "rocket")}
+    ${familyRow(d)}
     ${rocketSpecBlock(d)}
     ${boostersBlock(d)}
     ${entityRow("기관", d.provider, "provider")}

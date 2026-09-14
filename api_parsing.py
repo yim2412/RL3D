@@ -273,6 +273,14 @@ def _parse_launch(item):
         "status": status.get("name"),
         "outcome": _outcome_from_status(status.get("abbrev")),
         "rocket": config.get("full_name") or config.get("name"),
+        # 로켓 계열(P15-4). `rocket` 은 변형까지 담은 이름이라 관점 화면이 변형별로 쪼개진다 —
+        # 라이브 100건에서 `Long March` 13건이 **변형 10종**, `Falcon` 39건이 2종으로 갈렸다.
+        # **빈 문자열로 온다**(`null` 이 아니다) → `or None` 이 있어야 화면이 빈 계열을 안 그린다.
+        # 실측 채움 86/100(예정 44/50 · 지난 42/50)·21종. 나머지 14건(Electron·Spectrum 등)은
+        # LL2 가 계열을 안 주는 것이라, 이름에서 지어내지 않고 줄을 안 그린다.
+        # `variant`(72/100)는 **안 받는다** — `name=Ariane 64` + `variant=64 Block 2`,
+        # `name=Nuri` + `variant=2` 로 이름과 조합이 안 되고, `full_name` 이 이미 변형을 담는다.
+        "rocket_family": config.get("family") or None,
         "provider": provider.get("name"),
         "provider_country": provider.get("country_code"),
         "pad_name": pad.get("name"),

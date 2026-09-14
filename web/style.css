@@ -653,6 +653,13 @@ html, body {
 .st-world b { color: #6ee7b7; }
 .st-world-src { font-size: 10px; line-height: 1.5; color: var(--muted); margin: 0 0 10px; }
 
+/* 로켓 관점 → 계열 관점으로 올라가는 줄 (P15-4). `.site-link` 색을 그대로 쓰고 상자만 준다 */
+.st-famup {
+  display: block; width: 100%; font-size: 11px; line-height: 1.5;
+  background: rgba(244, 114, 182, .08); border: 1px solid rgba(244, 114, 182, .28);
+  border-radius: 7px; padding: 6px 8px; margin: 0 0 10px;
+}
+
 .st-full { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .st-sub { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; }
 

@@ -896,5 +896,57 @@ class TestRocketSpecAndBoosters(unittest.TestCase):
         self.assertEqual(d["boosters"], [])
 
 
+class TestRocketFamily(unittest.TestCase):
+    """P15-4 — 로켓 계열. 이미 받아오던 값이라 새 요청이 0이다."""
+
+    def _launch(self, **config):
+        return {"pad": {"latitude": 1.0, "longitude": 2.0},
+                "rocket": {"configuration": config}}
+
+    def test_family_is_kept_apart_from_rocket_name(self):
+        """계열은 **변형 이름을 대신하지 않는다** — 둘 다 화면에 쓰인다.
+
+        `rocket` 을 계열로 덮어쓰면 `Falcon 9 Block 5` 자체의 성적을 볼 길이 사라진다.
+        """
+        d = api_parsing._parse_launch(self._launch(
+            full_name="Falcon 9 Block 5", name="Falcon 9", family="Falcon"))
+        self.assertEqual(d["rocket"], "Falcon 9 Block 5")
+        self.assertEqual(d["rocket_family"], "Falcon")
+
+    def test_empty_string_family_becomes_none(self):
+        """**LL2 는 계열이 없을 때 `null` 이 아니라 빈 문자열을 준다.**
+
+        실측 라이브 100건 중 14건(Electron·Spectrum·Gravity-1·Kinetica 1·Pallas-1·
+        Themis)이 `""` 다. `or None` 이 없으면 그 값이 그대로 흘러 계열 행의 판정이
+        빈 문자열을 대상으로 돌고, 관점 화면은 **아무것도 못 찾는 버튼**을 그린다.
+        """
+        self.assertIsNone(api_parsing._parse_launch(
+            self._launch(full_name="Electron", family=""))["rocket_family"])
+
+    def test_missing_family_is_none(self):
+        """필드 자체가 없어도 같은 답 — 옛 캐시·다른 응답 모양에서 터지지 않는다."""
+        self.assertIsNone(api_parsing._parse_launch(
+            self._launch(full_name="Electron"))["rocket_family"])
+        self.assertIsNone(api_parsing._parse_launch(
+            {"pad": {"latitude": 1.0, "longitude": 2.0}})["rocket_family"])
+
+    def test_fixtures_carry_a_real_family(self):
+        """픽스처가 이 기능을 **실제로 덮는지** 확인한다.
+
+        P15-5 에서 `mission_agencies` 가 픽스처 6건 모두 빈 리스트라 골든을 갱신해도
+        `[]` 만 굳었다. 같은 자리를 다시 밟지 않도록, 픽스처에 계열이 실제로 들어
+        있다는 것과 **빈 것도 함께 있다**는 것을 여기서 못 박는다.
+        """
+        fams = {}
+        for path in ("ll2_upcoming.json", "ll2_previous.json"):
+            with open(os.path.join(FIXTURES, path), encoding="utf-8") as f:
+                payload = json.load(f)
+            for d in api_parsing._parse_launches(payload):
+                fams[d["rocket"]] = d["rocket_family"]
+        self.assertEqual(fams.get("Falcon 9 Block 5"), "Falcon")
+        self.assertEqual(fams.get("Long March 3B/E"), "Long March")
+        self.assertIsNone(fams.get("Kinetica 1"))   # 빈 문자열로 오는 쪽
+
+
 if __name__ == "__main__":
     main()

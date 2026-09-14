@@ -2216,5 +2216,112 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     html.includes("sb-row") || html.includes("눈에 보이는 통과가 없습니다"), true);
   check("막힌 안내가 아니다", html.includes("관측 위치가 필요합니다"), false);
 }
+// ── 로켓 계열 (P15-4) ─────────────────────────────────────────────────────────
+// 실측 라이브 100건: `family` 는 계열이 없을 때 **빈 문자열**로 오고(14/100), 21개 계열 중
+// **2종 이상을 묶는 것은 7개뿐**이다. 나머지 14개는 계열 화면의 목록이 로켓 화면과 같아
+// 버튼이 거짓말이 된다 — 그래서 "보일지 말지"가 이 기능의 핵심 판정이다.
+{
+  const { ctx, state, el, map } = loadApp();
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-track");
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+
+  const L = (id, rocket, family) => ({
+    id: String(id), name: "L" + id, outcome: "success", net: "2026-05-01T00:00:00Z",
+    lat: 28.5, lng: -80.5, rocket: rocket, rocket_family: family,
+    provider: "SpaceX", location_name: "Cape Canaveral",
+  });
+  const fleet = [L(1, "Falcon 9 Block 5", "Falcon"), L(2, "Falcon 9 Block 5", "Falcon"),
+                 L(3, "Falcon Heavy", "Falcon"), L(4, "Starship V3", "Starship"),
+                 L(5, "Electron", null)];
+  state.allLaunches = fleet;
+
+  group("계열 변형 세기 (familyVariants · P15-4)");
+  check("같은 변형은 한 번만 센다",
+    ctx.familyVariants("Falcon"), ["Falcon 9 Block 5", "Falcon Heavy"]);
+  check("변형이 하나뿐인 계열", ctx.familyVariants("Starship"), ["Starship V3"]);
+  check("계열이 없으면 빈 목록", ctx.familyVariants(null), []);
+  // LL2 는 `null` 이 아니라 `""` 로 준다 — 파싱이 None 으로 바꾸지만 화면도 막아 둔다
+  check("빈 문자열도 빈 목록", ctx.familyVariants(""), []);
+  check("모르는 계열은 빈 목록", ctx.familyVariants("없는 계열"), []);
+  check("목록을 넘기면 그걸로 센다(아카이브를 불러오면 늘어난다)",
+    ctx.familyVariants("Falcon", [L(9, "Falcon 9 Block 5", "Falcon")]), ["Falcon 9 Block 5"]);
+
+  group("계열 행은 변형이 2종 이상일 때만 (familyRow)");
+  const famRow = ctx.familyRow(L(1, "Falcon 9 Block 5", "Falcon"));
+  check("2종이면 행이 나온다", famRow.includes("Falcon"), true);
+  check("변형 개수를 덧말로 붙인다", famRow.includes("변형 2종"), true);
+  // 덧말이 조회 키에 섞이면 관점 화면이 아무것도 못 찾는다 — 표시와 키를 갈라 둔 이유
+  check("data-val 은 계열 이름만", famRow.includes(`data-val="Falcon"`), true);
+  check("1종이면 행이 없다(로켓 관점과 목록이 같다)",
+    ctx.familyRow(L(4, "Starship V3", "Starship")), "");
+  check("계열이 없으면 행이 없다", ctx.familyRow(L(5, "Electron", null)), "");
+  check("옛 캐시(필드 자체가 없음)에서도 죽지 않는다", ctx.familyRow({ rocket: "Electron" }), "");
+
+  group("계열 관점 화면 (entityBars · 제목)");
+  const falcons = fleet.filter((d) => d.rocket_family === "Falcon");
+  const bars = ctx.entityBars("family", falcons, ctx.computeStats(falcons));
+  check("첫 막대가 변형별이다(이 화면의 존재 이유)", bars[0][0], "변형별");
+  check("변형별 막대가 실제로 두 변형을 센다",
+    bars[0][1], [["Falcon 9 Block 5", 2], ["Falcon Heavy", 1]]);
+  check("계열 화면에도 연도별이 남는다", bars.map((b) => b[0]).includes("연도별"), true);
+  // 상세 패널이 "변형 10종"이라고 말한 뒤 막대가 6개만 보이면 화면이 스스로와 어긋난다.
+  // 실측 렌더에서 `Long March`(10종)가 정확히 그 상태였다 — 다른 막대의 상한 6과 다르다.
+  const lm = [];
+  for (let i = 0; i < 9; i++) lm.push(L(100 + i, "Long March " + i, "Long March"));
+  check("변형별은 상위 6종으로 자르지 않는다",
+    ctx.entityBars("family", lm, ctx.computeStats(lm))[0][1].length, 9);
+  check("계열 화면의 다른 막대는 상한을 지킨다(발사장 6)",
+    ctx.entityBars("family", lm, ctx.computeStats(lm))[2][1].length <= 6, true);
+  // 로켓 관점은 건드리지 않았다 — 바뀌면 기존 화면이 조용히 달라진다
+  check("로켓 관점 막대는 그대로", ctx.entityBars("rocket", falcons, ctx.computeStats(falcons))
+    .map((b) => b[0]), ["기관", "발사장", "연도별"]);
+
+  ctx.showEntityStats("family", "Falcon");
+  check("제목이 '계열'로 끝난다", el("stats-body").innerHTML.includes("Falcon 계열"), true);
+  check("계열 화면에 변형별 막대가 실린다",
+    el("stats-body").innerHTML.includes("변형별"), true);
+  ctx.showEntityStats("rocket", "Falcon 9 Block 5");
+  check("로켓 화면 제목에는 '계열'이 안 붙는다",
+    el("stats-body").innerHTML.includes("Falcon 9 Block 5 계열"), false);
+
+  group("배선 (상세 패널 · 관점 화면 · 클릭)");
+  ctx.openPanel(L(1, "Falcon 9 Block 5", "Falcon"));
+  check("상세 패널에 계열 행이 실린다",
+    el("panel-body").innerHTML.includes("변형 2종"), true);
+  ctx.openPanel(L(5, "Electron", null));
+  check("계열 없는 로켓의 패널에는 안 실린다",
+    el("panel-body").innerHTML.includes("계열"), false);
+
+  ctx.showEntityStats("rocket", "Falcon 9 Block 5");
+  check("로켓 관점 화면에 계열로 올라가는 줄이 있다",
+    el("stats-body").innerHTML.includes("Falcon 계열 전체 · 변형 2종"), true);
+  ctx.showEntityStats("rocket", "Starship V3");
+  check("변형이 하나면 그 줄이 없다",
+    el("stats-body").innerHTML.includes("계열 전체"), false);
+  ctx.showEntityStats("family", "Falcon");
+  check("계열 화면에서 또 계열로 올라가지 않는다",
+    el("stats-body").innerHTML.includes("계열 전체"), false);
+
+  // 렌더가 맞아도 `addEventListener` 한 줄이 없으면 눌러도 아무 일이 안 일어난다.
+  // 스텁 버튼을 패널에 심어 **실제 클릭 경로**를 태운다(마우스 자동화 없이).
+  const btn = { dataset: { kind: "family", val: "Falcon" }, handlers: {},
+                addEventListener(ev, fn) { this.handlers[ev] = fn; },
+                fire(ev) { if (this.handlers[ev]) this.handlers[ev](); } };
+  el("stats-panel").sel[".site-link"] = [btn];
+  ctx.showEntityStats("rocket", "Falcon 9 Block 5");
+  // **클릭 전에 거짓임을 먼저 못 박는다.** 처음 쓴 단언은 `includes("Falcon 계열")` 이었는데,
+  // 로켓 화면에도 `Falcon 계열 전체 ›` 줄이 있어 **클릭 전에 이미 참**이었다 —
+  // 배선을 통째로 뜯은 변이가 통과했다(2026-09-14 변이 실험에서 잡았다).
+  const famTitle = "<h2>🚀 Falcon 계열</h2>";
+  check("클릭 전에는 로켓 화면이다", el("stats-body").innerHTML.includes(famTitle), false);
+  btn.fire("click");
+  check("계열 줄을 누르면 계열 화면이 열린다",
+    el("stats-body").innerHTML.includes(famTitle), true);
+  el("stats-panel").sel[".site-link"] = undefined;
+}
+
   done();
 })();

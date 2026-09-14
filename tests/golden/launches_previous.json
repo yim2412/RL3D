@@ -52,6 +52,7 @@
    "streak": 0
   },
   "rocket": "Starship V3",
+  "rocket_family": "Starship",
   "rocket_spec": {
    "cost": null,
    "diameter": 9.0,
@@ -328,6 +329,7 @@
   "provider_country": "CHN",
   "provider_landings": null,
   "rocket": "Kinetica 1",
+  "rocket_family": null,
   "rocket_spec": {
    "cost": null,
    "diameter": 2.65,
@@ -431,6 +433,7 @@
    "streak": 1
   },
   "rocket": "Long March 3B/E",
+  "rocket_family": "Long March",
   "rocket_spec": {
    "cost": 70000000,
    "diameter": 3.35,

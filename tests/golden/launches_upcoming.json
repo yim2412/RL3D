@@ -52,6 +52,7 @@
    "streak": 0
   },
   "rocket": "Starship V3",
+  "rocket_family": "Starship",
   "rocket_spec": {
    "cost": null,
    "diameter": 9.0,
@@ -344,6 +345,7 @@
    "streak": 0
   },
   "rocket": "Falcon 9 Block 5",
+  "rocket_family": "Falcon",
   "rocket_spec": {
    "cost": 52000000,
    "diameter": 3.65,
@@ -569,6 +571,7 @@
    "streak": 0
   },
   "rocket": "Falcon 9 Block 5",
+  "rocket_family": "Falcon",
   "rocket_spec": {
    "cost": 52000000,
    "diameter": 3.65,

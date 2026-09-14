@@ -66,7 +66,15 @@ function makeEl(id) {
     fire(ev, arg) { if (this.handlers[ev]) this.handlers[ev](arg); },
     children,
     appendChild(c) { children.push(c); return c; },
-    querySelectorAll: () => ({ forEach() {} }),
+    /**
+     * 엘리먼트 단위 `querySelectorAll` — 기본은 빈 응답이고, 테스트가 채워 넣는다
+     * (`el("stats-panel").sel[".site-link"] = [btn]`).
+     *
+     * 이게 없으면 `panel.querySelectorAll(...).forEach(addEventListener)` 로 거는
+     * **배선을 잴 수 없다.** innerHTML 단언은 전부 통과하는데 버튼만 죽어 있는 자리다.
+     */
+    sel: {},
+    querySelectorAll(s) { return this.sel[s] || { forEach() {} }; },
     querySelector: () => null,
   };
 }

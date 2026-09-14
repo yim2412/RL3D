@@ -97,7 +97,28 @@ const ENTITY_VIEWS = {
   site:     { icon: "🛫", field: "location_name" },
   provider: { icon: "🏢", field: "provider" },
   rocket:   { icon: "🚀", field: "rocket" },
+  // 로켓 계열(P15-4). `rocket` 은 변형까지 담은 이름이라 관점 화면이 변형별로 쪼개진다 —
+  // `Falcon 9 Block 5` 와 `Falcon Heavy` 가 남남이고, `Long March` 는 10종으로 갈린다.
+  family:   { icon: "🚀", field: "rocket_family", suffix: " 계열" },
 };
+
+/**
+ * 우리가 가진 발사 기준으로 그 계열에 속한 **변형 이름들** — 순수 함수 (P15-4).
+ *
+ * 이 값이 계열 줄을 **보일지도** 정한다: 변형이 하나뿐이면 계열 관점 화면의 목록이
+ * 로켓 관점과 **글자 그대로 같아** 버튼이 거짓말이 된다. P10-3 의 "패드가 하나뿐인
+ * 발사장은 패드별 막대 생략"과 같은 처리다.
+ *
+ * 고정값으로 굳히지 않고 매번 세는 이유: 아카이브를 불러오면 변형이 늘어난다
+ * (실측 라이브 100건에서 `Vulcan` 은 2종이지만 지난 연도를 더 부르면 달라진다).
+ */
+function familyVariants(fam, list) {
+  if (!fam) return [];
+  const out = [];
+  for (const d of (list || allLaunches))
+    if (d.rocket_family === fam && d.rocket && !out.includes(d.rocket)) out.push(d.rocket);
+  return out;
+}
 
 function countBy(list, pick) {
   const o = {};
@@ -105,6 +126,7 @@ function countBy(list, pick) {
   return o;
 }
 
+/** 많은 순 상위 n개. **n 을 생략하면 전부** — 자르면 안 되는 막대가 있다(P15-4 변형별). */
 const topEntries = (obj, n) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /** 관점별 막대 구성 → [제목, entries, 색, 최소개수] 목록. 최소개수 미만이면 그 절은 생략. */
@@ -121,6 +143,14 @@ function entityBars(kind, list, s) {
   if (kind === "provider")
     return [["주요 로켓", rockets(), "#f472b6"], ["발사장", sites(), "#7dd3fc"],
             ["연도별", years(), "#34d399"]];
+  if (kind === "family")
+    // 계열 화면의 존재 이유가 이 막대다 — `Long March` 13건이 변형 10종으로 갈린 것을
+    // 여기서만 한 화면에 볼 수 있다. **상위 6종으로 자르지 않는다**: 상세 패널이
+    // `변형 10종` 이라고 말해 놓고 6개만 보이면 화면이 스스로와 어긋난다
+    // (실측 렌더에서 실제로 그랬다 — P12-6 의 "캡에 걸리면 조용히 잘린다"와 같은 자리).
+    return [["변형별", topEntries(countBy(list, (d) => d.rocket)), "#f472b6"],
+            ["기관", providers(), "#a78bfa"],
+            ["발사장", sites(), "#7dd3fc"], ["연도별", years(), "#34d399"]];
   return [["기관", providers(), "#a78bfa"], ["발사장", sites(), "#7dd3fc"],
           ["연도별", years(), "#34d399"]];
 }
@@ -181,6 +211,23 @@ function providerLandingsHtml(list) {
     ` (우리가 가진 <b>가장 최근 발사</b>까지의 집계다)</div>`;
 }
 
+/**
+ * 로켓 관점 화면에서 **계열 전체**로 올라가는 줄 (P15-4) — 순수 함수.
+ *
+ * 변형이 2종 이상일 때만 낸다(`familyVariants` 와 같은 판정). `Falcon 9 Block 5` 를
+ * 보고 있을 때 "이 계열 전체는?"이 자연스러운 다음 질문인데, 계열은 상세 패널에서만
+ * 들어갈 수 있어 관점 화면에 갇혀 있었다.
+ */
+function familyUpHtml(kind, list) {
+  if (kind !== "rocket") return "";
+  let fam = null;
+  for (const d of list) if (d.rocket_family) { fam = d.rocket_family; break; }
+  const vs = familyVariants(fam);
+  if (vs.length < 2) return "";
+  return `<button class="site-link st-famup" data-kind="family" data-val="${escapeHtml(fam)}">` +
+    `🚀 ${escapeHtml(fam)} 계열 전체 · 변형 ${vs.length}종 ›</button>`;
+}
+
 function showEntityStats(kind, value) {
   const view = ENTITY_VIEWS[kind];
   if (!view || !value) return;
@@ -209,8 +256,9 @@ function showEntityStats(kind, value) {
     .join("");
 
   document.getElementById("stats-body").innerHTML =
-    `<h2>${view.icon} ${escapeHtml(value)}</h2>` +
+    `<h2>${view.icon} ${escapeHtml(value)}${view.suffix || ""}</h2>` +
     scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear())) +
+    familyUpHtml(kind, list) +
     (kind === "site" ? siteTotalsHtml(list) : "") +
     (kind === "provider" ? providerLandingsHtml(list) : "") +
     `<div class="st-tiles">` +
@@ -231,6 +279,9 @@ function showEntityStats(kind, value) {
     const d = findLaunch(b.dataset.id);
     if (d) { panel.classList.add("hidden"); openPanel(d); }
   }));
+  // 계열로 올라가는 줄(P15-4). 같은 패널을 다시 그리는 것이라 닫지 않는다.
+  panel.querySelectorAll(".site-link").forEach((b) =>
+    b.addEventListener("click", () => showEntityStats(b.dataset.kind, b.dataset.val)));
   panel.classList.remove("hidden");
 }
 
