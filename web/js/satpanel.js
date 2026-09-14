@@ -65,6 +65,70 @@ function apsidesText(d) {
   return `${km(pe)} ~ ${km(ap)}`;
 }
 
+// ── 재진입 예보 (S16-2) ──────────────────────────────────────────────────────
+// P12-8(재진입 표시)은 *"지난 실행에 있던 NORAD 가 사라졌는가"* 를 기억해야 해서 보류됐다.
+// 그런데 **SGP4 자신이 답을 갖고 있다**: 대기권에 들어가면 값을 못 낸다. 그 첫 시점을
+// 이진 탐색으로 찾으면 **새 저장 구조 없이** 예보가 나온다.
+//
+// 실측(2026-09-14, 최신 TLE 2,926건): **190건(6.5%)** 에 365일 안 예보가 나온다
+// (30일 안 20건 · 가장 임박 1.0일 · 근지점 중앙 332km). GEO·MEO 는 0건이다.
+// 비용은 위성당 16회 propagate ≈ **0.24ms** — 상세 패널 한 건이면 무시할 수준이다.
+const DECAY_HORIZON_DAYS = 365;   // 이보다 먼 예보는 내지 않는다(불확실성이 값보다 크다)
+const DECAY_SOON_DAYS = 30;       // 이 안이면 경고 색 + 배지. 실측 20건이 여기 든다
+const DECAY_SEARCH_STEPS = 14;    // 365일을 0.02일까지 좁힌다
+
+/** 그 시각에 SGP4 가 값을 내는가 — 못 내면 이미 대기권 안이라는 뜻이다. */
+function sgp4Alive(rec, when) {
+  let pv;
+  try { pv = satellite.propagate(rec, when); } catch (_) { return false; }
+  return !!(pv && pv.position && isFinite(pv.position.x));
+}
+
+/**
+ * SGP4 가 값을 못 내는 첫 시점(일) — 순수 함수. 상한 안에서 안 죽으면 null.
+ *
+ * **이건 예보이지 관측이 아니다.** 궤도를 올리는 기동은 계산에 없다 — 화면이 그 가정을
+ * 같이 적는다(P12-4 에서 정한 방식: "근사입니다"가 아니라 가정을 명시한다).
+ * 실측에서 ISS 는 예보가 안 나온다(기동으로 유지). 걸리는 것은 방출된 큐브위성·로켓
+ * 몸체처럼 **기동을 안 하는 물체**와, 의도적으로 고도를 내리는 중인 Starlink 다.
+ */
+function decayForecastDays(rec, nowMs, maxDays) {
+  // **`rec.error` 로 거르면 안 된다.** 그건 TLE 의 성질이 아니라 **직전 전파가 남긴 찌꺼기**다
+  // — 재진입 시점 너머로 한 번 전파하면 `error = 6` 이 박혀, **두 번째 호출부터 null** 이
+  // 된다(실시간 위치는 멀쩡하다: `propagate` 가 매번 다시 쓴다). 2026-09-14 에 테스트가
+  // 잡았다. 쓸 수 있는 rec 인지는 궤도요소로 본다 — `orbitBand()` 와 같은 기준.
+  if (!rec || !(rec.no > 0)) return null;
+  const t0 = nowMs == null ? Date.now() : nowMs;
+  const hiDay = maxDays == null ? DECAY_HORIZON_DAYS : maxDays;
+  const at = (d) => new Date(t0 + d * 86400000);
+  if (!sgp4Alive(rec, at(0))) return 0;        // 지금 이미 못 낸다
+  if (sgp4Alive(rec, at(hiDay))) return null;  // 상한까지 멀쩡하다
+  let lo = 0, hi = hiDay;
+  for (let i = 0; i < DECAY_SEARCH_STEPS; i++) {
+    const mid = (lo + hi) / 2;
+    if (sgp4Alive(rec, at(mid))) lo = mid; else hi = mid;
+  }
+  return hi;
+}
+
+/** 예보를 사람 말로 — 순수 함수. 먼 예보는 일 단위로 적으면 정밀해 보여서 거짓말이 된다. */
+function decayText(days) {
+  if (days == null || !isFinite(days)) return null;
+  if (days < 1) return "이대로면 하루 안에 재진입";
+  if (days < 100) return `이대로면 약 ${Math.round(days)}일 뒤 재진입`;
+  return `이대로면 약 ${Math.round(days / 30.44)}개월 뒤 재진입`;
+}
+
+/** 재진입 예보 블록 — 예보가 없으면 빈 문자열(실측 93.5%가 여기다). */
+function decayBlock(rec) {
+  const days = decayForecastDays(rec);
+  const text = decayText(days);
+  if (!text) return "";
+  const soon = days <= DECAY_SOON_DAYS;
+  return `<div class="decay${soon ? " decay-soon" : ""}">🔥 ${escapeHtml(text)}` +
+    `<div class="decay-note">궤도를 올리는 기동은 계산에 없습니다</div></div>`;
+}
+
 /**
  * 이 위성의 궤도가 **언제 관측된 것인지**(S16-1). 위 값들은 전부 이 TLE 에서 나온 것이라,
  * 그 나이를 모르면 화면의 좌표가 얼마나 믿을 만한지 알 수 없다.
@@ -116,9 +180,13 @@ function satMetaHtml(norad) {
 }
 
 /** 재진입한 물체는 배지로 먼저 알린다 — 표 안의 한 줄은 눈에 안 들어온다. */
-function satBadgeHtml(norad) {
+function satBadgeHtml(norad, rec) {
   const m = satMeta(norad);
   if (m && m.decay_date) return `<span class="badge m-failure">재진입</span>`;
+  // **이미 재진입한 것**과 **곧 할 것**은 다른 말이다(S16-2). SATCAT 의 `decay_date` 는
+  // 우리가 쓰는 그룹에서 실측 0건이라(P12-8) 위 배지는 사실상 안 뜬다 — 이쪽이 실제로 뜬다.
+  const d = rec == null ? null : decayForecastDays(rec);
+  if (d != null && d <= DECAY_SOON_DAYS) return `<span class="badge m-failure">재진입 임박</span>`;
   if (m && m.type && m.type !== "위성체") return `<span class="badge m-partial">${escapeHtml(m.type)}</span>`;
   return `<span class="badge m-upcoming">위성</span>`;
 }
@@ -128,8 +196,11 @@ function openSatPanel(s) {
   const body = document.getElementById("panel-body");
   body.innerHTML =
     `<h2>🛰 ${escapeHtml(s.name)}</h2>` +
-    satBadgeHtml(s.norad) +
+    satBadgeHtml(s.norad, s.rec) +
     favBtnHtml("sat", s.norad) +
+    // 예보는 **여기(정적 부분)에서 한 번만** 계산한다. `satRowsHtml` 은 매 초 다시 도는데
+    // 이 값은 초 단위로 바뀌지 않는다 — 넣으면 1초마다 16회 propagate 를 버리게 된다.
+    decayBlock(s.rec) +
     satMetaHtml(s.norad) +
     `<div class="st-note">아래 값은 실시간으로 갱신됩니다.</div>` +
     `<div id="sat-rows">${satRowsHtml(s)}</div>`;

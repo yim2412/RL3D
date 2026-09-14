@@ -2435,6 +2435,89 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("정상이면 아무 말도 안 한다", el("status").textContent, "");
 }
 
+// ── 재진입 예보 (S16-2) ──────────────────────────────────────────────────────
+// SGP4 는 대기권에 들어가면 값을 못 낸다 — 그 첫 시점을 이진 탐색으로 찾으면 **새 저장
+// 구조 없이**(P12-8 이 보류된 이유였다) 예보가 나온다. 실측 2,926건 중 190건(6.5%).
+//
+// ⚠ **시각을 반드시 주입한다.** 아래 TLE 는 2026-09-14 에 받은 실제 값이라, 실행 시각이
+//    흐르면 같은 위성이 "이미 재진입"으로 바뀐다 — 오전엔 통과하고 저녁엔 실패하는
+//    그 갈래다(CLAUDE.md). 에포크에 가까운 고정 시각으로 잰다.
+{
+  const { ctx, el, map, state } = loadApp({ realSatellite: true });
+  group("재진입 예보 (decayForecastDays · decayText)");
+  const rec = (l1, l2) => ctx.satellite.twoline2satrec(l1, l2);
+
+  // 실측 당시 1.0일 뒤 재진입으로 나온 것 (근지점 154km)
+  const soon = rec("1 46383U 20062BL  26256.96594251  .09241640  12468-4  44863-3 0  9995",
+                   "2 46383  53.0145  88.1861 0009957 285.0606  74.9339 16.42207054334964");
+  // 3.4일 뒤 (근지점 175km)
+  const soon2 = rec("1 45190U 20012N   26256.87736215  .04570326  12224-4  59879-3 0  9997",
+                    "2 45190  53.0136  99.6063 0008149 279.5062  80.5060 16.34760025365642");
+  // 14일 뒤 — 로켓 몸체(기동을 안 하는 물체라 예보가 가장 정직하게 성립한다)
+  const body = rec("1 28222U 04012C   26256.97942557  .02618761  26726-5  61072-3 0  9990",
+                   "2 28222  97.6978 344.9808 0011927 264.1056  95.8877 16.29651440234038");
+  // 86일 뒤 — **30일 밖** 예제(과학위성 SWIFT). 경고 색·배지가 여기엔 붙으면 안 된다
+  const far = rec("1 28485U 04047A   26257.20538003  .00141533  00000+0  68693-3 0  9996",
+                  "2 28485  20.5506 213.1233 0002475 196.8100 163.2267 15.80652070200907");
+  // ISS — 기동으로 유지하므로 예보가 안 나와야 한다(실측에서도 안 나왔다)
+  const iss = rec("1 25544U 98067A   26257.14321681  .00004666  00000+0  92466-4 0  9990",
+                  "2 25544  51.6309 219.8284 0004930 139.3822 220.7535 15.49107075585544");
+
+  const NOW = Date.parse("2026-09-14T12:00:00Z");   // TLE 에포크 근처로 고정
+  const fc = (r) => ctx.decayForecastDays(r, NOW);
+
+  check("ISS 는 예보가 없다(기동으로 유지한다)", fc(iss), null);
+  check("근지점 154km 는 예보가 나온다", fc(soon) != null, true);
+  check("근지점 175km 도 나온다", fc(soon2) != null, true);
+  check("로켓 몸체도 나온다", fc(body) != null, true);
+  // **순서가 물리와 맞아야 한다** — 절대값은 모델 몫이지만 순서는 우리가 단언할 수 있다
+  check("더 낮은 것이 더 빨리 떨어진다", fc(soon) < fc(soon2), true);
+  check("로켓 몸체는 그보다 늦다", fc(soon2) < fc(body), true);
+  check("전부 상한(365일) 안이다", fc(body) < 365, true);
+  check("rec 이 없으면 null", fc(null), null);
+  check("궤도요소가 없으면 null", fc({}), null);
+  check("평균운동이 0 이면 null", fc({ no: 0 }), null);
+  // **같은 rec 을 두 번 불러도 같은 답이 나와야 한다.** 처음엔 `rec.error` 로 걸렀는데
+  // 그건 직전 전파가 남긴 찌꺼기라(재진입 너머로 전파하면 6이 박힌다) 두 번째부터 null 이
+  // 됐다. 테스트가 그걸 잡았다 — 한 번만 부르는 단언이었으면 영영 안 보였다.
+  check("두 번 불러도 같은 값", fc(body), fc(body));
+  check("예보를 낸 뒤에도 실시간 위치는 멀쩡하다",
+    ctx.satDetails(body) != null, true);
+  // 상한을 좁히면 그 밖의 예보는 안 낸다
+  check("상한 밖이면 null", ctx.decayForecastDays(body, NOW, 1), null);
+  check("상한을 넓히면 다시 나온다", ctx.decayForecastDays(body, NOW, 365) != null, true);
+
+  check("하루 안", ctx.decayText(0.4), "이대로면 하루 안에 재진입");
+  check("일 단위", ctx.decayText(14.3), "이대로면 약 14일 뒤 재진입");
+  // 300일 뒤를 "약 300일"로 적으면 없는 정밀도를 지어내는 셈이다
+  check("먼 예보는 개월로", ctx.decayText(300), "이대로면 약 10개월 뒤 재진입");
+  check("없으면 null", ctx.decayText(null), null);
+
+  group("재진입 예보 — 화면에 실리는가");
+  check("예보가 있으면 블록이 나온다", ctx.decayBlock(body).includes("재진입"), true);
+  check("가정을 같이 적는다", ctx.decayBlock(body).includes("기동은 계산에 없습니다"), true);
+  check("30일 안이면 붉은 표시", ctx.decayBlock(soon).includes("decay-soon"), true);
+  // 1년 뒤 예보까지 붉으면 경고가 값을 잃는다 → 30일 밖은 순한 색.
+  // **로켓 몸체(13일)를 '먼 예제'로 잡았다가 여기서 틀렸다** — 30일 안쪽이었다.
+  check("30일 밖이면 순한 색", ctx.decayBlock(far).includes("decay-soon"), false);
+  check("30일 밖에도 예보 자체는 나온다", ctx.decayBlock(far).includes("재진입"), true);
+  check("ISS 는 블록 자체가 없다", ctx.decayBlock(iss), "");
+  check("rec 이 없으면 블록이 없다", ctx.decayBlock(null), "");
+
+  state.map = map;
+  map.stubSource("satellites");
+  map.stubSource("sat-track");
+  // **블록을 만드는 것과 패널에 실리는 것은 다르다**(S16-1 에서 변이가 이 구멍을 잡았다)
+  ctx.openSatPanel({ name: "SWIFT", norad: "28485", rec: far });
+  check("위성 상세 패널에 실린다", el("panel-body").innerHTML.includes("기동은 계산에 없습니다"), true);
+  check("임박하지 않으면 배지가 없다", el("panel-body").innerHTML.includes("재진입 임박"), false);
+  ctx.openSatPanel({ name: "STARLINK-1770", norad: "46383", rec: soon });
+  check("임박하면 배지가 붙는다", el("panel-body").innerHTML.includes("재진입 임박"), true);
+  ctx.openSatPanel({ name: "ISS (ZARYA)", norad: "25544", rec: iss });
+  check("ISS 패널에는 예보도 배지도 없다",
+    el("panel-body").innerHTML.includes("재진입"), false);
+}
+
 // ── 로켓 계열 (P15-4) ─────────────────────────────────────────────────────────
 // 실측 라이브 100건: `family` 는 계열이 없을 때 **빈 문자열**로 오고(14/100), 21개 계열 중
 // **2종 이상을 묶는 것은 7개뿐**이다. 나머지 14개는 계열 화면의 목록이 로켓 화면과 같아
