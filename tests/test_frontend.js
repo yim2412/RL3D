@@ -2216,6 +2216,55 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     html.includes("sb-row") || html.includes("눈에 보이는 통과가 없습니다"), true);
   check("막힌 안내가 아니다", html.includes("관측 위치가 필요합니다"), false);
 }
+// ── bindUI 가 거는 배선 전부 (2026-09-14 정기 점검) ───────────────────────────
+// **배선 18개를 지워도 688건이 전부 통과했다.** 검색창·패널 닫기·탭 전환·타임라인
+// 슬라이더·새로고침·아카이브 불러오기가 통째로 죽어도 테스트가 초록이었다는 뜻이다.
+// 이 리포가 반복해 당한 갈래고(2026-09-11 하루 세 번 · 2026-09-12 `tab-tonight`),
+// 그때마다 개별 테스트를 하나씩 더했지만 **나머지는 그대로 비어 있었다.**
+//
+// ⚠ 목록을 `boot.js` 에서 긁어 오지 않고 **여기 손으로 적는다.** 긁어 오면 배선을 지울 때
+//   기대 목록에서도 같이 사라져 **검사가 공허하게 통과한다** — 이 파일이 정답지다.
+{
+  const { ctx, el, map, doc, sel, state } = loadApp();
+  group("bindUI 배선 전수 (정기 점검)");
+  state.map = map;
+  map.stubSource("launches");
+  map.stubSource("launch-heat");
+  map.stubSource("launch-track");
+  map.stubSource("terminator");
+  state.allLaunches = [];
+  const flt = { value: "success", handlers: {}, addEventListener(e, f) { this.handlers[e] = f; } };
+  sel[".flt"] = [flt];
+
+  // [엘리먼트 id, 이벤트] — 하나라도 빠지면 그 기능은 앱에서 죽어 있는 것이다.
+  const WIRING = [
+    ["search", "input"], ["panel-close", "click"],
+    ["toggle-terminator", "change"], ["toggle-sat", "change"], ["toggle-heat", "change"],
+    ["sat-groups-btn", "click"], ["tz-btn", "click"], ["basemap-btn", "click"],
+    ["stats-btn", "click"], ["stats-close", "click"],
+    ["sat-track-btn", "click"], ["sat-obs-btn", "click"], ["sat-pass-btn", "click"],
+    ["sat-ctrl-close", "click"], ["sat-ahead", "input"], ["pass-close", "click"],
+    ["toggle-list", "click"], ["sidebar-list", "click"],
+    ["tab-launches", "click"], ["tab-sats", "click"], ["tab-favs", "click"],
+    ["tab-tonight", "click"],
+    ["toggle-visible-only", "change"], ["sat-search", "input"],
+    ["tl-range", "input"], ["arch-load", "click"], ["refresh", "click"],
+  ];
+
+  let before = 0;
+  for (const [id, ev] of WIRING) if (el(id).handlers[ev]) before++;
+  check("bindUI 전에는 아무 배선도 없다", before, 0);
+  check("bindUI 전에는 document keydown 이 없다", doc.has("keydown"), false);
+
+  ctx.bindUI();
+
+  const missing = [];
+  for (const [id, ev] of WIRING) if (!el(id).handlers[ev]) missing.push(id + "(" + ev + ")");
+  check("bindUI 가 " + WIRING.length + "개 배선을 전부 건다", missing, []);
+  check("결과 필터(.flt)에도 change 를 건다", !!flt.handlers.change, true);
+  check("document 에 keydown 을 건다", doc.has("keydown"), true);
+}
+
 // ── 로켓 계열 (P15-4) ─────────────────────────────────────────────────────────
 // 실측 라이브 100건: `family` 는 계열이 없을 때 **빈 문자열**로 오고(14/100), 21개 계열 중
 // **2종 이상을 묶는 것은 7개뿐**이다. 나머지 14개는 계열 화면의 목록이 로켓 화면과 같아
