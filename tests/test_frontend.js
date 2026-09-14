@@ -2346,6 +2346,95 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("발사 탭으로 되돌아온다", state.sidebarTab, "launches");
 }
 
+// ── TLE 신선도 (S16-1) ───────────────────────────────────────────────────────
+// 지도의 점이 **언제 관측된 궤도**로 그려졌는지 화면이 말한 적이 없었다. 실측(2026-09-14):
+// 캐시에 49.8일 된 TLE 파일이 셋 있었고, 50일 된 TLE 로 계산한 위치는 최신 대비
+// **중앙 1,250km** 어긋났다(저궤도 HXMT 2,880km · 고궤도 SDO 73km).
+{
+  const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+  group("TLE 나이 (tleAgeDays · tleAgeText)");
+
+  // 에포크가 **확정된** TLE — `26255.50000000` = 2026년 255일째 12:00 UTC = 2026-09-12 12:00Z.
+  // 시각에 기대는 단언은 그 자리를 덮는지가 우연이다 → 고정 시각을 주입해 잰다.
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+    "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537");
+  const at = (iso) => Date.parse(iso);
+  check("에포크로부터 3일", Math.round(ctx.tleAgeDays(rec, at("2026-09-15T12:00:00Z")) * 100) / 100, 3);
+  check("에포크 당일이면 0", Math.round(ctx.tleAgeDays(rec, at("2026-09-12T12:00:00Z")) * 100) / 100, 0);
+  check("반나절", Math.round(ctx.tleAgeDays(rec, at("2026-09-13T00:00:00Z")) * 100) / 100, 0.5);
+  check("rec 가 없으면 null", ctx.tleAgeDays(null, at("2026-09-15T12:00:00Z")), null);
+  check("에포크가 없으면 null", ctx.tleAgeDays({}, at("2026-09-15T12:00:00Z")), null);
+  check("에포크가 0 이면 null", ctx.tleAgeDays({ jdsatepoch: 0 }, at("2026-09-15T12:00:00Z")), null);
+
+  check("한 시간 안이면 '방금'", ctx.tleAgeText(0.02), "방금 관측");
+  check("하루 안이면 시간 단위", ctx.tleAgeText(0.5), "12시간 전 관측");
+  // 실측에서 나온 값들 — gps-ops 3.84일 · 낡은 파일 49.8일
+  check("열흘 안이면 소수 한 자리", ctx.tleAgeText(3.84), "3.8일 전 관측");
+  check("열흘 넘으면 반올림", ctx.tleAgeText(49.8), "50일 전 관측");
+  check("없으면 null", ctx.tleAgeText(null), null);
+
+  group("낡은 TLE 알림 (staleTleNote)");
+  const now = at("2026-09-15T12:00:00Z");
+  const recAt = (days) => ({ rec: { jdsatepoch: (now - days * 86400000) / 86400000 + 2440587.5 } });
+  check("전부 신선하면 알리지 않는다",
+    ctx.staleTleNote([recAt(0.2), recAt(1), recAt(2.9)], now), null);
+  check("빈 목록도 null", ctx.staleTleNote([], now), null);
+  check("null 도 null", ctx.staleTleNote(null, now), null);
+  const note = ctx.staleTleNote([recAt(0.2), recAt(5), recAt(49.8)], now);
+  check("낡은 개수를 센다", note.includes("위성 2개"), true);
+  // **가장 낡은 것**을 말한다 — 평균을 내면 그룹마다 신선도가 갈려 양쪽 다 거짓이 된다
+  check("가장 오래된 것을 말한다", note.includes("50일 전 관측"), true);
+  check("왜 문제인지도 말한다", note.includes("위치가 실제와 다를 수 있습니다"), true);
+  check("경계값(3일)은 낡은 것이 아니다", ctx.staleTleNote([recAt(3)], now), null);
+  check("경계 바로 위는 낡은 것", ctx.staleTleNote([recAt(3.01)], now).includes("위성 1개"), true);
+  check("rec 없는 항목은 세지 않는다", ctx.staleTleNote([{ rec: null }, {}], now), null);
+
+  // **대역마다 임계가 다르다.** 하나(3일)로 뒀더니 실제 캐시에서 `gps-ops` 32개가 전부
+  // 걸렸다(중앙 3.84일) — MEO 는 대기가 없어 나흘 된 TLE 도 정확하다. 실측 50일 어긋남이
+  // 저궤도 2,880km 대 고궤도 73km 라 20~40배 차이다.
+  const meoAt = (days) => ({ rec: { no: 0.008726,        // 12시간 주기 → MEO(고도 ~20,200km)
+    jdsatepoch: (now - days * 86400000) / 86400000 + 2440587.5 } });
+  check("대역 판정 — MEO 로 잡힌다", ctx.orbitBand(meoAt(1).rec), "meo");
+  check("MEO 는 10일이어도 안 낡았다", ctx.staleTleNote([meoAt(10)], now), null);
+  check("같은 10일이라도 LEO 는 낡았다", ctx.staleTleNote([recAt(10)], now).includes("위성 1개"), true);
+  check("MEO 도 30일을 넘으면 낡았다", ctx.staleTleNote([meoAt(31)], now).includes("위성 1개"), true);
+  check("상세 패널도 같은 기준 — MEO 10일은 경고 없음",
+    ctx.tleAgeRow({ no: 0.008726, jdsatepoch: (Date.now() - 10 * 86400000) / 86400000 + 2440587.5 })
+      .includes("tle-old"), false);
+
+  group("위성 상세의 궤도 데이터 줄 (tleAgeRow)");
+  // 이 줄만 `Date.now()` 를 쓴다(화면은 지금을 말한다) → 나이를 만들어 상대로 잰다
+  const fresh = { jdsatepoch: (Date.now() - 0.5 * 86400000) / 86400000 + 2440587.5 };
+  const old = { jdsatepoch: (Date.now() - 40 * 86400000) / 86400000 + 2440587.5 };
+  check("신선하면 경고 색이 없다", ctx.tleAgeRow(fresh).includes("tle-old"), false);
+  check("신선해도 줄은 있다", ctx.tleAgeRow(fresh).includes("궤도 데이터"), true);
+  check("낡으면 경고 색이 붙는다", ctx.tleAgeRow(old).includes("tle-old"), true);
+  check("낡으면 ⚠ 도 붙는다", ctx.tleAgeRow(old).includes("⚠"), true);
+  check("에포크가 없으면 줄 자체가 없다", ctx.tleAgeRow({}), "");
+  // **줄을 만드는 것과 패널에 실리는 것은 다르다.** 위 단언은 전부 통과하는데 `satRowsHtml`
+  // 에서 호출 한 줄을 빼면 화면에서 사라진다 — 변이 실험이 이 구멍을 잡았다(2026-09-14).
+  ctx.openSatPanel({ name: "ISS (ZARYA)", norad: "25544", rec: rec });
+  check("위성 상세 패널에 실린다", el("panel-body").innerHTML.includes("궤도 데이터"), true);
+  ctx.openSatPanel({ name: "낡은 위성", norad: "40000", rec: old });
+  check("낡은 위성은 패널에서도 경고 색", el("panel-body").innerHTML.includes("tle-old"), true);
+
+  group("배선 — 오래된 캐시를 쓸 때 알리는가");
+  state.map = map;
+  map.stubSource("satellites");
+  map.stubSource("sat-track");
+  // **예전에는 `res.error && !res.stale` 이라 stale 이면 경고를 껐다** — 알려야 할 때 침묵했다.
+  api.get_satellites = async () => ({ satellites: [], stale: true, error: "요청이 한도를 넘었습니다" });
+  await ctx.loadSatellites();
+  check("stale 이면 상태줄로 알린다", el("status").textContent.includes("이전 데이터"), true);
+  check("원인도 같이 말한다", el("status").textContent.includes("한도"), true);
+
+  el("status").textContent = "";
+  api.get_satellites = async () => ({ satellites: [], stale: false, error: null });
+  await ctx.loadSatellites();
+  check("정상이면 아무 말도 안 한다", el("status").textContent, "");
+}
+
 // ── 로켓 계열 (P15-4) ─────────────────────────────────────────────────────────
 // 실측 라이브 100건: `family` 는 계열이 없을 때 **빈 문자열**로 오고(14/100), 21개 계열 중
 // **2종 이상을 묶는 것은 7개뿐**이다. 나머지 14개는 계열 화면의 목록이 로켓 화면과 같아

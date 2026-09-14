@@ -86,6 +86,71 @@ async function loadSatcat() {
   }
 }
 
+// ── TLE 신선도 (S16-1) ───────────────────────────────────────────────────────
+// 지도의 점은 **언제 관측된 궤도**로 계산됐는지 말한 적이 없다. 발사 쪽은 `N분 전 갱신`
+// 이 툴바에 상시 뜨는데(P7-7) 위성 쪽에는 그 축이 통째로 없었다.
+//
+// **캐시 나이가 아니라 TLE 에포크 나이**를 쓴다 — 둘은 다르다(P15-7 에서 발사 쪽에 같은
+// 구분을 했다). 실측 2026-09-14: `gps-ops` 는 캐시가 방금 받은 것인데 TLE 는 3.84일 됐다.
+// 위치 정확도를 좌우하는 건 관측 시각 쪽이다.
+
+// 며칠이면 낡았다고 볼 것인가 — **대역마다 다르다.**
+//
+// 처음에는 3일 하나로 뒀는데, 실제 캐시로 렌더해 보니 `gps-ops` **32개가 전부** 걸렸다
+// (중앙 3.84일). MEO 는 대기가 없어 궤도가 안정적이라 나흘 된 TLE 도 정확하다 —
+// 거짓 경보였다. 실측이 그걸 그대로 보여준다(2026-09-14, 겹치는 4건):
+//   50일 뒤 어긋남 — 저궤도 HXMT **2,880km** · HST 1,250km · 태양동기 TERRA 198km ·
+//   고궤도 SDO **73km**. 하루당으로 보면 **20~40배 차이**다.
+// 그래서 저궤도 3일 · 그 위 30일로 둔다(둘 다 어긋남이 수십~백여 km 급이 되는 지점).
+// 정상 갱신되는 저궤도 그룹은 중앙 0.23~0.39일이라 3일이면 갱신이 며칠 끊긴 것이다.
+const TLE_STALE_DAYS = { leo: 3, meo: 30, geo: 30 };
+const JD_UNIX_EPOCH = 2440587.5;   // 율리우스일 ↔ 유닉스 epoch
+
+/** 이 위성의 대역 기준 임계(일). 대역을 못 구하면 가장 엄한 쪽(저궤도)을 쓴다. */
+function tleStaleLimit(rec) {
+  return TLE_STALE_DAYS[orbitBand(rec)] || TLE_STALE_DAYS.leo;
+}
+
+/** TLE 에포크(궤도가 관측된 시각)로부터 지난 일수 — 순수 함수. 못 구하면 null. */
+function tleAgeDays(rec, nowMs) {
+  if (!rec || !(rec.jdsatepoch > 0)) return null;
+  const epochMs = (rec.jdsatepoch - JD_UNIX_EPOCH) * 86400000;
+  if (!isFinite(epochMs)) return null;
+  const days = ((nowMs == null ? Date.now() : nowMs) - epochMs) / 86400000;
+  return isFinite(days) ? days : null;
+}
+
+/**
+ * 낡은 TLE 가 섞여 있으면 한 줄로 알린다 — 순수 함수. 없으면 null.
+ *
+ * **한 숫자로 뭉개지 않는다.** 그룹마다 신선도가 갈려서(실측 0.23일 ~ 50일) 평균을 내면
+ * 양쪽 다 거짓이 된다. 몇 건이 낡았는지와 **가장 낡은 것**을 말한다.
+ */
+function staleTleNote(recs, nowMs) {
+  let old = 0, worst = 0;
+  for (const s of (recs || [])) {
+    const d = tleAgeDays(s && s.rec, nowMs);
+    if (d == null || d <= tleStaleLimit(s.rec)) continue;
+    old++;
+    if (d > worst) worst = d;
+  }
+  if (!old) return null;
+  return `위성 ${old}개의 궤도 데이터가 오래됐습니다` +
+    ` (가장 오래된 것 ${tleAgeText(worst)}) — 지도 위 위치가 실제와 다를 수 있습니다`;
+}
+
+/**
+ * TLE 나이를 사람 말로 — 순수 함수. `agoText` 를 안 쓴다: 그쪽은 안에서 `Date.now()` 를
+ * 불러 **주입한 시각을 무시**하므로, 고정 시각으로 재는 테스트가 성립하지 않는다.
+ */
+function tleAgeText(days) {
+  if (days == null || !isFinite(days)) return null;
+  if (days < 1 / 24) return "방금 관측";
+  if (days < 1) return `${Math.floor(days * 24)}시간 전 관측`;
+  if (days < 10) return `${days.toFixed(1)}일 전 관측`;
+  return `${Math.round(days)}일 전 관측`;
+}
+
 async function loadSatellites() {
   try {
     deselectSatellite();  // 재로드로 satrec이 갈리므로 이전 선택/궤적은 해제
@@ -103,7 +168,14 @@ async function loadSatellites() {
     updateSatCount();
     if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
     else if (sidebarTab === "favs") renderFavList();  // 관심 위성이 이제 붙는다
-    if (res.error && !res.stale) showStatus(`⚠ 위성: ${res.error}`);
+    // **오래된 캐시를 쓸 때야말로 알린다.** 예전에는 `res.error && !res.stale` 이라
+    // stale 이면 경고를 껐다 — 화면의 점이 낡은 궤도로 그려지는데 아무 말도 안 했다.
+    // 발사 쪽은 같은 상황에서 `[OK(stale)]` 로 알린다(전역 규칙 7번의 "사람이 읽는 말").
+    if (res.stale) showStatus(`⚠ 위성: 최신 데이터를 받지 못해 이전 데이터를 씁니다 — ${res.error || ""}`);
+    else if (res.error) showStatus(`⚠ 위성: ${res.error}`);
+    // 받아온 게 최신이어도 **TLE 자체가 낡았을 수 있다**(S16-1) — 그건 따로 알린다.
+    const note = staleTleNote(satrecs);
+    if (note && !res.stale) showStatus(`⚠ ${note}`);
     // 토글이 켜져 있을 때만 계산 루프 시작(기본 OFF)
     if (document.getElementById("toggle-sat").checked) startSatelliteLoop();
   } catch (e) {

@@ -65,6 +65,22 @@ function apsidesText(d) {
   return `${km(pe)} ~ ${km(ap)}`;
 }
 
+/**
+ * 이 위성의 궤도가 **언제 관측된 것인지**(S16-1). 위 값들은 전부 이 TLE 에서 나온 것이라,
+ * 그 나이를 모르면 화면의 좌표가 얼마나 믿을 만한지 알 수 없다.
+ *
+ * 실측(2026-09-14): 50일 된 TLE 로 계산한 위치는 최신 대비 **중앙 1,250km** 어긋났다
+ * (저궤도 HXMT 2,880km · 고궤도 SDO 73km). 낡으면 줄에 경고 색을 준다.
+ */
+function tleAgeRow(rec) {
+  const days = tleAgeDays(rec);
+  const text = tleAgeText(days);
+  if (!text) return "";
+  if (days <= tleStaleLimit(rec)) return row("궤도 데이터", text);
+  return `<div class="row"><div class="k">궤도 데이터</div>` +
+    `<div class="v tle-old">${escapeHtml(text)} ⚠</div></div>`;
+}
+
 /** 매 초 바뀌는 값만 만든다 — 헤더·⭐ 버튼은 그대로 두고 이 부분만 교체한다. */
 function satRowsHtml(s) {
   const d = satDetails(s.rec);
@@ -76,7 +92,8 @@ function satRowsHtml(s) {
       row("궤도 주기", d.periodMin != null ? d.periodMin.toFixed(1) + "분" : null) +
       row("경사각", d.incl != null ? d.incl.toFixed(2) + "°" : null) +
       row("근지점 ~ 원지점", apsidesText(d)) +
-      row("이심률", d.ecc != null ? d.ecc.toFixed(4) : null)
+      row("이심률", d.ecc != null ? d.ecc.toFixed(4) : null) +
+      tleAgeRow(s.rec)
     : `<div class="pass-empty">궤도 정보를 계산할 수 없습니다.</div>`;
 }
 

@@ -653,6 +653,9 @@ html, body {
 .st-world b { color: #6ee7b7; }
 .st-world-src { font-size: 10px; line-height: 1.5; color: var(--muted); margin: 0 0 10px; }
 
+/* 낡은 TLE (S16-1) — 그 위성의 좌표가 얼마나 어긋날 수 있는지 눈에 띄게 */
+.tle-old { color: #fbbf24; }
+
 /* 로켓 관점 → 계열 관점으로 올라가는 줄 (P15-4). `.site-link` 색을 그대로 쓰고 상자만 준다 */
 .st-famup {
   display: block; width: 100%; font-size: 11px; line-height: 1.5;
