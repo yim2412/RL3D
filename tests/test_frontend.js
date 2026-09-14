@@ -2265,6 +2265,87 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("document 에 keydown 을 건다", doc.has("keydown"), true);
 }
 
+// ── 배선을 실제로 눌러 본다 (2026-09-14 정기 점검 2단) ────────────────────────
+// 위 전수 테스트는 **붙었는지만** 본다. 그런데 2026-09-12 에 죽어 있던 `tab-tonight` 은
+// **배선이 빠진 게 아니었다** — 핸들러는 붙어 있었고, 누르면 `Set` 에 `.includes()` 를
+// 불러 `TypeError` 로 죽었다. 즉 붙었는지만 재는 테스트로는 **그 버그가 안 잡힌다.**
+// 그래서 눌러 보고 **예외가 안 나는지**까지 잰다. 화면에 무엇이 나오는지는 각 기능의
+// 테스트가 따로 재고, 여기서는 "눌렀더니 죽더라"만 막는다.
+{
+  const { ctx, state, el, map, doc, sel, api } = loadApp({ realSatellite: true });
+  group("배선을 눌러 본다 — 예외 없이 도는가");
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track"])
+    map.stubSource(s);
+
+  // 죽은 경로를 실제로 태우려면 **막힌 안내로 빠지지 않는 상태**여야 한다(2026-09-12 의 교훈).
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  state.favSats = new Set(["25544"]);
+  state.favLaunches = new Set(["1"]);
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+    "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537");
+  state.satrecs = [{ name: "ISS (ZARYA)", norad: 25544, rec: rec }];
+  state.allLaunches = [{ id: "1", name: "테스트", outcome: "success", lat: 28.5, lng: -80.5,
+                         net: "2026-05-01T00:00:00Z", rocket: "Falcon 9 Block 5",
+                         rocket_family: "Falcon", provider: "SpaceX",
+                         location_name: "Cape Canaveral" }];
+  state.launches = state.allLaunches;
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+  const flt2 = { value: "success", checked: true, handlers: {},
+                 addEventListener(e, f) { this.handlers[e] = f; },
+                 fire(e, a) { if (this.handlers[e]) this.handlers[e](a); } };
+  sel[".flt"] = [flt2];
+  sel[".flt:checked"] = [flt2];
+  api.get_archive = async () => ({ launches: [] });
+
+  ctx.bindUI();
+  el("arch-year").value = "2025";
+  el("sat-ahead").value = "30";
+  el("tl-range").value = "50";
+
+  const CHECKBOX = { target: { checked: true } };
+  const ROW = { target: { closest: () => ({ dataset: { id: "1" } }) } };
+  // [id, 이벤트, 넘길 값] — 체크박스는 `e.target.checked` 를 읽고, 목록은 `e.target.closest` 를 쓴다
+  const PRESSES = [
+    ["search", "input", {}], ["panel-close", "click", {}],
+    ["toggle-terminator", "change", CHECKBOX], ["toggle-sat", "change", CHECKBOX],
+    ["toggle-heat", "change", CHECKBOX],
+    ["sat-groups-btn", "click", {}], ["tz-btn", "click", {}], ["basemap-btn", "click", {}],
+    ["stats-btn", "click", {}], ["stats-close", "click", {}],
+    ["sat-track-btn", "click", {}], ["sat-obs-btn", "click", {}], ["sat-pass-btn", "click", {}],
+    ["sat-ctrl-close", "click", {}], ["sat-ahead", "input", {}], ["pass-close", "click", {}],
+    ["toggle-list", "click", {}],
+    ["sidebar-list", "click", { target: { closest: () => null } }],
+    ["sidebar-list", "click", ROW],
+    ["tab-launches", "click", {}], ["tab-sats", "click", {}],
+    ["tab-favs", "click", {}], ["tab-tonight", "click", {}],
+    ["toggle-visible-only", "change", CHECKBOX], ["sat-search", "input", {}],
+    ["tl-range", "input", {}], ["arch-load", "click", {}], ["refresh", "click", {}],
+  ];
+
+  const threw = [];
+  for (const [id, ev, arg] of PRESSES) {
+    try { el(id).fire(ev, arg); }
+    catch (e) { threw.push(id + "(" + ev + "): " + e.message); }
+  }
+  try { flt2.fire("change", CHECKBOX); } catch (e) { threw.push(".flt: " + e.message); }
+  // 단축키도 같은 경로다 — `/`·`Esc`·`S`·숫자키를 눌러 본다
+  for (const key of ["/", "Escape", "s", "1", "6", "7", "t", "?"]) {
+    try { doc.fire("keydown", { key: key, target: { tagName: "BODY" }, preventDefault() {} }); }
+    catch (e) { threw.push("keydown " + key + ": " + e.message); }
+  }
+  check("눌러도 예외가 나지 않는다", threw, []);
+
+  // 탭 전환이 **실제로 일어났는지**까지 본다 — 예외 없이 아무 일도 안 하는 경우가 있다
+  el("tab-tonight").fire("click", {});
+  check("오늘 밤 탭을 누르면 탭이 바뀐다(2026-09-12 에 여기가 죽어 있었다)",
+    state.sidebarTab, "tonight");
+  el("tab-launches").fire("click", {});
+  check("발사 탭으로 되돌아온다", state.sidebarTab, "launches");
+}
+
 // ── 로켓 계열 (P15-4) ─────────────────────────────────────────────────────────
 // 실측 라이브 100건: `family` 는 계열이 없을 때 **빈 문자열**로 오고(14/100), 21개 계열 중
 // **2종 이상을 묶는 것은 7개뿐**이다. 나머지 14개는 계열 화면의 목록이 로켓 화면과 같아
