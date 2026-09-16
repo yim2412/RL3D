@@ -75,6 +75,7 @@ window.addEventListener("pywebviewready", async () => {
   bindUI();
   const settings = await window.pywebview.api.get_settings().catch(() => null);
   applySettings(settings);       // 필터·토글·그룹·관측 위치 복원(지도 초기화 전)
+  firstRun = shouldShowFirstRun(settings);   // 첫 실행 안내(P17-4) — 발사 로드 뒤에 띄운다
   await initSatGroups();         // 그룹 체크박스를 satGroups 기준으로 생성
   setInterval(updateFreshness, 30000);  // "N분 전 갱신" 주기 갱신(P7-7)
   initUpdateCheck();             // 새 버전 확인(P12-12) — await 하지 않는다(지도 시작을 막지 않게)

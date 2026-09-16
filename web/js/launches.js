@@ -16,6 +16,9 @@ async function loadLaunches(force = false, silent = false) {
     applyFilters();
     startTicker();
     if (silent) announceChanges(prev, launches);  // 자동 갱신 때만 변화 알림
+    // 첫 실행 안내(P17-4)는 **건수를 말해야 하므로** 데이터가 들어온 뒤에 띄운다.
+    // 한 번 띄우면 플래그를 내린다 — 강제 갱신·자동 갱신마다 다시 뜨면 안내가 아니라 방해다.
+    if (firstRun) { firstRun = false; showFirstRun(); }
   } catch (e) {
     if (!silent) showStatus("데이터를 불러오지 못했습니다.");
     console.error(e);

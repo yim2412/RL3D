@@ -2704,5 +2704,137 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   el("stats-panel").sel[".site-link"] = undefined;
 }
 
+// ── 첫 실행 안내 (P17-4) ─────────────────────────────────────────────────────
+// 첫 실행은 **일부러 얇다**(요청 절약). 문제는 화면이 그 사실을 말한 적이 없다는 것이었다 —
+// 모수 안내는 통계 패널 안쪽에만 있었고 처음 여는 사람은 그걸 열지 않는다.
+// 조용히 깨지는 자리 셋: ① 판정(한 번 닫았는데 또 뜬다) ② 버튼이 기존 경로를 안 탄다
+// (예외 없이 아무 일도 안 일어난다) ③ 발사가 들어오기 **전에** 떠서 "0건"이라고 말한다.
+{
+  const { ctx } = loadApp();
+  group("첫 실행 판정 (shouldShowFirstRun)");
+  check("설정이 없으면 띄운다", ctx.shouldShowFirstRun(null), true);
+  check("빈 설정도 첫 실행이다", ctx.shouldShowFirstRun({}), true);
+  check("한 번 닫았으면 안 띄운다", ctx.shouldShowFirstRun({ firstRunSeen: true }), false);
+  check("다른 설정이 있어도 판정은 그 키만 본다",
+    ctx.shouldShowFirstRun({ heatmap: true, camera: { zoom: 3 } }), true);
+
+  group("첫 실행 집계 (firstRunCounts)");
+  // 시각은 **주입한다** — Date.now() 에 걸면 오전엔 통과하고 저녁엔 실패한다
+  const NOW = Date.parse("2026-09-16T00:00:00Z");
+  const LIST = [
+    { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming" },
+    { id: "2", net: "2026-09-01T00:00:00Z", outcome: "success" },
+    { id: "3", net: "2026-08-01T00:00:00Z", outcome: "failure" },
+    { id: "4", net: "2025-12-01T00:00:00Z", outcome: "success" },
+  ];
+  const c = ctx.firstRunCounts(LIST, NOW);
+  check("총 건수", c.total, 4);
+  check("예정·지난을 outcome 으로 가른다", [c.upcoming, c.past], [1, 3]);
+  check("연도를 오름차순으로 모은다", c.years, [2025, 2026]);
+  // **시각이 아니라 outcome 으로 가르는 이유**: 오늘 발사했는데 결과가 아직 미정인 건이
+  // 시각 기준으로는 "지난 것"으로 새는데, 화면에는 예정 색으로 그려져 있다.
+  const today = ctx.firstRunCounts(
+    [{ id: "5", net: "2026-09-15T23:00:00Z", outcome: "upcoming" }], NOW);
+  check("시각이 지났어도 outcome 이 upcoming 이면 예정으로 센다", today.upcoming, 1);
+  check("빈 목록도 죽지 않는다", ctx.firstRunCounts([], NOW).total, 0);
+  check("목록이 없어도 죽지 않는다", ctx.firstRunCounts(null, NOW).total, 0);
+
+  group("첫 실행 문구 (firstRunHtml)");
+  const html = ctx.firstRunHtml(c, 2025);
+  check("지금 보이는 건수를 말한다", html.includes("4건"), true);
+  check("예정·지난 내역도 적는다", html.includes("예정 1 · 지난 3"), true);
+  check("연도 범위를 적는다", html.includes("2025~2026년"), true);
+  check("한 해뿐이면 범위로 적지 않는다",
+    ctx.firstRunHtml({ total: 9, upcoming: 4, past: 5, years: [2026] }, 2025).includes("2026년"), true);
+  check("연도를 모르면 빈 자리를 남기지 않는다",
+    ctx.firstRunHtml({ total: 0, upcoming: 0, past: 0, years: [] }, 2025).includes("undefined"), false);
+  // 단축키를 같이 적는 것이 P17-3 의 발견 경로다 — 아무 데서도 안 가리키는 단축키는 없는 것과 같다
+  check("위성·아카이브 단축키를 함께 보여준다",
+    [html.includes("<kbd>5</kbd>"), html.includes("<kbd>A</kbd>")], [true, true]);
+  check("권하는 연도를 버튼에 적는다", html.includes("2025년"), true);
+  check("세 버튼이 모두 있다",
+    ["fr-sat", "fr-arch", "fr-close"].filter((id) => !html.includes(id)), []);
+}
+{
+  // 배선: **부트 → 발사 로드 → 안내** 가 실제로 이어지는가.
+  // 순수 함수만 재면 `loadLaunches` 안의 호출 한 줄이 빠져도 전부 통과한다.
+  const saved = [];
+  const { ctx, el, map, state, win } = loadApp({ api: {
+    get_settings: async () => ({}),
+    save_settings: (p) => saved.push(p),
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 },
+      { id: "2", net: "2026-09-01T00:00:00Z", outcome: "success", lat: 2, lng: 2 },
+    ] }),
+  } });
+  group("첫 실행 배선 (부트 → 로드 → 안내)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+
+  check("부트 전에는 안내가 숨어 있다", el("firstrun").hidden, true);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  check("설정을 읽고 첫 실행으로 판정한다", state.firstRun, true);
+  check("아직 발사가 안 왔으면 띄우지 않는다(0건이라고 말하면 안 된다)",
+    el("firstrun").hidden, true);
+
+  map.fire("load");
+  await new Promise((r) => setImmediate(r));
+  check("발사가 들어온 뒤 안내가 뜬다", el("firstrun").hidden, false);
+  check("실제 건수를 말한다", el("firstrun").innerHTML.includes("2건"), true);
+  check("한 번 띄우면 플래그를 내린다(갱신마다 다시 뜨면 방해다)", state.firstRun, false);
+
+  // 닫기 → 저장까지. 저장이 빠지면 **다음 실행에 또 뜬다**(예외는 안 난다)
+  el("fr-close").fire("click", {});
+  check("닫으면 사라진다", el("firstrun").hidden, true);
+  check("닫았다는 사실을 저장한다", saved.some((p) => p.firstRunSeen === true), true);
+}
+{
+  // 버튼이 **기존 경로를 그대로 타는가.** 여기서 따로 구현하면 저장·필터 갱신이 갈라진다.
+  const asked = [];
+  const saved = [];
+  const { ctx, el, map, state, win } = loadApp({ api: {
+    get_settings: async () => ({}),
+    save_settings: (p) => saved.push(p),
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 }] }),
+    get_satellites: async () => { asked.push("sats"); return { satellites: [] }; },
+    get_archive: async (y) => { asked.push("archive:" + y); return { launches: [] }; },
+  } });
+  group("첫 실행 버튼 (기존 경로를 탄다)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  map.fire("load");
+  await new Promise((r) => setImmediate(r));
+
+  check("위성은 아직 꺼져 있다", el("toggle-sat").checked, false);
+  el("fr-sat").fire("click", {});
+  await new Promise((r) => setImmediate(r));
+  check("[켜기] 가 위성 체크박스를 켠다", el("toggle-sat").checked, true);
+  check("체크박스의 change 경로를 그대로 타 위성을 부른다", asked.includes("sats"), true);
+  check("누르면 안내는 닫힌다", el("firstrun").hidden, true);
+
+  // 아카이브 버튼 — 같은 부트를 다시 세워 잰다(위에서 이미 닫혔으므로)
+  const asked2 = [];
+  const a2 = loadApp({ api: {
+    get_settings: async () => ({}),
+    save_settings: () => {},
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 }] }),
+    get_archive: async (y) => { asked2.push(y); return { launches: [] }; },
+  } });
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) a2.map.stubSource(s);
+  await a2.win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  a2.map.fire("load");
+  await new Promise((r) => setImmediate(r));
+  a2.el("fr-arch").fire("click", {});
+  await new Promise((r) => setImmediate(r));
+  const lastYear = new Date().getUTCFullYear() - 1;
+  check("[작년] 이 그 해 아카이브를 부른다(요청은 누를 때만 나간다)", asked2, [lastYear]);
+  check("툴바의 연도 선택도 같이 맞춘다", a2.el("arch-year").value, String(lastYear));
+}
+
   done();
 })();

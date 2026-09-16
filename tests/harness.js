@@ -12,7 +12,7 @@ const vm = require("vm");
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
   "state.js", "utils.js", "map.js", "launches.js", "sequence.js", "focus.js",
-  "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "observer.js", "trajectory.js", "favorites.js", "sidebar.js", "panels.js", "satpanel.js", "stats.js", "keys.js", "settings.js", "update.js", "boot.js",
+  "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "observer.js", "trajectory.js", "favorites.js", "sidebar.js", "panels.js", "satpanel.js", "stats.js", "keys.js", "settings.js", "update.js", "firstrun.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
 
@@ -30,7 +30,7 @@ const STATE_KEYS = [
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
-  "trackAheadMin", "futureMarker",
+  "trackAheadMin", "futureMarker", "firstRun",
   "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId", "settingObserver", "observerMarker",
   // 읽기 전용 표도 여기로 꺼낸다 — 최상위 const 는 컨텍스트 객체에 안 보인다
   "CITIES",

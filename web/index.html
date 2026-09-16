@@ -57,6 +57,10 @@
   <!-- 배경 타일을 못 받을 때(오프라인) 안내 배지 — 클릭하면 닫힌다 -->
   <button id="offline-badge" class="offline-badge hidden" title="눌러서 닫기"></button>
 
+  <!-- 첫 실행 안내 카드 (P17-4) — 기본이 얇다는 **사실**과 켜는 길을 같이 말한다.
+       지도 좌하단(오프라인 배지 위)에 둔다: 발사 클러스터가 몰린 가운데를 가리지 않게. -->
+  <div id="firstrun" class="firstrun hidden"></div>
+
   <!-- 새 버전 안내 배지 (P12-12) — 본문을 누르면 릴리스 페이지, ✕ 는 그 버전만 닫는다 -->
   <div id="update-badge" class="update-badge hidden"></div>
 
@@ -157,6 +161,7 @@
   <script src="js/keys.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/update.js"></script>
+  <script src="js/firstrun.js"></script>
   <script src="js/boot.js"></script>
 </body>
 </html>

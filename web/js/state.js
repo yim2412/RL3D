@@ -65,6 +65,9 @@ let favSats = new Set();
 let latestUpdateInfo = null;
 let settingsDismissedUpdate = "";
 
+// 첫 실행 안내(P17-4). 설정을 읽은 뒤 세워지고, **발사가 처음 들어온 순간** 한 번만 쓴다.
+let firstRun = false;
+
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
 let timelineInited = false;

@@ -352,6 +352,38 @@ html, body {
 .toolbar-more { width: max-content; }
 .toolbar-more .btn { text-align: left; white-space: nowrap; }
 
+/* 첫 실행 안내 카드 (P17-4) — 오프라인 배지 위. 둘이 같이 뜨면 세로로 겹치지 않게
+   배지(bottom 74px)보다 높은 자리에 둔다. 가운데를 피하는 것은 발사 클러스터가 그쪽에
+   몰려 있어서다 — 첫 화면을 가리는 안내는 그 자체로 첫인상을 깎는다. */
+.firstrun {
+  position: absolute;
+  left: 14px; bottom: 120px;
+  z-index: 24;
+  width: 420px; max-width: calc(100% - 28px);
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 12px; line-height: 1.5;
+  color: var(--text);
+  background: rgba(19, 26, 43, .96);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55);
+}
+.firstrun.hidden { display: none; }
+.fr-head { font-size: 13px; }
+.fr-sub { color: var(--muted); }
+.fr-row, .fr-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.fr-row { color: var(--muted); }
+.fr-foot { border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); }
+.firstrun .btn { white-space: nowrap; }
+.firstrun kbd {
+  font-size: 10px; padding: 1px 4px; margin-left: 3px;
+  border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
+}
+
 /* 오프라인 안내 배지 (P11-7) — 타임라인 위, 지도 좌하단 */
 .offline-badge {
   position: absolute;
