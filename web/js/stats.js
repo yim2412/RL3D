@@ -345,7 +345,28 @@ function yearEntries(years, sc) {
   return years.map(([y, n]) => [partial.has(+y) ? `${y} (일부)` : String(y), n]);
 }
 
+/**
+ * 발사가 한 건도 없을 때의 통계 화면. 순수 함수 (P18-4).
+ *
+ * 0건에서도 숫자판을 그리면 `0 총 발사 · 성공률 — · 확정 0건 중` 이 나온다(2026-09-16 실측).
+ * **틀린 숫자는 아니지만 아무것도 알려주지 않고**, 통계가 고장난 것처럼 보이기도 한다.
+ * 0건은 곧 "아직 못 받았다"는 뜻이다 — 통계는 필터가 아니라 `allLaunches` 를 세기 때문에
+ * 필터·검색으로는 0 이 되지 않는다. 그래서 **원인을 나눌 필요가 없고**, 갈 길은 하나다.
+ */
+function statsEmptyHtml() {
+  return `<h2>📊 발사 통계</h2>` +
+    `<div class="st-empty">아직 셀 발사가 없습니다.<br />` +
+    `데이터를 받지 못했습니다 — 툴바의 <b>↻ 갱신</b>으로 다시 시도하거나, ` +
+    `타임라인 옆 <b>과거 → 불러오기</b>로 지난 연도를 채울 수 있습니다.</div>`;
+}
+
 function showStats() {
+  // 0건에서는 숫자판 대신 이유를 말한다(P18-4)
+  if (!allLaunches.length) {
+    document.getElementById("stats-body").innerHTML = statsEmptyHtml();
+    document.getElementById("stats-panel").classList.remove("hidden");
+    return;
+  }
   const s = computeStats(allLaunches);
   const scope = statsScope(allLaunches, completeYears(), new Date().getFullYear());
   const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;

@@ -2836,6 +2836,32 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("툴바의 연도 선택도 같이 맞춘다", a2.el("arch-year").value, String(lastYear));
 }
 
+// ── 0건 통계 (P18-4) ─────────────────────────────────────────────────────────
+// 0 건에서도 숫자판을 그리면 `0 총 발사 · 확정 0건 중` 이 나온다. **틀린 숫자는 아니지만
+// 아무것도 알려주지 않는다** — 그리고 통계가 고장난 것처럼도 보인다.
+{
+  const { ctx, el, state } = loadApp();
+  group("0건 통계");
+  state.allLaunches = [];
+  ctx.showStats();
+  const empty = el("stats-body").innerHTML;
+  check("패널은 열린다(누르면 반응은 해야 한다)", el("stats-panel").hidden, false);
+  check("숫자판을 그리지 않는다", empty.includes("st-tile"), false);
+  check("'확정 0건 중' 같은 말을 하지 않는다", empty.includes("확정 0건"), false);
+  check("제목은 그대로 둔다", empty.includes("발사 통계"), true);
+  check("이유와 갈 길을 말한다",
+    [empty.includes("갱신"), empty.includes("불러오기")], [true, true]);
+
+  // 한 건이라도 있으면 **평소 화면**이어야 한다 — 빈 상태가 남으면 그게 더 나쁘다
+  state.allLaunches = [{ id: "1", net: "2026-09-01T00:00:00Z", outcome: "success",
+                         provider: "SpaceX", country: "미국", rocket: "Falcon 9" }];
+  ctx.showStats();
+  const one = el("stats-body").innerHTML;
+  check("1건이면 숫자판을 그린다", one.includes("st-tile"), true);
+  check("그때는 빈 상태 문구가 없다", one.includes("st-empty"), false);
+  check("모수 안내도 평소대로 붙는다", one.includes("현재 불러온 1건 기준"), true);
+}
+
 // ── 실패·빈 상태를 화면이 말하는가 (P18-1·2·3) ───────────────────────────────
 // 셋 다 **예외가 안 나고 화면만 침묵하거나 거짓말하는** 갈래다. 2026-09-16 에 실패를
 // 주입해 재 보고서야 나왔다 — 그때까지 테스트는 전부 초록이었다.
