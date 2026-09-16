@@ -35,6 +35,12 @@ function keyAction(e) {
   if (k === "s") return "sidebar";
   if (k === "r") return "refresh";
   if (k === "t") return "timezone";
+  // P17-3 — 툴바에서 접힌 것(배경·통계)과 툴바 밖에 있는 것(그룹·아카이브)의 직통 경로.
+  // 접은 버튼에 단축키가 없으면 기능이 한 단계 더 멀어지기만 한다.
+  if (k === "b") return "basemap";
+  if (k === "c") return "stats";
+  if (k === "g") return "satgroups";
+  if (k === "a") return "archive";
   if (KEY_TOGGLES[k]) return "toggle:" + k;
   return null;
 }
@@ -46,6 +52,7 @@ function keyAction(e) {
  */
 function escapeTarget(open) {
   if (open.help) return "help";
+  if (open.more) return "more";
   if (open.panel) return "panel";
   if (open.pass) return "pass";
   if (open.stats) return "stats";
@@ -60,7 +67,8 @@ function escapeTarget(open) {
 function openOverlays() {
   const vis = (id) => !document.getElementById(id).classList.contains("hidden");
   return {
-    help: vis("keyhelp"), panel: vis("panel"), pass: vis("pass-panel"),
+    help: vis("keyhelp"), more: vis("toolbar-more"),
+    panel: vis("panel"), pass: vis("pass-panel"),
     stats: vis("stats-panel"), satGroups: vis("sat-groups"),
     obsPopover: vis("obs-popover"),
     satCtrl: vis("sat-ctrl"), sidebar: vis("sidebar"),
@@ -69,6 +77,7 @@ function openOverlays() {
 
 function closeOverlay(what) {
   if (what === "help") toggleKeyHelp(false);
+  else if (what === "more") toggleToolbarMore(false);
   else if (what === "panel") closePanel();
   else if (what === "pass") document.getElementById("pass-panel").classList.add("hidden");
   else if (what === "stats") document.getElementById("stats-panel").classList.add("hidden");
@@ -101,6 +110,10 @@ const KEY_HELP = [
   ["S", "목록 사이드바 열기/닫기"],
   ["R", "강제 새로고침"],
   ["T", "시간대 전환 (현지 ↔ UTC)"],
+  ["B", "배경 지도 전환 (다크 ↔ 위성사진)"],
+  ["C", "발사 통계"],
+  ["G", "위성 그룹 선택"],
+  ["A", "선택 연도 아카이브 불러오기"],
   ["1 2 3 4", "예정 · 성공 · 실패 · 부분 필터"],
   ["5", "위성 레이어"],
   ["6", "낮/밤 오버레이"],
@@ -143,5 +156,10 @@ function handleKey(e) {
   if (action === "sidebar") { toggleSidebar(); return; }
   if (action === "refresh") { forceRefresh(); return; }
   if (action === "timezone") { toggleTimeZone(); return; }
+  // 버튼과 같은 함수를 부른다 — 갈라지면 한쪽만 고치게 된다(forceRefresh 와 같은 이유).
+  if (action === "basemap") { toggleBasemap(); return; }
+  if (action === "stats") { showStats(); return; }
+  if (action === "satgroups") { toggleSatGroups(); return; }
+  if (action === "archive") { loadArchive(+document.getElementById("arch-year").value); return; }
   if (action.startsWith("toggle:")) applyKeyToggle(action.slice(7));
 }

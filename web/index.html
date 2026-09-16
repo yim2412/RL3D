@@ -28,8 +28,18 @@
       <button id="sat-groups-btn" class="btn sm" title="위성 그룹 선택">그룹 ▾</button>
     </div>
     <button id="tz-btn" class="btn" title="시각 표시 시간대 전환 (현지 ↔ UTC)">🕓</button>
-    <button id="basemap-btn" class="btn" title="배경 지도 전환 (다크 ↔ 위성사진)">🗺 다크</button>
-    <button id="stats-btn" class="btn" title="발사 통계">📊 통계</button>
+    <!-- 툴바 오버플로 (P17-1) — 기본 창 1280px 에서 툴바가 두 줄로 밀려 둘을 접었다.
+         라벨은 접힌 뒤에도 그대로 남긴다: 버튼으로만 발견하던 기능이라 아이콘만 남기면 길이 끊긴다.
+         🕓 시간대는 접지 않았다 — 버튼 자체가 "지금 어느 시간대로 보고 있는가"를 상시 말한다(utils.js).
+         팝오버를 버튼과 **같은 래퍼 안**에 두는 것은 위치를 CSS 가 잡게 하기 위해서다 —
+         좌표를 JS 로 계산하면 스텁 DOM 에 rect 가 없어 테스트가 못 재는 코드가 된다. -->
+    <span class="more-wrap">
+      <button id="more-btn" class="btn" title="배경 지도 · 통계 (B · C)">⋯</button>
+      <div id="toolbar-more" class="toolbar-more hidden">
+        <button id="basemap-btn" class="btn" title="배경 지도 전환 (다크 ↔ 위성사진) — 단축키 B">🗺 다크</button>
+        <button id="stats-btn" class="btn" title="발사 통계 — 단축키 C">📊 통계</button>
+      </div>
+    </span>
     <button id="toggle-list" class="btn" title="발사 목록 열기/닫기">☰ 목록</button>
     <button id="refresh" class="btn" title="캐시 무시 강제 갱신 (시간당 요청 제한 주의) — 단축키 R">↻ 갱신</button>
     <span id="freshness" class="freshness"></span>

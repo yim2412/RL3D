@@ -21,6 +21,7 @@ function bindUI() {
     saveSettings({ heatmap: e.target.checked });
   });
   document.getElementById("sat-groups-btn").addEventListener("click", toggleSatGroups);
+  document.getElementById("more-btn").addEventListener("click", () => toggleToolbarMore());
   document.getElementById("tz-btn").addEventListener("click", toggleTimeZone);
   document.getElementById("basemap-btn").addEventListener("click", toggleBasemap);
   document.getElementById("stats-btn").addEventListener("click", showStats);

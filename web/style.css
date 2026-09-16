@@ -84,8 +84,10 @@ html, body {
   color: var(--text);
   border-radius: 7px;
   padding: 6px 10px;
-  /* 버튼이 늘 때마다 툴바가 두 줄로 밀린다(기본 창 1280px). 검색창이 가장 넓어 여기서 아낀다.
-     P13-5 에서 시간대 버튼이 들어오며 실제로 밀렸고, 200px 로 줄여 한 줄로 되돌렸다. */
+  /* 버튼이 늘 때마다 툴바가 두 줄로 밀린다(기본 창 1280px). 검색창이 가장 넓어 여기서 아꼈다 —
+     P13-5 에서 시간대 버튼이 들어오며 밀렸고, 240→200px 로 줄여 한 줄로 되돌렸다.
+     **그 수법은 한 번씩만 통한다**: 그 뒤 또 밀렸고, P17-1 에서 배경·통계를 `⋯` 로 접었다.
+     이제 폭을 담당하는 것은 오버플로 팝오버다 — 다음 버튼이 들어오면 여기가 아니라 거기로 간다. */
   width: 200px;
   font-size: 13px;
   outline: none;
@@ -327,6 +329,28 @@ html, body {
   margin-top: 3px; padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+
+/* 툴바 오버플로 팝오버 (P17-1) — 접힌 버튼들. 위치·모양은 위성 그룹 팝오버와 같게 둔다
+   (같아 보이는 것은 같게 동작한다고 읽힌다). 위치는 `⋯` 버튼 바로 아래 — 툴바 왼쪽 끝에
+   고정하면 누른 곳에서 950px 떨어진 자리에서 열린다. */
+.more-wrap { position: relative; display: inline-flex; }
+.toolbar-more {
+  position: absolute;
+  top: calc(100% + 8px); left: 0;
+  z-index: 26;
+  display: flex; flex-direction: column; gap: 7px;
+  background: rgba(19, 26, 43, .96);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.toolbar-more.hidden { display: none; }
+/* absolute 박스의 기준은 36px 짜리 `.more-wrap` 이라, 폭을 안 정하면 거기 맞춰 줄어들어
+   버튼 글자가 **세로로 한 글자씩** 쌓인다(2026-09-16 캡처에서 실제로 그랬다). */
+.toolbar-more { width: max-content; }
+.toolbar-more .btn { text-align: left; white-space: nowrap; }
 
 /* 오프라인 안내 배지 (P11-7) — 타임라인 위, 지도 좌하단 */
 .offline-badge {

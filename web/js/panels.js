@@ -382,3 +382,14 @@ function closePanel() {
   panelLaunchId = null;
   clearAscentPath();   // 패널을 닫으면 근사선도 같이 지운다(P12-4) — 남으면 무엇의 선인지 알 수 없다
 }
+
+/**
+ * 툴바 오버플로 팝오버 열기/닫기 (P17-1).
+ * 배경·통계 버튼은 여기 들어 있다 — 툴바가 기본 창(1280px)에서 두 줄로 밀려 접었다.
+ * 단축키 `B`·`C` 가 팝오버를 거치지 않는 직통 경로이므로, 여는 것 말고 할 일이 없다.
+ */
+function toggleToolbarMore(show) {
+  const box = document.getElementById("toolbar-more");
+  const on = show === undefined ? box.classList.contains("hidden") : show;
+  box.classList.toggle("hidden", !on);
+}

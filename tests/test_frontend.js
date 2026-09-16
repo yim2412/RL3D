@@ -852,6 +852,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   const { ctx } = loadApp();
   group("단축키 판정 (keyAction)");
   const K = (key, extra = {}) => ctx.keyAction(Object.assign({ key, target: { tagName: "BODY" } }, extra));
+  const typing0 = { target: { tagName: "INPUT" } };
 
   check("/ 는 검색", K("/"), "search");
   check("Esc 는 닫기", K("Escape"), "escape");
@@ -862,6 +863,15 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("숫자키는 토글", [K("1"), K("5"), K("6"), K("7")],
     ["toggle:1", "toggle:5", "toggle:6", "toggle:7"]);
   check("정의되지 않은 키는 무시", [K("8"), K("z"), K("F5")], [null, null, null]);
+
+  // P17-3 — 툴바에서 접힌 것(배경·통계)과 툴바 밖에 있는 것(그룹·아카이브).
+  // 접은 버튼에 단축키가 없으면 기능이 한 단계 더 멀어지기만 한다.
+  check("b·c·g·a 는 배경·통계·그룹·아카이브",
+    [K("b"), K("c"), K("g"), K("a")], ["basemap", "stats", "satgroups", "archive"]);
+  check("대문자도 같다", [K("B"), K("C"), K("G"), K("A")],
+    ["basemap", "stats", "satgroups", "archive"]);
+  check("입력 중에는 전부 글자다",
+    [K("b", typing0), K("c", typing0), K("g", typing0), K("a", typing0)], [null, null, null, null]);
 
   // **입력 중에는 단축키가 없어야 한다.** 검색창에 "s" 를 치면 사이드바가 열리는 앱은
   // 검색을 쓸 수 없는데, 화면으로는 "글자가 안 써진다"로만 보인다.
@@ -883,6 +893,9 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("사이드바만", E({ sidebar: true }), "sidebar");
   check("상세가 사이드바보다 먼저", E({ sidebar: true, panel: true }), "panel");
   check("도움말이 가장 먼저", E({ help: true, panel: true, stats: true }), "help");
+  // 툴바 팝오버(P17-1)는 툴바에 붙어 가장 위에 뜬다 — 도움말 다음으로 닫힌다
+  check("툴바 팝오버가 상세·그룹보다 먼저", E({ more: true, panel: true, satGroups: true }), "more");
+  check("도움말은 툴바 팝오버보다도 먼저", E({ help: true, more: true }), "help");
   check("통과 패널이 통계보다 먼저", E({ pass: true, stats: true }), "pass");
   check("위성 컨트롤이 사이드바보다 먼저", E({ satCtrl: true, sidebar: true }), "satCtrl");
 
@@ -2240,7 +2253,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   const WIRING = [
     ["search", "input"], ["panel-close", "click"],
     ["toggle-terminator", "change"], ["toggle-sat", "change"], ["toggle-heat", "change"],
-    ["sat-groups-btn", "click"], ["tz-btn", "click"], ["basemap-btn", "click"],
+    ["sat-groups-btn", "click"], ["tz-btn", "click"], ["more-btn", "click"],
+    ["basemap-btn", "click"],
     ["stats-btn", "click"], ["stats-close", "click"],
     ["sat-track-btn", "click"], ["sat-obs-btn", "click"], ["sat-pass-btn", "click"],
     ["sat-ctrl-close", "click"], ["sat-ahead", "input"], ["pass-close", "click"],
@@ -2312,7 +2326,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ["search", "input", {}], ["panel-close", "click", {}],
     ["toggle-terminator", "change", CHECKBOX], ["toggle-sat", "change", CHECKBOX],
     ["toggle-heat", "change", CHECKBOX],
-    ["sat-groups-btn", "click", {}], ["tz-btn", "click", {}], ["basemap-btn", "click", {}],
+    ["sat-groups-btn", "click", {}], ["tz-btn", "click", {}], ["more-btn", "click", {}],
+    ["basemap-btn", "click", {}],
     ["stats-btn", "click", {}], ["stats-close", "click", {}],
     ["sat-track-btn", "click", {}], ["sat-obs-btn", "click", {}], ["sat-pass-btn", "click", {}],
     ["sat-ctrl-close", "click", {}], ["sat-ahead", "input", {}], ["pass-close", "click", {}],
@@ -2332,7 +2347,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
   try { flt2.fire("change", CHECKBOX); } catch (e) { threw.push(".flt: " + e.message); }
   // 단축키도 같은 경로다 — `/`·`Esc`·`S`·숫자키를 눌러 본다
-  for (const key of ["/", "Escape", "s", "1", "6", "7", "t", "?"]) {
+  for (const key of ["/", "Escape", "s", "1", "6", "7", "t", "?", "b", "c", "g", "a"]) {
     try { doc.fire("keydown", { key: key, target: { tagName: "BODY" }, preventDefault() {} }); }
     catch (e) { threw.push("keydown " + key + ": " + e.message); }
   }
@@ -2344,6 +2359,24 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     state.sidebarTab, "tonight");
   el("tab-launches").fire("click", {});
   check("발사 탭으로 되돌아온다", state.sidebarTab, "launches");
+
+  // ⋯ 도 같다 — 예외가 안 나는 것과 **실제로 열리는 것**은 다르다(P17-1).
+  el("toolbar-more").classList.add("hidden");   // 위 PRESSES 에서 한 번 눌렸으므로 되돌린다
+  el("more-btn").fire("click", {});
+  check("⋯ 를 누르면 툴바 팝오버가 열린다", el("toolbar-more").hidden, false);
+  el("more-btn").fire("click", {});
+  check("다시 누르면 닫힌다", el("toolbar-more").hidden, true);
+
+  // 접힌 버튼의 단축키가 **같은 함수**를 부르는지 — 팝오버를 열지 않고도 되어야 한다.
+  const basemapBefore = state.basemap;
+  doc.fire("keydown", { key: "b", target: { tagName: "BODY" }, preventDefault() {} });
+  check("B 는 팝오버를 열지 않고 배경을 바꾼다",
+    [state.basemap !== basemapBefore, el("toolbar-more").hidden], [true, true]);
+  doc.fire("keydown", { key: "c", target: { tagName: "BODY" }, preventDefault() {} });
+  check("C 는 통계 패널을 연다", el("stats-panel").hidden, false);
+  el("sat-groups").classList.add("hidden");
+  doc.fire("keydown", { key: "g", target: { tagName: "BODY" }, preventDefault() {} });
+  check("G 는 위성 그룹 팝오버를 연다", el("sat-groups").hidden, false);
 }
 
 // ── TLE 신선도 (S16-1) ───────────────────────────────────────────────────────
