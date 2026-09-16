@@ -151,7 +151,17 @@ function tleAgeText(days) {
   return `${Math.round(days)}일 전 관측`;
 }
 
-async function loadSatellites() {
+/**
+ * TLE 를 받아 satrec 을 다시 만든다.
+ *
+ * `keepSelection` 은 **주기 재로드(P19-1)** 에서만 참이다. 평소(그룹 변경·첫 켜기)에는
+ * 고르던 위성이 목록에서 사라질 수 있어 선택을 푸는 게 맞지만, **가만히 두었는데 2시간마다
+ * 보던 위성이 풀리면** 그건 기능이 아니라 고장으로 읽힌다(추적 모드까지 꺼진다).
+ */
+async function loadSatellites(keepSelection = false) {
+  // 재로드로 satrec 객체가 통째로 갈리므로, 유지할 때는 **NORAD 로 다시 붙인다**
+  const keepNorad = keepSelection && selectedSat ? String(selectedSat.norad) : null;
+  const keepTracking = keepSelection && tracking;
   try {
     deselectSatellite();  // 재로드로 satrec이 갈리므로 이전 선택/궤적은 해제
     const res = await window.pywebview.api.get_satellites(false, satGroups);
@@ -181,6 +191,15 @@ async function loadSatellites() {
     if (note && !res.stale) showStatus(`⚠ ${note}`);
     // 토글이 켜져 있을 때만 계산 루프 시작(기본 OFF)
     if (document.getElementById("toggle-sat").checked) startSatelliteLoop();
+    // 보던 위성을 **새 satrec 으로** 다시 붙인다. 목록에서 사라졌으면 조용히 포기한다 —
+    // 없는 위성을 억지로 되살리면 낡은 궤도로 그리게 된다.
+    if (keepNorad) {
+      const again = satrecs.find((r) => String(r.norad) === keepNorad);
+      if (again) {
+        selectSatellite(again);
+        if (keepTracking) tracking = true;
+      }
+    }
   } catch (e) {
     // 여기까지 오면 브릿지 자체가 실패한 것이다. 예전에는 콘솔에만 남겨 **화면은
     // 아무 말도 하지 않았다** — 목록은 "불러오는 중…" 그대로였다.

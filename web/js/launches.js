@@ -390,9 +390,21 @@ function onTimeline() {
 }
 
 // ── 발사 자동 갱신 ────────────────────────────────────────────────────────────
+/**
+ * 주기 갱신(P7-7 · P19-1).
+ *
+ * **위성도 같은 주기에 태운다.** 전에는 발사만 다시 받아, 켜 둔 시간만큼 TLE 이 늙었다 —
+ * 캐시 TTL 2시간이 있어도 **앱이 요청을 안 하면 TTL 은 할 일이 없다**. 실제 호출은
+ * 파이썬 캐시가 막으므로 요청은 **+0.5회/시간**, 재파싱 비용은 **194ms/5분**(실측)이다.
+ */
 function startAutoRefresh() {
   if (autoTimer) clearInterval(autoTimer);
-  autoTimer = setInterval(() => loadLaunches(false, true), AUTO_REFRESH_MS);
+  autoTimer = setInterval(() => {
+    loadLaunches(false, true);
+    // 레이어가 꺼져 있으면 부르지 않는다 — 안 보이는 것을 위해 쓸 예산이 없다
+    if (document.getElementById("toggle-sat").checked) loadSatellites(true);
+    tickTonightFreshness();   // 지나간 통과 줄 정리(P19-2) — 계산 없이 시각 비교만
+  }, AUTO_REFRESH_MS);
 }
 
 // ── 속보 티커 (임박한 예정 발사 + 최근 발사 결과 순환) ────────────────────────

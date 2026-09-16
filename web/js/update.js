@@ -36,11 +36,21 @@ function setUpdateBadge(info) {
 }
 
 /** 시작 직후 한 번 확인한다. 실패는 조용히 넘긴다(배지가 안 뜰 뿐). */
+// 업데이트 재확인 주기(P19-3). **요청은 늘지 않는다** — 파이썬 캐시 TTL 이 하루라
+// 그 안의 호출은 캐시가 받아낸다. 며칠 켜 두는 앱이라 부트 때 한 번으로는 모자랐다.
+const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000;
+
 async function initUpdateCheck() {
   if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.check_update) return;
   const info = await window.pywebview.api.check_update().catch(() => null);
   latestUpdateInfo = info;
   setUpdateBadge(info);
+}
+
+/** 켜 둔 채로도 새 버전을 알아채게 한다(P19-3). 배지 판정은 기존 경로를 그대로 탄다. */
+function startUpdateRecheck() {
+  if (updateTimer) clearInterval(updateTimer);
+  updateTimer = setInterval(initUpdateCheck, UPDATE_RECHECK_MS);
 }
 
 function bindUpdateBadge() {

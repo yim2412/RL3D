@@ -66,6 +66,7 @@ let favSats = new Set();
 // 업데이트 확인(P12-12). dismissedUpdate 는 "이 버전 배지는 그만 보겠다"는 뜻이라
 // 설정에 저장한다 — 세션 한정으로 두면 실행할 때마다 같은 배지를 다시 닫아야 한다.
 let latestUpdateInfo = null;
+let updateTimer = null;     // 업데이트 재확인 타이머(P19-3)
 let settingsDismissedUpdate = "";
 
 // 첫 실행 안내(P17-4). 설정을 읽은 뒤 세워지고, **발사가 처음 들어온 순간** 한 번만 쓴다.
@@ -74,6 +75,9 @@ let firstRun = false;
 // "오늘 밤" 계산은 조각으로 나눠 도므로(satpass.js) **취소 수단**이 필요하다.
 // 탭을 옮기거나 다시 그리면 앞선 계산이 뒤늦게 화면을 덮어쓰면 안 된다.
 let tonightToken = 0;
+// 마지막으로 계산한 "오늘 밤" 결과. 주기마다 **지나간 줄만 빼려고**(P19-2) 들고 있는다 —
+// 다시 계산하는 것은 61초짜리라 선택지가 아니다.
+let tonightRows = null;
 
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)

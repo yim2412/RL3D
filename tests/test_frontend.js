@@ -3086,5 +3086,164 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("위성이 실제로 들어왔다", state.satrecs.length, 1);
 }
 
+// ── 켜 둔 채로도 갱신된다 (P19-1·2·3) ────────────────────────────────────────
+// 자동 갱신은 **발사만** 다시 받았다 — 켜 둔 시간만큼 TLE 이 늙고, 열어 둔 통과 목록은
+// 멈춰 있고, 새 버전도 모른다. 셋 다 **예외 없이 조용히** 낡는다.
+{
+  const asked = [];
+  const { ctx, el, map, state, win } = loadApp({ realSatellite: true, api: {
+    get_settings: async () => ({ firstRunSeen: true }),
+    get_launches: async () => { asked.push("launches"); return { launches: [] }; },
+    get_satellites: async () => { asked.push("satellites"); return { satellites: [
+      { name: "ISS (ZARYA)", norad_id: 25544,
+        tle1: "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+        tle2: "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537" },
+      { name: "TIANGONG", norad_id: 48274,
+        tle1: "1 48274U 21035A   26255.50000000  .00020000  00000-0  20000-3 0  9990",
+        tle2: "2 48274  41.4700 100.0000 0005000  90.0000 270.0000 15.60000000 10000" }] }; },
+  } });
+  group("주기 갱신이 위성도 태운다 (P19-1)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track"])
+    map.stubSource(s);
+  // 주기 콜백을 테스트가 들고 있다가 직접 돌린다
+  let tick = null;
+  ctx.setInterval = (fn, ms) => { if (ms === 5 * 60 * 1000) tick = fn; return 1; };
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  map.fire("load");
+  await new Promise((r) => setImmediate(r));
+  check("주기 콜백이 걸린다", typeof tick, "function");
+
+  el("toggle-sat").checked = true;
+  await ctx.loadSatellites();
+  await new Promise((r) => setImmediate(r));
+  asked.length = 0;
+  if (tick) tick();
+  await new Promise((r) => setImmediate(r));
+  check("한 주기에 발사와 위성을 **둘 다** 부른다", asked.sort(), ["launches", "satellites"]);
+
+  // 레이어가 꺼져 있으면 부르지 않는다 — 안 보이는 것에 쓸 예산이 없다
+  el("toggle-sat").checked = false;
+  asked.length = 0;
+  if (tick) tick();
+  await new Promise((r) => setImmediate(r));
+  check("위성이 꺼져 있으면 위성은 안 부른다", asked, ["launches"]);
+
+  // **주기가 통과 목록 정리도 부르는가**(P19-2 의 배선). 순수 함수와 `tickTonightFreshness`
+  // 자체는 따로 재지만, 주기에 연결하는 한 줄이 빠지면 그 둘은 전부 통과한다 —
+  // 이 리포가 반복해 당한 구멍이라 여기서 실제로 눌러 본다.
+  // 시각을 주입할 수 없는 자리이므로 **실제로 지나간** 통과를 만든다.
+  state.sidebarTab = "tonight";
+  const past = Date.now() - 60000, future = Date.now() + 3600000;
+  state.tonightRows = [
+    { name: "지난 것", norad: 1, pass: { start: past - 600000, end: past, maxEl: 40, startAz: 0, endAz: 180 } },
+    { name: "남은 것", norad: 2, pass: { start: future, end: future + 600000, maxEl: 30, startAz: 0, endAz: 90 } },
+  ];
+  if (tick) tick();
+  await new Promise((r) => setImmediate(r));
+  check("주기가 지나간 통과 줄도 걷어낸다", state.tonightRows.map((r) => r.norad), [2]);
+}
+{
+  // **이 변경의 진짜 위험**: 재로드가 보던 위성을 풀어 버리는 것.
+  // 가만히 두었는데 2시간마다 선택이 풀리면 기능이 아니라 고장으로 읽힌다.
+  const { ctx, el, map, state, win } = loadApp({ realSatellite: true, api: {
+    get_settings: async () => ({ firstRunSeen: true }),
+    get_launches: async () => ({ launches: [] }),
+    get_satellites: async () => ({ satellites: [
+      { name: "ISS (ZARYA)", norad_id: 25544,
+        tle1: "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+        tle2: "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537" }] }),
+  } });
+  group("재로드가 보던 위성을 풀지 않는다 (P19-1)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  map.fire("load");
+  await new Promise((r) => setImmediate(r));
+  el("toggle-sat").checked = true;
+  await ctx.loadSatellites();
+  await new Promise((r) => setImmediate(r));
+
+  ctx.selectSatellite(state.satrecs[0]);
+  state.tracking = true;
+  check("위성을 골랐다", state.selectedSat && String(state.selectedSat.norad), "25544");
+
+  await ctx.loadSatellites(true);          // 주기 재로드
+  await new Promise((r) => setImmediate(r));
+  check("재로드 뒤에도 같은 위성이 선택돼 있다",
+    state.selectedSat && String(state.selectedSat.norad), "25544");
+  check("추적 모드도 살아남는다", state.tracking, true);
+  check("**새** satrec 으로 붙는다(옛 객체를 들고 있으면 낡은 궤도로 그린다)",
+    state.selectedSat === state.satrecs[0], true);
+
+  // 평소 경로(그룹 변경 등)는 지금처럼 선택을 푼다 — 사라진 위성을 붙들면 안 된다
+  await ctx.loadSatellites();
+  await new Promise((r) => setImmediate(r));
+  check("유지하라고 하지 않으면 선택을 푼다", state.selectedSat, null);
+
+  // 목록에서 사라졌으면 조용히 포기한다
+  ctx.selectSatellite(state.satrecs[0]);
+  ctx.window.pywebview.api.get_satellites = async () => ({ satellites: [] });
+  await ctx.loadSatellites(true);
+  await new Promise((r) => setImmediate(r));
+  check("사라진 위성은 되살리지 않는다", state.selectedSat, null);
+}
+{
+  const { ctx, state, el, map } = loadApp();
+  group("지나간 통과를 계산 없이 걷어낸다 (P19-2)");
+  const NOW = Date.parse("2026-09-16T22:00:00Z");
+  const row = (norad, endMs, visEnd) => ({ name: "S" + norad, norad,
+    pass: Object.assign({ start: endMs - 600000, end: endMs, maxEl: 40, startAz: 0, endAz: 180 },
+                        visEnd === undefined ? {} : { visEnd: visEnd }) });
+  const rows = [row(1, NOW - 60000), row(2, NOW + 60000), row(3, NOW + 3600000)];
+  check("끝난 통과만 뺀다", ctx.dropPastPasses(rows, NOW).map((r) => r.norad), [2, 3]);
+  check("가시 종료(visEnd)가 있으면 그것을 본다",
+    ctx.dropPastPasses([row(4, NOW + 600000, NOW - 1000)], NOW).map((r) => r.norad), []);
+  check("딱 지금 끝나는 것은 지난 것으로 본다",
+    ctx.dropPastPasses([row(5, NOW)], NOW).length, 0);
+  check("빈 목록·없는 목록에도 죽지 않는다",
+    [ctx.dropPastPasses([], NOW).length, ctx.dropPastPasses(null, NOW).length], [0, 0]);
+  check("pass 가 없는 줄은 버린다", ctx.dropPastPasses([{ name: "깨짐" }], NOW).length, 0);
+
+  // 주기 정리가 화면까지 닿는가
+  state.map = map;
+  state.sidebarTab = "tonight";
+  state.tonightRows = rows;
+  ctx.tickTonightFreshness(NOW);
+  check("지난 줄이 빠진 채 다시 그려진다", state.tonightRows.map((r) => r.norad), [2, 3]);
+  check("건수도 함께 준다", el("sidebar-count").textContent, "2건");
+
+  // 바뀐 게 없으면 다시 그리지 않는다 — 5분마다 목록이 깜빡이면 그게 더 방해다
+  el("sidebar-list").innerHTML = "표시";
+  ctx.tickTonightFreshness(NOW);
+  check("바뀐 게 없으면 화면을 건드리지 않는다", el("sidebar-list").innerHTML, "표시");
+
+  // 다른 탭이면 아무 일도 하지 않는다
+  state.sidebarTab = "launches";
+  state.tonightRows = rows;
+  ctx.tickTonightFreshness(NOW);
+  check("다른 탭이면 손대지 않는다", el("sidebar-list").innerHTML, "표시");
+}
+{
+  let asked = 0;
+  const { ctx, state, win, map } = loadApp({ api: {
+    get_settings: async () => ({ firstRunSeen: true }),
+    get_launches: async () => ({ launches: [] }),
+    check_update: async () => { asked++; return { update_available: false, latest: "v1.40.0" }; },
+  } });
+  group("업데이트를 켜 둔 채로도 확인한다 (P19-3)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  let recheck = null;
+  ctx.setInterval = (fn, ms) => { if (ms === 6 * 60 * 60 * 1000) recheck = fn; return 1; };
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  check("부트에서 한 번 확인한다", asked, 1);
+  check("재확인 타이머가 걸린다(부트 때 한 번으로 끝나지 않는다)", typeof recheck, "function");
+  if (typeof recheck === "function") recheck();
+  await new Promise((r) => setImmediate(r));
+  check("주기가 되면 다시 확인한다", asked, 2);
+}
+
   done();
 })();

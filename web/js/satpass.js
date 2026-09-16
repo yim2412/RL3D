@@ -273,6 +273,22 @@ function tonightJob(obs, hours = TONIGHT_HOURS, stepSec = 30) {
   };
 }
 
+/**
+ * 이미 지나간 통과를 걸러낸다. 순수 함수 (P19-2).
+ *
+ * 목록은 **탭을 열 때 한 번** 계산되고 그 뒤로 멈춰 있었다 — 몇 시간 켜 두면 *이미 끝난*
+ * 통과가 "오늘 밤 볼 만한 것"인 양 맨 위에 남는다(최대고도 순이라 더 그렇다).
+ * **다시 계산하면 안 된다** — 실측 61초짜리다. 끝난 줄을 빼는 데는 시각 비교면 충분하다.
+ */
+function dropPastPasses(rows, nowMs) {
+  return (rows || []).filter((r) => {
+    const p = r && r.pass;
+    if (!p) return false;
+    const end = p.visEnd !== undefined ? p.visEnd : p.end;
+    return !(end <= nowMs);      // 끝나지 않은 것만 남긴다
+  });
+}
+
 /** 끝까지 한 번에 돌린다 — 테스트와, 대상이 적을 때의 경로. */
 function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30) {
   const job = tonightJob(obs, hours, stepSec);

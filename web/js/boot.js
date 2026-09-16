@@ -79,5 +79,6 @@ window.addEventListener("pywebviewready", async () => {
   await initSatGroups();         // 그룹 체크박스를 satGroups 기준으로 생성
   setInterval(updateFreshness, 30000);  // "N분 전 갱신" 주기 갱신(P7-7)
   initUpdateCheck();             // 새 버전 확인(P12-12) — await 하지 않는다(지도 시작을 막지 않게)
+  startUpdateRecheck();          // 켜 둔 채로도 알아채게(P19-3) — 캐시 TTL 하루라 요청은 안 는다
   initMap();
 });

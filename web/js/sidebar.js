@@ -49,13 +49,27 @@ function renderTonightList() {
   const run = () => {
     if (token !== tonightToken) return;   // 그 사이 탭이 바뀌었거나 다시 그려졌다
     job.step();
-    if (job.done) { renderTonightRows(job.result()); return; }
+    if (job.done) { tonightRows = job.result(); renderTonightRows(tonightRows); return; }
     countEl.textContent = "계산 중";
     cont.innerHTML = `<div class="sb-empty">눈에 보이는 통과를 찾는 중… ` +
       `<b>${Math.round(job.progress * 100)}%</b><br />저궤도 위성 ${job.total}개를 봅니다.</div>`;
     setTimeout(run, 0);
   };
   run();
+}
+
+/**
+ * 주기마다 불려 **지나간 통과 줄만** 걷어낸다 (P19-2). 계산은 하지 않는다.
+ * 탭이 열려 있지 않거나 결과가 없으면 아무 일도 하지 않는다.
+ */
+function tickTonightFreshness(nowMs = Date.now()) {
+  // 시각을 **주입받는다** — 안에서 `Date.now()` 만 부르면 테스트가 "지난 통과"를 만들 수
+  // 없어 단언이 그냥 통과한다(이 리포가 반복해 당한 갈래다).
+  if (sidebarTab !== "tonight" || !tonightRows) return;
+  const left = dropPastPasses(tonightRows, nowMs);
+  if (left.length === tonightRows.length) return;   // 바뀐 게 없으면 다시 그리지 않는다
+  tonightRows = left;
+  renderTonightRows(left);
 }
 
 /** 계산이 끝난 뒤의 목록 그리기 — 위 실행부와 나눠 둔다(테스트가 여기만 부를 수 있게). */
