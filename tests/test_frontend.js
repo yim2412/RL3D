@@ -1460,6 +1460,52 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("index.html 과 하네스가 같은 파일을 같은 순서로 읽는다", inHtml, APP_FILES);
   check("모든 파일이 실제로 있다",
     inHtml.filter((f) => !fs.existsSync(path.join(__dirname, "..", "web", "js", f))), []);
+
+  // 오프라인 배경 데이터(P17-2)도 같은 갈래다 — `index.html` 에서 빠지면 `NE_LAND` 가
+  // undefined 가 되고, `buildMapStyle` 은 **정상적으로** 배경 없는 스타일을 돌려준다.
+  // 예외도 경고도 없고 화면에서만 사라진다.
+  check("index.html 이 lib/ne_land.js 를 싣는다", html.includes('src="lib/ne_land.js"'), true);
+  check("그 파일이 실제로 있다",
+    fs.existsSync(path.join(__dirname, "..", "web", "lib", "ne_land.js")), true);
+}
+
+// ── 오프라인 배경 (P17-2) ────────────────────────────────────────────────────
+// 원안(Esri 저줌 타일을 exe 에 번들)은 **라이선스에서 끊겼다** — Esri 문서가 "다른 앱을
+// 통해 오프라인용으로 타일을 조직적으로 요청하는 것"을 금지한다. 그래서 퍼블릭 도메인인
+// Natural Earth 육지 폴리곤으로 바꿨다.
+//
+// 조용히 깨지는 자리는 **순서**다: 육지 실루엣이 타일 위로 올라가도 예외가 안 나고,
+// 화면으로는 "위성사진이 좀 이상하다"로만 보인다.
+{
+  const { ctx } = loadApp();
+  group("지도 스타일 (buildMapStyle)");
+  const LAND = { type: "FeatureCollection", features: [
+    { type: "Feature", properties: {}, geometry: { type: "Polygon",
+      coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] } }] };
+
+  const layerOf = (style, id) => style.layers.find((l) => l.id === id) || {};
+  const st = ctx.buildMapStyle(LAND);
+  const ids = st.layers.map((l) => l.id);
+  check("바다 → 육지 → 해안선 → 다크 타일 → 위성사진 순", ids,
+    ["ocean", "neland", "necoast", "darkbase", "esri"]);
+  check("해안선은 같은 소스를 쓴다(추가 데이터 없이 대비만 올린다)",
+    layerOf(st, "necoast").source, "ne-land");
+  check("육지·해안선이 배경 타일보다 **아래**다(위면 타일을 가린다)",
+    [ids.indexOf("neland") < ids.indexOf("darkbase"),
+     ids.indexOf("necoast") < ids.indexOf("darkbase")], [true, true]);
+  // id 로 찾는다 — 인덱스로 집으면 순서가 틀어졌을 때 단언이 실패하는 대신 **예외로 죽어**
+  // 뒤 테스트가 통째로 안 돈다(2026-09-16 변이 실험에서 실제로 그랬다).
+  const layer = (id) => layerOf(st, id);
+  check("위성사진은 숨긴 채 시작한다", (layer("esri").layout || {}).visibility, "none");
+  check("육지 소스가 그 데이터를 쓴다", st.sources["ne-land"].data, LAND);
+
+  // 데이터를 못 읽어도 지도는 떠야 한다 — 배경만 빠진다
+  const bare = ctx.buildMapStyle(null);
+  check("데이터가 없으면 육지·해안선 없이 돈다",
+    bare.layers.map((l) => l.id), ["ocean", "darkbase", "esri"]);
+  check("없는 소스를 가리키지 않는다", bare.sources["ne-land"], undefined);
+  check("그래도 바다색은 남는다(지도가 흰 화면이 되지 않게)",
+    (bare.layers.find((l) => l.id === "ocean") || {}).paint["background-color"], "#070c16");
 }
 
 // ── 발사 순서표 (P13-1) ──────────────────────────────────────────────────────

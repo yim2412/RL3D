@@ -15,39 +15,63 @@ function scheduleCameraSave() {
   }, 1000);
 }
 
+/**
+ * 지도 스타일을 만든다 (P17-2 에서 `initMap` 에서 떼어냈다 — 레이어 **순서**가 조용히
+ * 깨지는 자리라 테스트가 직접 부를 수 있어야 한다).
+ *
+ * `neLand` 는 Natural Earth 육지 폴리곤(퍼블릭 도메인, `web/lib/ne_land.js`).
+ * **오프라인이면 배경 타일이 한 장도 안 온다** — 그때 지도가 통째로 빈 색이 되면
+ * 발사장·위성 점이 어디인지 알 수 없다. 육지 실루엣만이라도 깔아 두면 위치가 읽힌다.
+ * 온라인에서는 그 위를 타일이 덮으므로 **보이지 않는다** — 순서가 뒤집히면 저해상도
+ * 실루엣이 위성사진을 가리는데, 화면으로는 "지도가 좀 이상하다"로만 보인다.
+ */
+function buildMapStyle(neLand) {
+  const sources = {
+    // 다크 배경. 2026-09-11 에 CARTO(basemaps.cartocdn.com/dark_all)에서 옮겨 왔다 —
+    // CARTO 가 API 키를 요구하기 시작해 **HTTP 200 으로 워터마크가 찍힌 타일**을
+    // 보낸다. 오류가 아니라 정상 응답이라 오프라인 배지(P11-7)도 못 잡는다.
+    // Esri 는 위성사진 배경으로 이미 쓰는 호스트라 외부 의존이 늘지 않는다.
+    darkbase: {
+      type: "raster",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256,
+      maxzoom: 16,  // 서비스는 z23까지 광고하지만 실제 렌더는 저줌대라 16 위는 overzoom
+      attribution: "Esri, HERE, Garmin, © OpenStreetMap contributors",
+    },
+    // 위성사진 배경. 두 소스를 함께 두고 visibility 로 바꾼다
+    // (setStyle 로 갈아끼우면 마커·궤적·터미네이터 레이어를 전부 다시 만들어야 한다).
+    // 숨겨진 레이어는 타일을 받지 않으므로 평소 트래픽 부담도 없다.
+    esri: {
+      type: "raster",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: "Esri, Maxar, Earthstar Geographics",
+    },
+  };
+  // 바다색 → 육지 → 해안선 → 배경 타일 순. 타일이 오면 아래 셋은 완전히 가려진다.
+  const layers = [
+    { id: "ocean", type: "background", paint: { "background-color": "#070c16" } },
+  ];
+  if (neLand) {
+    sources["ne-land"] = { type: "geojson", data: neLand };
+    // 채움만으로는 **거의 안 읽힌다**(2026-09-16 오프라인 캡처 실측 — 육지가 바다와
+    // 구분되지 않았다). 같은 소스로 해안선을 한 겹 얹는다: 추가 용량 0, 대비는 크게 는다.
+    layers.push({ id: "neland", type: "fill", source: "ne-land",
+                  paint: { "fill-color": "#28344a" } });
+    layers.push({ id: "necoast", type: "line", source: "ne-land",
+                  paint: { "line-color": "#4a5c7a", "line-width": 0.8 } });
+  }
+  layers.push({ id: "darkbase", type: "raster", source: "darkbase" });
+  layers.push({ id: "esri", type: "raster", source: "esri", layout: { visibility: "none" } });
+  return { version: 8, sources: sources, layers: layers };
+}
+
 function initMap() {
   map = new maplibregl.Map({
     container: "map",
-    style: {
-      version: 8,
-      sources: {
-        // 다크 배경. 2026-09-11 에 CARTO(basemaps.cartocdn.com/dark_all)에서 옮겨 왔다 —
-        // CARTO 가 API 키를 요구하기 시작해 **HTTP 200 으로 워터마크가 찍힌 타일**을
-        // 보낸다. 오류가 아니라 정상 응답이라 오프라인 배지(P11-7)도 못 잡는다.
-        // Esri 는 위성사진 배경으로 이미 쓰는 호스트라 외부 의존이 늘지 않는다.
-        darkbase: {
-          type: "raster",
-          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
-          tileSize: 256,
-          maxzoom: 16,  // 서비스는 z23까지 광고하지만 실제 렌더는 저줌대라 16 위는 overzoom
-          attribution: "Esri, HERE, Garmin, © OpenStreetMap contributors",
-        },
-        // 위성사진 배경. 두 소스를 함께 두고 visibility 로 바꾼다
-        // (setStyle 로 갈아끼우면 마커·궤적·터미네이터 레이어를 전부 다시 만들어야 한다).
-        // 숨겨진 레이어는 타일을 받지 않으므로 평소 트래픽 부담도 없다.
-        esri: {
-          type: "raster",
-          tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution: "Esri, Maxar, Earthstar Geographics",
-        },
-      },
-      layers: [
-        { id: "darkbase", type: "raster", source: "darkbase" },
-        { id: "esri", type: "raster", source: "esri", layout: { visibility: "none" } },
-      ],
-    },
+    // 번들 데이터가 없어도 지도는 떠야 한다 — `lib/ne_land.js` 를 못 읽으면 배경만 빠진다
+    style: buildMapStyle(typeof NE_LAND !== "undefined" ? NE_LAND : null),
     center: savedCamera ? [savedCamera.lng, savedCamera.lat] : [10, 20],
     zoom: savedCamera ? savedCamera.zoom : 1.6,
     attributionControl: { compact: true },

@@ -132,6 +132,9 @@
 
   <script src="lib/maplibre-gl.js"></script>
   <script src="lib/satellite.min.js"></script>
+  <!-- Natural Earth 육지 폴리곤(퍼블릭 도메인) — 오프라인 배경(P17-2).
+       `tools/build_ne_land.py` 생성물이고, file:// 라 fetch 대신 스크립트로 싣는다. -->
+  <script src="lib/ne_land.js"></script>
   <!-- 클래식 스크립트라 최상위 let·function 이 파일 간에 공유된다 → 순서가 곧 의존 관계.
        state 는 가장 먼저, 실행 진입점인 boot 는 가장 마지막(P11-5). -->
   <script src="js/state.js"></script>
