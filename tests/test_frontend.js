@@ -2275,6 +2275,102 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     html.includes("sb-row") || html.includes("눈에 보이는 통과가 없습니다"), true);
   check("막힌 안내가 아니다", html.includes("관측 위치가 필요합니다"), false);
 }
+// ── "오늘 밤" 계산을 조각으로 나눈다 (2026-09-16) ────────────────────────────
+// 전에는 한 번에 다 돌았다 — 실측 **위성당 약 50ms**, 1,000건 52.8초 · 2,925건 115초.
+// 그동안 UI 스레드가 잡혀 **앱 전체가 얼어붙는다**. 기본 그룹(176건)으로도 9초라
+// "큰 그룹을 켜야만 나는 문제"가 아니었다. 예외는 안 나고 **앱이 멈출 뿐**이라
+// 도입(v1.7.0) 이래 테스트가 전부 초록이었다.
+{
+  const { ctx, state, map } = loadApp({ realSatellite: true });
+  group("오늘 밤 대상 (저궤도만)");
+  state.map = map;
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+    "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537");
+  state.satrecs = [
+    { name: "LEO", norad: 1, rec: rec, band: "leo" },
+    { name: "GEO", norad: 2, rec: rec, band: "geo" },
+    { name: "MEO", norad: 3, rec: rec, band: "meo" },
+    { name: "대역 미상", norad: 4, rec: rec },
+  ];
+  // GEO 는 200건에 14.3초로 **가장 비싼데** 육안 대상이 아니다(등급 10 이상).
+  // 이 탭의 이름이 곧 기준이다 — *눈으로 볼 만한* 통과.
+  check("GEO·MEO 는 대상에서 뺀다", ctx.tonightTargets().map((t) => t.norad), [1, 4]);
+  check("대역을 모르는 것은 남긴다(정보가 없다고 버리지 않는다)",
+    ctx.tonightTargets().some((t) => t.norad === 4), true);
+
+  group("오늘 밤 계산 조각 (tonightJob)");
+  state.satrecs = [1, 2, 3, 4, 5].map((n) => ({ name: "S" + n, norad: n, rec: rec, band: "leo" }));
+  const job = ctx.tonightJob(state.observer);
+  check("대상 수를 미리 안다(진행률을 말할 수 있다)", job.total, 5);
+  check("시작 전에는 끝난 것이 아니다", job.done, false);
+  check("한 조각만 돌 수 있다", (job.step(2), job.done), false);
+  check("진행률이 는다", job.progress, 0.4);
+  job.step(2);
+  check("아직 남았다", job.done, false);
+  check("마지막 조각에서 끝난다", job.step(2), true);
+  check("끝나면 진행률은 1", job.progress, 1);
+
+  // **쪼개서 돌아도 결과가 같아야 한다** — 이게 이 변경의 유일한 위험이다
+  const chunked = job.result();
+  const whole = ctx.computeTonight(state.observer);
+  check("조각으로 돈 결과가 한 번에 돈 것과 같다",
+    chunked.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)),
+    whole.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)));
+  check("대상이 없으면 즉시 끝난다(빈 화면에서 헛돌지 않는다)",
+    (state.satrecs = [], ctx.tonightJob(state.observer).done), true);
+}
+{
+  // 렌더가 **실제로 쪼개 도는가.** setTimeout 을 테스트가 들고 있다가 직접 돌린다 —
+  // 이걸 안 하면 "진행 표시가 뜬다"까지만 보고 이어지는지는 못 잰다.
+  const { ctx, state, el, map } = loadApp({ realSatellite: true });
+  group("오늘 밤 렌더 (조각 실행·취소)");
+  state.map = map;
+  state.sidebarTab = "tonight";
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+    "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537");
+  state.satrecs = Array.from({ length: 30 },
+    (_, i) => ({ name: "S" + i, norad: i + 1, rec: rec, band: "leo" }));
+
+  const queue = [];
+  ctx.setTimeout = (fn) => { queue.push(fn); return queue.length; };
+
+  ctx.renderTonightList();
+  check("첫 조각은 바로 돈다(누르자마자 반응이 있다)", queue.length, 1);
+  check("아직 끝나지 않았으면 진행률을 보여준다",
+    el("sidebar-list").innerHTML.includes("찾는 중"), true);
+  check("몇 개를 보는지도 말한다", el("sidebar-list").innerHTML.includes("30개"), true);
+  check("그동안 건수 자리는 계산 중이라고 적는다", el("sidebar-count").textContent, "계산 중");
+
+  // 큐에서 꺼내 부를 때 **방어 없이 집지 않는다** — 예약이 빠지는 변이에서 단언이
+  // 실패하는 대신 TypeError 로 죽어 뒤 테스트가 통째로 안 돈다(2026-09-16 에 실제로 그랬다).
+  const next = queue.shift();
+  check("다음 조각이 함수로 예약돼 있다", typeof next, "function");
+  // **조각 크기에 기대지 않는다** — `TONIGHT_CHUNK` 를 조정하면 몇 조각인지가 달라진다
+  // (25→10 으로 줄이자 이 테스트가 깨졌다). 예약된 것을 다 비울 때까지 돌린다.
+  if (typeof next === "function") next();
+  let guard = 0;
+  while (queue.length && guard++ < 100) queue.shift()();
+  check("이어 돌면 목록이 완성된다",
+    el("sidebar-list").innerHTML.includes("찾는 중"), false);
+  check("끝나면 건수가 숫자로 바뀐다", /^\d+건$/.test(el("sidebar-count").textContent), true);
+
+  // **취소**: 계산 중에 탭이 바뀌면 뒤늦은 조각이 화면을 덮으면 안 된다
+  queue.length = 0;
+  ctx.renderTonightList();
+  const pending = queue.shift();
+  check("취소 실험을 할 조각이 예약돼 있다", typeof pending, "function");
+  state.sidebarTab = "launches";
+  ctx.renderSidebar([]);                       // 다른 탭이 화면을 차지한다
+  state.tonightToken++;                        // 새 렌더가 일어난 것과 같은 상태
+  const before = el("sidebar-list").innerHTML;
+  if (typeof pending === "function") pending();   // 뒤늦은 조각이 도착
+  check("취소된 계산은 화면을 덮지 않는다", el("sidebar-list").innerHTML, before);
+}
+
 // ── bindUI 가 거는 배선 전부 (2026-09-14 정기 점검) ───────────────────────────
 // **배선 18개를 지워도 688건이 전부 통과했다.** 검색창·패널 닫기·탭 전환·타임라인
 // 슬라이더·새로고침·아카이브 불러오기가 통째로 죽어도 테스트가 초록이었다는 뜻이다.

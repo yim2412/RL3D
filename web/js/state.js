@@ -71,6 +71,10 @@ let settingsDismissedUpdate = "";
 // 첫 실행 안내(P17-4). 설정을 읽은 뒤 세워지고, **발사가 처음 들어온 순간** 한 번만 쓴다.
 let firstRun = false;
 
+// "오늘 밤" 계산은 조각으로 나눠 도므로(satpass.js) **취소 수단**이 필요하다.
+// 탭을 옮기거나 다시 그리면 앞선 계산이 뒤늦게 화면을 덮어쓰면 안 된다.
+let tonightToken = 0;
+
 let tlMin = null, tlMax = null;   // 타임라인 net 범위(ms)
 let timelineMax = null;           // 이 시각 이하의 발사만 표시(null=무제한)
 let timelineInited = false;

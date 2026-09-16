@@ -42,12 +42,31 @@ function renderTonightList() {
     if (b) b.addEventListener("click", openObsPopover);
     return;
   }
-  const rows = computeTonight(observer);
+  // 계산을 **조각으로 나눠** 돈다 — 한 번에 돌면 위성당 50ms 씩 UI 스레드를 잡아
+  // 기본 그룹(176건)에서도 9초간 앱이 얼어붙는다(2026-09-16 실측).
+  const job = tonightJob(observer);
+  const token = ++tonightToken;
+  const run = () => {
+    if (token !== tonightToken) return;   // 그 사이 탭이 바뀌었거나 다시 그려졌다
+    job.step();
+    if (job.done) { renderTonightRows(job.result()); return; }
+    countEl.textContent = "계산 중";
+    cont.innerHTML = `<div class="sb-empty">눈에 보이는 통과를 찾는 중… ` +
+      `<b>${Math.round(job.progress * 100)}%</b><br />저궤도 위성 ${job.total}개를 봅니다.</div>`;
+    setTimeout(run, 0);
+  };
+  run();
+}
+
+/** 계산이 끝난 뒤의 목록 그리기 — 위 실행부와 나눠 둔다(테스트가 여기만 부를 수 있게). */
+function renderTonightRows(rows) {
+  const cont = document.getElementById("sidebar-list");
+  const countEl = document.getElementById("sidebar-count");
   countEl.textContent = `${rows.length}건`;
   if (!rows.length) {
     // 조건을 못 채운 것이지 고장이 아니다 — 기준을 함께 보여준다.
     cont.innerHTML = `<div class="sb-empty">향후 24시간 안에 <b>눈에 보이는 통과가 없습니다.</b><br />` +
-      `(관측지가 어둡고 = 태양고도 −6° 미만, 위성이 햇빛을 받는 통과만 셉니다)</div>`;
+      `(관측지가 어둡고 = 태양고도 −6° 미만, 위성이 햇빛을 받는 통과만 셉니다. 저궤도만 셉니다)</div>`;
     return;
   }
   cont.innerHTML = rows.map((r) => {

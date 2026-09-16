@@ -30,7 +30,7 @@ const STATE_KEYS = [
   "tileFails", "badgeDismissed", "observer", "timelineMax", "satTimer", "savedCamera",
   "tlMin", "tlMax", "timelineInited", "archiveLaunches", "loadedYears", "truncatedYears", "tracking",
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
-  "trackAheadMin", "futureMarker", "firstRun", "satLoadError", "lastLaunchLoad",
+  "trackAheadMin", "futureMarker", "firstRun", "satLoadError", "lastLaunchLoad", "tonightToken",
   "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId", "settingObserver", "observerMarker",
   // 읽기 전용 표도 여기로 꺼낸다 — 최상위 const 는 컨텍스트 객체에 안 보인다
   "CITIES",

@@ -204,11 +204,20 @@ const TONIGHT_HOURS = 24;
  * 관심 위성이라도 **TLE 가 로드돼 있지 않으면 훑을 수 없다** — 그건 그룹 선택의 문제지
  * 이 함수가 해결할 수 있는 것이 아니다.
  */
+/**
+ * "오늘 밤" 계산 대상. **저궤도만** 본다 (2026-09-16).
+ *
+ * 전에는 로드된 위성 **전부**를 돌았다. 그런데 실측해 보니 **가장 비싼 것이 가장 쓸모없는
+ * 결과**를 냈다: GEO 는 200건에 14.3초로 LEO(7.6초)의 두 배인데 — 정지궤도는 지평선 위에
+ * *계속* 떠 있어 통과 구간이 길게 잡힌다 — 정작 **육안 관측 대상이 아니다**(등급 10 이상).
+ * MEO(GPS)도 같다. 이 탭의 이름이 곧 기준이다: *눈으로 볼 만한* 통과.
+ */
 function tonightTargets() {
   const seen = new Set();
   const out = [];
   for (const r of satrecs) {
     if (!r || !r.rec) continue;          // 방어 — 없으면 통과 계산에서 죽는다
+    if (r.band && r.band !== "leo") continue;   // GEO·MEO 는 육안 대상이 아니다
     if (seen.has(r.norad)) continue;
     seen.add(r.norad);
     out.push(r);
@@ -216,18 +225,57 @@ function tonightTargets() {
   return out;
 }
 
-function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30) {
+// 한 조각에 처리할 위성 수. **조각 하나가 곧 UI 가 멈추는 최대 시간**이다.
+// 2026-09-16 실측(실제 캐시 2,256건): 25건이면 한 조각 중앙 675ms · 최대 796ms 로
+// 클릭이 한 박자 밀리는 게 느껴진다 → 10건(≈270ms)으로 줄였다.
+// 더 줄이면 조각 사이 오버헤드와 진행률 다시 그리기가 늘기 시작한다.
+const TONIGHT_CHUNK = 10;
+
+/**
+ * "오늘 밤" 계산을 **조각으로 나눠 도는 작업**을 만든다 (2026-09-16).
+ *
+ * 전에는 한 번에 다 돌았다 — 실측 **위성당 약 50ms**, 1,000건이면 **52.8초**다.
+ * 그동안 UI 스레드가 잡혀 있어 **앱 전체가 얼어붙는다**(마우스도 안 먹는다).
+ * 기본 그룹(`stations`+`visual` 176건)으로도 **9초**라, 큰 그룹을 켜야만 드러나는
+ * 문제가 아니었다. 계산량 자체는 그대로 두고 **쪼개서** 돌린다.
+ *
+ * 순수 구조로 둔 것은 테스트 때문이다: `setTimeout` 으로 돌리는 부분을 얇게 남기고,
+ * 판정·집계는 `step()` 을 직접 불러 잰다.
+ */
+function tonightJob(obs, hours = TONIGHT_HOURS, stepSec = 30) {
   const start = Date.now(), end = start + hours * 3600 * 1000;
   const table = sunTable(obs, start, end, stepSec * 1000);
+  const targets = tonightTargets();
   const rows = [];
-  for (const r of tonightTargets()) {
-    let passes;
-    try { passes = computePasses(r.rec, obs, hours, stepSec, 10, table); } catch (_) { continue; }
-    for (const p of passes) {
-      if (p.visible) rows.push({ name: r.name, norad: r.norad, pass: p });
-    }
-  }
-  // 최대고도 순 — "가장 높이 뜨는 것"이 가장 잘 보이는 것이다.
-  rows.sort((a, b) => (b.pass.visMaxEl || b.pass.maxEl) - (a.pass.visMaxEl || a.pass.maxEl));
-  return rows;
+  let i = 0;
+  return {
+    total: targets.length,
+    get done() { return i >= targets.length; },
+    get progress() { return targets.length ? i / targets.length : 1; },
+    /** 다음 조각을 처리하고 끝났는지 돌려준다. */
+    step(n = TONIGHT_CHUNK) {
+      const until = Math.min(i + n, targets.length);
+      for (; i < until; i++) {
+        const r = targets[i];
+        let passes;
+        try { passes = computePasses(r.rec, obs, hours, stepSec, 10, table); } catch (_) { continue; }
+        for (const p of passes) {
+          if (p.visible) rows.push({ name: r.name, norad: r.norad, pass: p });
+        }
+      }
+      return this.done;
+    },
+    /** 최대고도 순 — "가장 높이 뜨는 것"이 가장 잘 보이는 것이다. */
+    result() {
+      rows.sort((a, b) => (b.pass.visMaxEl || b.pass.maxEl) - (a.pass.visMaxEl || a.pass.maxEl));
+      return rows;
+    },
+  };
+}
+
+/** 끝까지 한 번에 돌린다 — 테스트와, 대상이 적을 때의 경로. */
+function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30) {
+  const job = tonightJob(obs, hours, stepSec);
+  while (!job.step(Infinity)) { /* 한 번에 끝난다 */ }
+  return job.result();
 }
