@@ -1,12 +1,23 @@
 /* RL3D — settings.json 저장/복원과 마지막 갱신 시각 표시. */
 
 // ── 마지막 갱신 시각 (P7-7) ───────────────────────────────────────────────────
+/**
+ * 툴바의 "N분 전 갱신"(P7-7).
+ *
+ * **분 고정이면 오래된 캐시에서 읽히지 않는다** — 실측 `🕒 1800분 전 갱신`(30시간 된
+ * 캐시 + 429, 2026-09-16). 평소엔 TTL 15분이라 두 자리를 넘지 않아 **오프라인·429 일
+ * 때만** 드러나고, 그때가 하필 이 표시를 가장 봐야 할 때다.
+ *
+ * 단계 표기는 새로 만들지 않고 **티커의 `agoText` 를 그대로 쓴다**(분→시간→일→년).
+ * 같은 뜻을 두 벌로 두면 한쪽만 고치게 된다 — 이 리포에 이미 `tleAgeText` 까지 셋이 될 뻔했다.
+ */
 function updateFreshness() {
   const el = document.getElementById("freshness");
   if (!el) return;
   if (lastLaunchLoad == null) { el.textContent = ""; return; }
   const mins = Math.floor((Date.now() - lastLaunchLoad) / 60000);
-  el.textContent = "🕒 " + (mins <= 0 ? "방금 갱신" : `${mins}분 전 갱신`);
+  el.textContent = "🕒 " + (mins <= 0 ? "방금 갱신"
+    : `${agoText(new Date(lastLaunchLoad).toISOString())} 갱신`);
 }
 
 // ── 설정 저장/복원 (P8-9) ─────────────────────────────────────────────────────

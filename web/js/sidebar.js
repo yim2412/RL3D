@@ -71,9 +71,13 @@ function renderSatList() {
   if (!satrecs.length) {
     countEl.textContent = "0개";
     const on = document.getElementById("toggle-sat").checked;
-    cont.innerHTML = `<div class="sb-empty">${on
-      ? "위성을 불러오는 중…"
-      : "위성 레이어가 꺼져 있습니다.<br />툴바의 <b>위성</b>을 켜면 목록이 채워집니다."}</div>`;
+    // **실패했는데 "불러오는 중…"이라고 말하면 안 된다**(P18-3). 상태줄은 403 을 알리는데
+    // 이쪽만 영원히 로딩 중이라, 같은 화면의 두 자리가 서로 다른 말을 하고 있었다.
+    const note = satLoadError
+      ? `위성 데이터를 받지 못했습니다.<br />${escapeHtml(satLoadError)}<br />툴바의 <b>↻ 갱신</b>으로 다시 시도할 수 있습니다.`
+      : (on ? "위성을 불러오는 중…"
+            : "위성 레이어가 꺼져 있습니다.<br />툴바의 <b>위성</b>을 켜면 목록이 채워집니다.");
+    cont.innerHTML = `<div class="sb-empty">${note}</div>`;
     return;
   }
   const q = document.getElementById("sat-search").value.trim().toLowerCase();
@@ -105,11 +109,35 @@ function pickSatellite(norad) {
   if (d) map.flyTo({ center: [d.lng, d.lat], zoom: 3.5, speed: 1.2 });
 }
 
+/**
+ * 발사 목록이 비었을 때 **왜 비었는지**. 순수 함수 (P18-1).
+ *
+ * 사이드바 네 탭 중 발사 탭만 빈 상태 문구가 없어 **빈 칸**이 남아 있었다(2026-09-16 실측).
+ * 원인이 둘이고 **할 말이 다르다**: 데이터를 못 받은 것(할 수 있는 일은 갱신)과
+ * 걸러진 것(할 수 있는 일은 조건 풀기). 둘을 한 문구로 뭉개면 둘 다 틀린 안내가 된다.
+ *
+ * `total` 은 걸러지기 **전** 건수다 — 0 이면 받은 것이 없다는 뜻이다.
+ */
+function launchListEmptyNote(total, query) {
+  if (!total) {
+    return "표시할 발사가 없습니다.<br />데이터를 아직 받지 못했습니다 — 툴바의 <b>↻ 갱신</b>을 눌러보세요.";
+  }
+  if (query) {
+    return `<b>${escapeHtml(query)}</b> 와 맞는 발사가 없습니다.<br />검색어를 지우면 ${total}건이 다시 보입니다.`;
+  }
+  return `조건에 맞는 발사가 없습니다.<br />툴바의 결과 필터나 타임라인을 확인해 보세요 (전체 ${total}건).`;
+}
+
 function renderSidebar(list) {
   if (sidebarTab === "favs") { renderFavList(); return; }  // 관심 탭도 발사 갱신에 따라 바뀐다
   if (sidebarTab !== "launches") return;  // 위성 탭이 열려 있으면 발사 목록으로 덮지 않는다
   const cont = document.getElementById("sidebar-list");
   document.getElementById("sidebar-count").textContent = `${list.length}건`;
+  if (!list.length) {
+    const q = (document.getElementById("search").value || "").trim();
+    cont.innerHTML = `<div class="sb-empty">${launchListEmptyNote(allLaunches.length, q)}</div>`;
+    return;
+  }
   const upcoming = list.filter((d) => d.outcome === "upcoming")
     .sort((a, b) => new Date(a.net) - new Date(b.net));
   const rest = list.filter((d) => d.outcome !== "upcoming")

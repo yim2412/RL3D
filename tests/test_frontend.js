@@ -2836,5 +2836,133 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("툴바의 연도 선택도 같이 맞춘다", a2.el("arch-year").value, String(lastYear));
 }
 
+// ── 실패·빈 상태를 화면이 말하는가 (P18-1·2·3) ───────────────────────────────
+// 셋 다 **예외가 안 나고 화면만 침묵하거나 거짓말하는** 갈래다. 2026-09-16 에 실패를
+// 주입해 재 보고서야 나왔다 — 그때까지 테스트는 전부 초록이었다.
+{
+  const { ctx } = loadApp();
+  group("발사 목록 빈 상태 (launchListEmptyNote)");
+  // 원인이 둘이고 **할 말이 다르다**: 못 받은 것(→ 갱신) 대 걸러진 것(→ 조건 풀기).
+  const none = ctx.launchListEmptyNote(0, "");
+  check("한 건도 못 받았으면 갱신을 가리킨다", none.includes("갱신"), true);
+  check("그때는 필터 얘기를 하지 않는다(틀린 안내다)", none.includes("필터"), false);
+
+  const q = ctx.launchListEmptyNote(98, "팰컨");
+  check("검색으로 걸러졌으면 검색어를 되비춘다", q.includes("팰컨"), true);
+  check("지우면 몇 건이 돌아오는지 말한다", q.includes("98건"), true);
+  check("검색어를 이스케이프한다(XSS)",
+    ctx.launchListEmptyNote(3, "<img src=x onerror=alert(1)>").includes("<img"), false);
+
+  const f = ctx.launchListEmptyNote(98, "");
+  check("검색어가 없으면 필터·타임라인을 가리킨다",
+    [f.includes("필터"), f.includes("타임라인")], [true, true]);
+  check("그때도 전체 건수를 말한다", f.includes("98건"), true);
+  check("세 갈래가 서로 다른 문구다", new Set([none, q, f]).size, 3);
+}
+{
+  const { ctx, el, state, map } = loadApp();
+  group("발사 목록 빈 상태 (렌더까지)");
+  state.map = map;
+  map.stubSource("launches");
+  state.sidebarTab = "launches";
+  state.allLaunches = [
+    { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", name: "A" },
+    { id: "2", net: "2026-09-01T00:00:00Z", outcome: "success", name: "B" },
+  ];
+  ctx.renderSidebar([]);
+  check("빈 목록을 **빈 칸으로 두지 않는다**(2026-09-16 에 여기가 통째로 비어 있었다)",
+    el("sidebar-list").innerHTML.trim().length > 0, true);
+  check("건수는 그대로 0건", el("sidebar-count").textContent, "0건");
+  check("받은 것이 있으므로 '걸러졌다' 쪽으로 말한다",
+    el("sidebar-list").innerHTML.includes("필터"), true);
+
+  state.allLaunches = [];
+  ctx.renderSidebar([]);
+  check("받은 것이 없으면 갱신 쪽으로 말한다",
+    el("sidebar-list").innerHTML.includes("갱신"), true);
+
+  // 목록이 있으면 안내가 아니라 행을 그린다 — 안내가 남아 있으면 그게 더 나쁘다
+  ctx.renderSidebar(state.allLaunches = [
+    { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", name: "A" }]);
+  check("목록이 있으면 안내를 그리지 않는다",
+    el("sidebar-list").innerHTML.includes("sb-empty"), false);
+}
+{
+  const { ctx, el, state } = loadApp();
+  group("갱신 시각 표기 (updateFreshness)");
+  // **분 고정이면 오래된 캐시에서 안 읽힌다** — 실측 `🕒 1800분 전 갱신`(30시간 + 429).
+  const at = (mins) => {
+    state.lastLaunchLoad = Date.now() - mins * 60000;
+    ctx.updateFreshness();
+    return el("freshness").textContent;
+  };
+  check("방금 받았으면 방금", at(0), "🕒 방금 갱신");
+  check("한 시간 안쪽은 분", at(30), "🕒 30분 전 갱신");
+  check("한 시간을 넘으면 시간으로 바뀐다", at(90), "🕒 1시간 전 갱신");
+  check("하루를 넘으면 일로 바뀐다(1800분 이라고 하지 않는다)", at(1800), "🕒 1일 전 갱신");
+  check("한 달도 일로 읽힌다", at(43200), "🕒 30일 전 갱신");
+  check("받은 적이 없으면 아무 말도 안 한다",
+    (state.lastLaunchLoad = null, ctx.updateFreshness(), el("freshness").textContent), "");
+  // 표기를 두 벌로 두지 않았다는 확인 — 티커와 같은 함수를 쓴다
+  check("티커의 표기와 같은 계단을 쓴다",
+    at(1800).includes(ctx.agoText(new Date(Date.now() - 1800 * 60000).toISOString())), true);
+}
+{
+  const { ctx, el, state } = loadApp();
+  group("위성 조회 실패를 목록도 말한다 (P18-3)");
+  state.satrecs = [];
+  state.sidebarTab = "sats";
+
+  el("toggle-sat").checked = false;
+  state.satLoadError = null;
+  ctx.renderSatList();
+  check("꺼져 있으면 켜라고 안내한다", el("sidebar-list").innerHTML.includes("꺼져 있습니다"), true);
+
+  el("toggle-sat").checked = true;
+  ctx.renderSatList();
+  check("켜져 있고 실패는 없으면 불러오는 중", el("sidebar-list").innerHTML.includes("불러오는 중"), true);
+
+  state.satLoadError = "서버가 접근을 거부했습니다(403).";
+  ctx.renderSatList();
+  const html = el("sidebar-list").innerHTML;
+  check("실패했으면 **불러오는 중이라고 말하지 않는다**", html.includes("불러오는 중"), false);
+  check("실패 사유를 그대로 보여준다", html.includes("403"), true);
+  check("다시 시도할 길을 가리킨다", html.includes("갱신"), true);
+  // 한 상자 안에서 같은 말을 두 번 하지 않는다 — 브릿지 실패 경로에서 실제로 겹쳤다
+  state.satLoadError = "앱에서 위성 계산을 시작하지 못했습니다.";
+  ctx.renderSatList();
+  const dup = el("sidebar-list").innerHTML.match(/받지 못했습니다|불러오지 못했습니다/g) || [];
+  check("실패 문구가 한 번만 나온다", dup.length, 1);
+}
+{
+  // 실패 기록이 **실제 로드 경로에서** 세워지는가 — 순수 렌더만 재면 이 배선이 빠져도 통과한다
+  const { ctx, el, map, state, win } = loadApp({ realSatellite: true, api: {
+    get_settings: async () => ({ firstRunSeen: true }),
+    get_launches: async () => ({ launches: [] }),
+    get_satellites: async () => ({ satellites: [], error: "서버가 접근을 거부했습니다(403)." }),
+  } });
+  group("위성 실패 기록 (로드 경로)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  map.fire("load");
+  await new Promise((r) => setImmediate(r));
+  check("실패 전에는 기록이 없다", state.satLoadError, null);
+
+  await ctx.loadSatellites();
+  check("조회가 실패하면 기록한다", state.satLoadError, "서버가 접근을 거부했습니다(403).");
+  check("상태줄도 함께 말한다", el("status").textContent.includes("403"), true);
+
+  // 다시 성공하면 기록이 **지워져야** 한다 — 안 지우면 영영 실패 문구가 남는다
+  ctx.window.pywebview.api.get_satellites = async () => ({ satellites: [
+    { name: "ISS (ZARYA)", norad_id: 25544,
+      tle1: "1 25544U 98067A   26255.50000000  .00016717  00000-0  10270-3 0  9005",
+      tle2: "2 25544  51.6400 208.9163 0006703 130.5360 325.0288 15.72125391563537" }] });
+  await ctx.loadSatellites();
+  check("다시 성공하면 기록을 지운다", state.satLoadError, null);
+  check("위성이 실제로 들어왔다", state.satrecs.length, 1);
+}
+
   done();
 })();

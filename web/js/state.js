@@ -12,6 +12,9 @@ let allLaunches = [];       // 라이브+아카이브 합본(id 중복 제거) �
 let tickerTimer = null;
 
 let satrecs = [];           // { name, norad, rec } — satellite.js SGP4 레코드
+// 위성 조회가 실패했는가(P18-3). 상태줄은 실패를 말하는데 **사이드바는 "불러오는 중…"에
+// 머물러** 두 화면이 서로 다른 말을 했다 — 목록도 알아야 하므로 여기 남긴다.
+let satLoadError = null;
 // 위성 메타데이터(P12-5). { norad(문자열): {type, owner, launch_date, ...} }
 // **없어도 위성은 그대로 뜬다** — 상세 패널이 있는 값만 채운다.
 let satcat = {};

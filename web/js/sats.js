@@ -164,6 +164,9 @@ async function loadSatellites() {
         if (rec && !rec.error) satrecs.push({ name: s.name, norad: s.norad_id, rec, band: orbitBand(rec) });
       } catch (_) { /* 이 위성만 건너뜀 */ }
     }
+    // 목록 탭도 실패를 알아야 한다(P18-3) — 건진 위성이 하나도 없을 때만 실패로 본다.
+    // 일부만 받아졌으면 그건 목록에 그려지므로 "불러오는 중"으로 보이지 않는다.
+    satLoadError = satrecs.length ? null : (res.error || null);
     loadSatcat();   // 메타데이터는 따로·늦게 와도 된다(위성 표시를 막지 않는다)
     updateSatCount();
     if (sidebarTab === "sats") renderSatList();  // 목록 탭이 열려 있으면 즉시 반영
@@ -179,7 +182,14 @@ async function loadSatellites() {
     // 토글이 켜져 있을 때만 계산 루프 시작(기본 OFF)
     if (document.getElementById("toggle-sat").checked) startSatelliteLoop();
   } catch (e) {
+    // 여기까지 오면 브릿지 자체가 실패한 것이다. 예전에는 콘솔에만 남겨 **화면은
+    // 아무 말도 하지 않았다** — 목록은 "불러오는 중…" 그대로였다.
     console.error("위성 로드 실패", e);
+    // 사유는 **사이드바 첫 줄과 겹치지 않게** 적는다 — 목록은 이미 "받지 못했습니다"로
+    // 시작하므로 같은 말을 넣으면 한 상자 안에서 두 번 말하게 된다(2026-09-16 프로브에서 봤다).
+    satLoadError = "앱에서 위성 계산을 시작하지 못했습니다.";
+    showStatus("⚠ 위성 데이터를 불러오지 못했습니다.");
+    if (sidebarTab === "sats") renderSatList();
   }
 }
 
