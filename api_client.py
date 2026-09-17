@@ -15,6 +15,8 @@ import json
 import logging
 import os
 import sys
+import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -179,27 +181,145 @@ def cleanup_legacy_cache():
     return removed
 
 
+def _atomic_write_json(path, obj, **dump_kw):
+    """같은 디렉터리의 임시 파일에 다 쓴 뒤 **바꿔 끼운다**(P22-1).
+
+    `open(path, "w")` 는 **여는 순간 파일을 자른다.** 실측(2026-09-17):
+      · 연 직후 파일 크기가 **0바이트** — 아직 한 글자도 안 썼는데 이미 비어 있다
+      · 48KB 설정을 300번 쓰는 동안, 동시에 읽던 쪽이 **빈 설정을 45번** 봤다
+      · 반쯤 쓰인 파일을 `load_settings()` 가 읽으면 `ValueError` → `{}` 로 삼킨다.
+        그 뒤 무엇이든 한 번 저장하면 **키 5개가 1개로 줄고 파일은 정상 JSON 이 된다 —
+        되돌릴 방법이 없다.** 날아가는 것은 관측지·관심 목록·위성 그룹·필터·배경이다.
+
+    `os.replace` 는 같은 볼륨에서 원자적이라, 읽는 쪽은 **이전 완전본 아니면 새 완전본**만 본다.
+    그래서 임시 파일도 **같은 디렉터리**에 만든다(다른 볼륨이면 원자성이 깨진다).
+
+    실패하면 **기존 파일을 그대로 둔다** — 못 쓰는 것이 반쯤 쓰는 것보다 낫다.
+    """
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False, **dump_kw)
+        # Windows 는 **대상 파일이 열려 있으면 교체를 거부한다**(WinError 5).
+        # 읽기는 순식간이라 잠깐 기다렸다 다시 하면 대개 된다 — 2026-09-17 실측에서
+        # 읽기가 쉬지 않고 도는 극단적 상황에도 3회 안에 들어왔다.
+        for attempt in range(FILE_RETRIES):
+            try:
+                os.replace(tmp, path)
+                return True
+            except OSError:
+                if attempt == FILE_RETRIES - 1:
+                    raise
+                time.sleep(FILE_RETRY_WAIT)
+        return True
+    except OSError:
+        # 남은 임시 파일은 치운다 — 안 그러면 %APPDATA% 에 .tmp-*.json 이 쌓인다.
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _cache_write(name, data):
     os.makedirs(CACHE_DIR, exist_ok=True)
     try:
-        with open(_cache_path(name), "w", encoding="utf-8") as f:
-            # 데이터를 **봉투에 담아** 모양 버전을 함께 남긴다(_cache_read 가 대조한다).
-            json.dump({"schema": CACHE_SCHEMA, "data": data}, f, ensure_ascii=False)
+        # 데이터를 **봉투에 담아** 모양 버전을 함께 남긴다(_cache_read 가 대조한다).
+        _atomic_write_json(_cache_path(name), {"schema": CACHE_SCHEMA, "data": data})
     except OSError as e:
         # 치명적이지 않다(다음 호출이 다시 받는다) — 다만 매번 느려지므로 기록은 남긴다.
         log.warning("캐시 쓰기 실패 %s: %s", name, e)
 
 
 # ── 설정 저장 (P8-9) ──────────────────────────────────────────────────────────
-def load_settings():
-    """settings.json 반환(없으면 빈 dict)."""
+# 파일이 잠깐 잠기는 순간을 넘기기 위한 재시도(P22-1). 값은 실측으로 정했다 —
+# 읽기·교체 모두 순식간이라 3회 × 20ms 면 충분하고, 사용자가 느낄 지연도 아니다.
+FILE_RETRIES = 3
+FILE_RETRY_WAIT = 0.02
+
+
+def _read_settings(path=None):
+    """`(설정, 저장해도 되나)` — **"못 읽었다"와 "내용이 못 쓰게 됐다"를 가른다**(P22-1).
+
+    이 구분이 없던 것이 진짜 결함이었다. 예전 `load_settings` 는 모든 실패를 `{}` 로
+    삼켰고, `save_settings` 가 그 `{}` 위에 patch 를 얹어 저장하면서 **관측지·관심 목록·
+    위성 그룹·필터·배경이 한 번에 사라졌다** — 그리고 파일은 정상 JSON 이 되어 되돌릴 수 없었다.
+
+    실패는 두 갈래이고 **대응이 반대다**:
+
+    · **잠깐 못 읽는 것** — 교체·읽기가 겹치는 순간(Windows `WinError 5`, 실측 2026-09-17),
+      또는 누가 쓰는 중이라 반쯤 읽히는 것. 재시도로 넘어가고, 그래도 안 되면
+      **저장을 건너뛴다**(덮어쓰면 나머지를 잃는다).
+    · **내용이 못 쓰게 된 것** — 파일은 멀쩡히 읽히는데 JSON 이 아니다(옛 판이 쓰다 만 것 등).
+      재시도해도 영원히 그대로다. 여기서 저장을 막으면 **설정이 다시는 저장되지 않는다** —
+      그래서 **망가진 파일을 옆에 치워 두고**(`settings.bad.json`) 새로 시작한다.
+
+    둘을 가르는 기준은 **바이트가 변하는가**다. 재시도 사이에 내용이 그대로면 아무도 쓰고
+    있지 않다는 뜻이라 *못 쓰게 된 것*이고, 달라졌으면 누가 쓰는 중이라 *잠깐*이다.
+
+    파일이 **아예 없는 것은 실패가 아니다** — 첫 실행이 그렇다.
+    """
+    path = path or SETTINGS_PATH
+    if not os.path.exists(path):
+        return {}, True
+    prev = None
+    last = None
+    for attempt in range(FILE_RETRIES):
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+            data = json.loads(raw.decode("utf-8"))
+            return (data if isinstance(data, dict) else {}), True
+        except OSError as e:
+            last, prev = e, None          # 열지도 못했다 — 내용 비교가 불가능하다
+        except (ValueError, UnicodeDecodeError) as e:
+            last = e
+            if prev is not None and prev == raw:
+                # 두 번 읽어도 같은 내용인데 JSON 이 아니다 → 아무도 안 쓰고 있다.
+                _quarantine_settings(path)
+                return {}, True
+            prev = raw
+        if attempt < FILE_RETRIES - 1:
+            time.sleep(FILE_RETRY_WAIT)
+    log.warning("설정 읽기 실패(%d회 시도) %s: %s", FILE_RETRIES, path, last)
+    return {}, False
+
+
+def _quarantine_settings(path):
+    """못 쓰게 된 설정을 `*.bad.json` 으로 옮겨 둔다 — 지우지는 않는다.
+
+    이 앱에서 설정은 **다시 만들기 번거로운 것**을 담는다(관측지·관심 목록·위성 그룹).
+    새로 시작하더라도 원본은 남겨야 사람이 열어 볼 수 있다.
+    """
+    bad = path + ".bad.json"
     try:
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError) as e:
-        log.debug("설정 읽기 실패: %s", e)
-        return {}
+        os.replace(path, bad)
+        log.warning("설정 파일을 읽을 수 없어 %s 로 옮기고 새로 시작한다", bad)
+    except OSError as e:
+        log.warning("망가진 설정을 옮기지 못했다 %s: %s", path, e)
+
+
+def load_settings():
+    """settings.json 반환(없거나 못 읽으면 빈 dict).
+
+    **못 읽은 것과 없는 것을 구분해야 하면 `_read_settings()` 를 쓴다** —
+    이 함수의 빈 dict 는 그 둘을 합쳐 버린다. 저장 경로가 그래서 저쪽을 쓴다.
+    """
+    return _read_settings()[0]
+
+
+# 읽고-고치고-쓰기를 한 번에 하나만 하게 한다(P22-3).
+#
+# **pywebview 는 브릿지 호출마다 새 스레드를 만든다**(`webview/util.py` 의
+# `Thread(target=_call); thread.start()`). 그래서 JS 가 저장을 연달아 부르면 두 스레드가
+# 동시에 읽고-고치고-쓴다 — 실측 200회 중 **1회(0.5%)** 한쪽 값이 사라졌다.
+# 원자적 쓰기로는 **안 고쳐진다**: 원자성은 *반쯤 쓰임*을 막지 *덮어쓰기*를 막지 않는다.
+#
+# ⚠ 이 락은 **한 프로세스 안**에서만 듣는다. 인스턴스가 둘이면 여전히 서로를 덮어쓴다
+#   (그쪽은 P22-2 의 단일 인스턴스 가드가 다룰 문제다).
+_settings_lock = threading.Lock()
 
 
 def save_settings(patch):
@@ -207,18 +327,26 @@ def save_settings(patch):
 
     프론트(필터·토글·관측)와 파이썬(창 위치)이 서로 다른 최상위 키만 쓰므로
     얕은 병합으로 충돌 없이 각자 값을 보존한다.
+
+    읽기·병합·쓰기를 `_settings_lock` 으로 묶는다 — 이 셋이 갈라지면 한쪽 값이 사라진다.
     """
-    data = load_settings()
-    if isinstance(patch, dict):
-        data.update(patch)
-    os.makedirs(APP_DIR, exist_ok=True)
-    try:
-        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except OSError as e:
-        # 설정이 저장 안 되면 창 위치·필터가 매번 초기화된다 — 사용자가 겪는 증상이다.
-        log.warning("설정 저장 실패 %s: %s", SETTINGS_PATH, e)
-    return data
+    with _settings_lock:
+        data, ok = _read_settings()
+        if isinstance(patch, dict):
+            data.update(patch)
+        if not ok:
+            # **못 읽었으면 쓰지 않는다**(P22-1). 여기서 저장하면 읽지 못한 나머지 설정이
+            # 통째로 지워지고 **파일은 정상 JSON 이 되어 되돌릴 수 없다.**
+            # 이번 변경 하나를 잃는 쪽이 전부를 잃는 쪽보다 낫다.
+            log.warning("설정을 읽지 못해 저장을 건너뛴다(기존 파일 보존): %s", SETTINGS_PATH)
+            return data
+        try:
+            _atomic_write_json(SETTINGS_PATH, data, indent=2)
+        except OSError as e:
+            # 설정이 저장 안 되면 창 위치·필터가 매번 초기화된다 — 사용자가 겪는 증상이다.
+            # **기존 파일은 그대로 살아 있다**(원자적 교체라 덮어쓰다 만 상태가 없다).
+            log.warning("설정 저장 실패 %s: %s", SETTINGS_PATH, e)
+        return data
 
 
 # ── 발사(Launch Library 2) ────────────────────────────────────────────────────

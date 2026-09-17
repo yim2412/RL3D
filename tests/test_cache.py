@@ -10,12 +10,14 @@
 HTTP 는 `api_client._http_get` 을 갈아끼워 막는다. 캐시·설정 경로는 모듈 전역을 임시
 디렉터리로 재대입한다 — **이름 import 가 아니라 모듈 경유**여야 재대입이 보인다(전역 규칙 8번).
 """
+import builtins
 import json
 import logging
 import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.error
@@ -504,6 +506,167 @@ class SchemaVersion(CacheTestBase):
         self.serve(json.dumps({"results": []}), json.dumps({"results": []}))
         api_client.get_launches()
         self.assertEqual(len(self.calls), 2, "옛 모양 캐시를 그대로 썼다")
+
+
+class TestSettingsDurability(CacheTestBase):
+    """설정이 **조용히 전부 사라지던** 자리 (P22-1 · P22-3).
+
+    2026-09-17 실측: `save_settings` 가 `open(path, "w")` 로 자르고 썼다.
+      · 연 직후 파일 크기가 **0바이트**(아직 한 글자도 안 썼는데)
+      · 48KB 설정을 300번 쓰는 동안 동시에 읽던 쪽이 **빈 설정을 45번** 봤다
+      · 반쯤 쓰인 파일 → `{}` → 그 위에 한 번 저장하면 **키 5개가 1개로 줄고
+        파일은 정상 JSON 이 된다.** 관측지·관심 목록·위성 그룹·필터·배경이 영구 소멸
+      · pywebview 는 브릿지 호출마다 스레드를 만들어(`util.py`) 두 저장이 겹친다 —
+        200회 중 **1회(0.5%)** 한쪽 값이 사라졌다
+
+    전부 **예외가 안 나고 값만 조용히 사라지는** 종류다.
+    """
+
+    def _read_raw(self):
+        with open(api_client.SETTINGS_PATH, "rb") as f:
+            return f.read()
+
+    def test_target_file_is_never_opened_for_writing(self):
+        """대상 파일을 **쓰기로 열지 않는다** — 여는 순간 잘리기 때문이다.
+
+        ⚠ 처음엔 "쓰는 동안 읽어서 빈 설정이 나오나"로 쟀는데 **타이밍에 기대는 테스트라
+          옛 비원자적 방식으로 되돌려도 통과했다**(2026-09-17 변이로 확인).
+          P21-2 와 같은 교훈이다 — 이런 자리는 통계가 아니라 **구조**를 재야 한다.
+        """
+        api_client.save_settings({"observer": {"lat": 37.5}})
+        real_open = builtins.open
+        opened_for_write = []
+
+        def watch_open(path, *a, **kw):
+            mode = a[0] if a else kw.get("mode", "r")
+            if str(path) == api_client.SETTINGS_PATH and ("w" in mode or "a" in mode or "+" in mode):
+                opened_for_write.append(mode)
+            return real_open(path, *a, **kw)
+
+        with mock.patch.object(builtins, "open", watch_open):
+            api_client.save_settings({"window": {"x": 1}})
+        self.assertEqual(opened_for_write, [],
+                         "settings.json 을 직접 쓰기로 열었다 — 여는 순간 잘린다")
+        self.assertIn("observer", api_client.load_settings())
+
+    def test_cache_target_is_never_opened_for_writing(self):
+        """캐시도 같다 — 같은 헬퍼를 쓰는지 구조로 잰다."""
+        path = api_client._cache_path("launches.json")
+        real_open = builtins.open
+        opened_for_write = []
+
+        def watch_open(p2, *a, **kw):
+            mode = a[0] if a else kw.get("mode", "r")
+            if str(p2) == path and ("w" in mode or "a" in mode or "+" in mode):
+                opened_for_write.append(mode)
+            return real_open(p2, *a, **kw)
+
+        with mock.patch.object(builtins, "open", watch_open):
+            api_client._cache_write("launches.json", [{"id": "1"}])
+        self.assertEqual(opened_for_write, [], "캐시 파일을 직접 쓰기로 열었다")
+
+    def test_readers_never_see_an_empty_file_while_writing(self):
+        """쓰는 **도중에** 읽어도 온전해야 한다.
+
+        위 구조 테스트를 보완하는 실사용 확인이다. **이것만으로는 부족하다** —
+        타이밍이 안 맞으면 깨진 구현에서도 통과한다(위 주석 참조).
+        """
+        api_client.save_settings({"favorites": {"sats": [str(i) for i in range(2000)]},
+                                  "observer": {"lat": 37.5, "lng": 127.0}})
+        empties = []
+        stop = threading.Event()
+
+        def reader():
+            while not stop.is_set():
+                if not api_client.load_settings():
+                    empties.append(1)
+
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
+        try:
+            for _ in range(120):
+                api_client.save_settings({"camera": {"zoom": 4.5}})
+        finally:
+            stop.set()
+            t.join(timeout=3)
+        self.assertEqual(empties, [], "쓰는 도중 빈 설정이 읽혔다")
+        self.assertIn("observer", api_client.load_settings())
+
+    def test_concurrent_saves_do_not_lose_each_other(self):
+        """두 스레드가 서로 다른 키를 저장해도 **둘 다 남아야** 한다."""
+        for _ in range(60):
+            api_client.save_settings({"base": 1})
+            ready = threading.Barrier(2)
+
+            def a():
+                ready.wait()
+                api_client.save_settings({"observer": {"lat": 37.5}})
+
+            def b():
+                ready.wait()
+                api_client.save_settings({"window": {"x": 1}})
+
+            ta, tb = threading.Thread(target=a), threading.Thread(target=b)
+            ta.start(); tb.start(); ta.join(); tb.join()
+            got = api_client.load_settings()
+            self.assertIn("observer", got, "동시 저장에서 관측지가 사라졌다")
+            self.assertIn("window", got, "동시 저장에서 창 위치가 사라졌다")
+
+    def test_unreadable_settings_are_not_overwritten(self):
+        """**못 읽었으면 쓰지 않는다** — 쓰면 나머지가 영구히 사라진다."""
+        api_client.save_settings({"observer": {"lat": 37.5}, "favorites": {"sats": ["1"]}})
+        before = self._read_raw()
+
+        real_open = builtins.open
+        calls = {"n": 0}
+
+        def flaky_open(path, *a, **kw):
+            # 설정을 **읽을 때만** 실패시킨다(쓰기·임시파일은 통과).
+            if str(path) == api_client.SETTINGS_PATH and "r" in (a[0] if a else kw.get("mode", "r")):
+                calls["n"] += 1
+                raise OSError(5, "액세스가 거부되었습니다")
+            return real_open(path, *a, **kw)
+
+        with mock.patch.object(builtins, "open", flaky_open):
+            api_client.save_settings({"window": {"x": 999}})
+        self.assertGreater(calls["n"], 1, "읽기를 재시도하지 않았다")
+        self.assertEqual(self._read_raw(), before, "못 읽었는데 덮어썼다")
+
+    def test_permanently_broken_file_is_quarantined_not_stuck(self):
+        """영구히 못 쓰게 된 파일이면 **옆으로 치우고 새로 시작**한다.
+
+        여기서 저장을 막으면 설정이 **다시는 저장되지 않는다** —
+        이 회귀는 2026-09-17 에 실제로 한 번 만들었다가 기존 테스트가 잡았다.
+        """
+        os.makedirs(api_client.APP_DIR, exist_ok=True)
+        with open(api_client.SETTINGS_PATH, "w", encoding="utf-8") as f:
+            f.write("이건 JSON 이 아니다")
+        api_client.save_settings({"a": 1})
+        self.assertEqual(api_client.load_settings().get("a"), 1, "새로 시작하지 못했다")
+        bad = api_client.SETTINGS_PATH + ".bad.json"
+        self.assertTrue(os.path.exists(bad), "망가진 파일을 남기지 않고 지웠다")
+        with open(bad, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "이건 JSON 이 아니다")
+
+    def test_failed_write_keeps_previous_file(self):
+        """교체가 끝내 실패해도 **기존 설정은 살아 있어야** 한다."""
+        api_client.save_settings({"observer": {"lat": 37.5}})
+        before = self._read_raw()
+        with mock.patch("os.replace", side_effect=OSError(5, "거부")):
+            api_client.save_settings({"window": {"x": 1}})
+        self.assertEqual(self._read_raw(), before, "교체 실패가 기존 파일을 망가뜨렸다")
+        # 임시 파일을 남기지 않는다 — 남으면 %APPDATA% 에 쌓인다
+        leftovers = [n for n in os.listdir(api_client.APP_DIR) if n.startswith(".tmp-")]
+        self.assertEqual(leftovers, [], "임시 파일이 남았다")
+
+    def test_cache_write_is_atomic_too(self):
+        """캐시도 같은 헬퍼를 쓴다 — 반쯤 쓰인 캐시가 남지 않는다."""
+        with mock.patch("os.replace", side_effect=OSError(5, "거부")):
+            api_client._cache_write("launches.json", [{"id": "1"}])
+        self.assertFalse(os.path.exists(api_client._cache_path("launches.json")),
+                         "교체가 실패했는데 캐시 파일이 생겼다")
+        leftovers = [n for n in os.listdir(api_client.CACHE_DIR) if n.startswith(".tmp-")]
+        self.assertEqual(leftovers, [], "캐시 임시 파일이 남았다")
 
 
 if __name__ == "__main__":
