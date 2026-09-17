@@ -53,7 +53,9 @@ function bindUI() {
     if (sidebarTab === "tonight") renderTonightList();
   });
   document.getElementById("sat-search").addEventListener("input", renderSatList);
-  document.getElementById("tl-range").addEventListener("input", onTimeline);
+  // 끄는 동안(input)은 지도만, 놓을 때(change)는 목록까지 — P20-3
+  document.getElementById("tl-range").addEventListener("input", () => onTimeline(true));
+  document.getElementById("tl-range").addEventListener("change", () => onTimeline(false));
   populateArchiveYears();
   document.getElementById("arch-load").addEventListener("click", () =>
     loadArchive(+document.getElementById("arch-year").value));

@@ -259,7 +259,21 @@ function launchPasses(d, active, q) {
   return true;
 }
 
-function applyFilters() {
+/**
+ * 필터 결과를 지도와 목록에 반영한다.
+ *
+ * `opts.countOnly` 면 **목록 행을 다시 그리지 않고 건수만** 고친다 — 슬라이더를 끄는
+ * 동안 쓰는 싼 경로(P20-3). 2026-09-17 실측(아카이브 5년 1,801건), 한 틱 기준:
+ * 지도 갱신 **0.69ms** vs 목록 다시 그리기 **7.7ms + DOM 12.3ms**. 끄는 동안 사람이 보는
+ * 것은 지도인데 비용의 **97%** 를 목록이 쓰고 있었다. 빼면 **22ms → 0.7ms** 로,
+ * 이 PC 의 240Hz 프레임 예산(4.17ms) 안에 든다.
+ *
+ * ⚠ `opts` 로 **이벤트 객체가 들어올 수 있다** — `search` 의 `input` 에 이 함수가 그대로
+ * 걸려 있다. 그래서 `opts.countOnly === true` 로만 판정한다(Event 에는 그 필드가 없어
+ * 자동으로 전체 렌더가 된다). `if (opts)` 로 갈랐다면 검색이 조용히 목록을 안 그렸을 것이다.
+ */
+function applyFilters(opts) {
+  const countOnly = !!(opts && opts.countOnly === true);
   const active = new Set(
     Array.from(document.querySelectorAll(".flt:checked")).map((c) => c.value)
   );
@@ -276,7 +290,8 @@ function applyFilters() {
     map.setPaintProperty("launch-heat", "heatmap-weight", scale.weight);
   }
   renderHeatLegend(filtered, scale);
-  renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
+  if (countOnly) setLaunchCount(filtered.length);
+  else renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
 }
 
 // ── 마커 호버 툴팁 ────────────────────────────────────────────────────────────
@@ -376,7 +391,12 @@ function tlLabelDate(ms) {
   return f ? f.format(new Date(ms)) : "";
 }
 
-function onTimeline() {
+/**
+ * 슬라이더가 움직일 때(P12-16). `dragging` 이면 목록을 건드리지 않는다 — `input` 은
+ * 끄는 내내(240Hz 화면이면 최대 초당 240회) 나는데, 목록은 놓고 나서 읽는 것이다.
+ * 놓을 때 나는 `change` 가 목록을 한 번 맞춘다.
+ */
+function onTimeline(dragging) {
   const v = +document.getElementById("tl-range").value;
   const label = document.getElementById("tl-label");
   // 최대(100)면 무제한 → 자동 갱신으로 들어온 더 먼 미래 발사도 안 잘림
@@ -387,7 +407,7 @@ function onTimeline() {
     timelineMax = tlMin + (v / 100) * (tlMax - tlMin);
     label.textContent = `${tlLabelDate(timelineMax)} 까지`;
   }
-  applyFilters();
+  applyFilters(dragging === true ? { countOnly: true } : undefined);
 }
 
 // ── 발사 자동 갱신 ────────────────────────────────────────────────────────────

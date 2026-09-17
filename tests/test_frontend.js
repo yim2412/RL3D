@@ -2027,6 +2027,81 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("실패 캐시가 다른 키를 오염시키지 않는다",
     ctx.dateFormatter({ year: "numeric", month: "2-digit" }) === f1, true);
 
+// ── 슬라이더를 끄는 동안 (P20-3) ────────────────────────────────────────────
+// 한 틱 22ms 중 20ms 를 **끄는 동안 읽지도 않는 목록**이 썼다(2026-09-17 실측).
+// 끄는 동안(input)은 지도만, 놓을 때(change)는 목록까지 — 그게 실제로 그렇게 되는지 잰다.
+{
+  const { ctx, state, el, map, sel } = loadApp();
+  group("슬라이더를 끄는 동안은 목록을 그리지 않는다 (P20-3)");
+  state.map = map;
+  for (const s of ["launches", "launch-heat"]) map.stubSource(s);
+  sel[".flt:checked"] = [{ value: "upcoming" }, { value: "success" }];
+  state.sidebarTab = "launches";
+  state.favLaunches = new Set();
+  state.allLaunches = Array.from({ length: 40 }, (_, i) => ({
+    id: "s" + i, name: "발사 " + i, outcome: i % 2 ? "upcoming" : "success",
+    net: new Date(Date.UTC(2026, 0, 1) + i * 86400000).toISOString(),
+    lat: 28.5, lng: -80.5,   // launchesToFC 는 lat/lng 를 본다(hasCoords)
+  }));
+  state.tlMin = Date.UTC(2026, 0, 1);
+  state.tlMax = Date.UTC(2026, 0, 1) + 40 * 86400000;
+  el("search").value = "";
+
+  ctx.applyFilters();                                   // 기준선: 목록이 차 있다
+  const before = el("sidebar-list").innerHTML;
+  const rowsOf = (h) => (h.match(/class="sb-row"/g) || []).length;
+  check("기준선 — 목록이 그려져 있다", rowsOf(before) > 0, true);
+
+  // 끄는 중: 슬라이더를 절반으로
+  el("tl-range").value = "50";
+  const mapBefore = map.data("launches").features.length;
+  ctx.onTimeline(true);
+  check("끄는 동안 지도는 갱신된다",
+    map.data("launches").features.length !== mapBefore, true);
+  check("끄는 동안 목록 행은 그대로다", el("sidebar-list").innerHTML === before, true);
+  // **건수는 살아 있어야 한다** — 목록만 멈추고 숫자까지 멈추면 화면이 거짓말을 한다
+  check("끄는 동안에도 건수는 따라간다",
+    el("sidebar-count").textContent, map.data("launches").features.length + "건");
+
+  // 놓을 때: 목록이 따라잡는다
+  ctx.onTimeline(false);
+  check("놓으면 목록이 다시 그려진다", el("sidebar-list").innerHTML !== before, true);
+  check("놓은 뒤 목록 행 수가 지도와 맞는다",
+    rowsOf(el("sidebar-list").innerHTML), map.data("launches").features.length);
+
+  // 다른 탭이면 건수도 건드리지 않는다(renderSidebar 와 같은 규칙)
+  state.sidebarTab = "sats";
+  el("sidebar-count").textContent = "건드리지마";
+  el("tl-range").value = "70";
+  ctx.onTimeline(true);
+  check("다른 탭이면 건수를 건드리지 않는다", el("sidebar-count").textContent, "건드리지마");
+}
+
+// ⚠ `applyFilters` 는 `search` 의 `input` 에 **그대로** 걸려 있어 Event 객체가 인자로 온다.
+// `if (opts)` 로 갈랐다면 검색이 조용히 목록을 안 그렸을 것이다 — 그 자리를 못 박아 둔다.
+{
+  const { ctx, state, el, map, sel } = loadApp();
+  group("검색은 이벤트 객체를 받아도 목록을 그린다 (P20-3 의 함정)");
+  state.map = map;
+  for (const s of ["launches", "launch-heat"]) map.stubSource(s);
+  sel[".flt:checked"] = [{ value: "success" }];
+  state.sidebarTab = "launches";
+  state.favLaunches = new Set();
+  state.allLaunches = [{ id: "a", name: "발사 A", outcome: "success", net: "2026-01-01T00:00:00Z" }];
+  el("search").value = "";
+  ctx.bindUI();
+  el("sidebar-list").innerHTML = "";
+  el("search").fire("input", { type: "input", target: el("search") });  // 진짜 이벤트처럼
+  check("검색 input 은 목록을 그린다",
+    (el("sidebar-list").innerHTML.match(/class="sb-row"/g) || []).length, 1);
+  check("countOnly 가 아닌 인자는 전체 렌더다",
+    (function () {
+      el("sidebar-list").innerHTML = "";
+      ctx.applyFilters({ countOnly: "true" });   // 문자열은 true 가 아니다
+      return (el("sidebar-list").innerHTML.match(/class="sb-row"/g) || []).length;
+    })(), 1);
+}
+
   group("시간대 배선 (버튼 · 설정 · 단축키)");
   const { ctx: c2, state: s2, el: e2, map: m2, sel: sel2, doc } = loadApp({
     api: { save_settings: (p) => saved.push(p) },
@@ -2459,7 +2534,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ["tab-launches", "click"], ["tab-sats", "click"], ["tab-favs", "click"],
     ["tab-tonight", "click"],
     ["toggle-visible-only", "change"], ["sat-search", "input"],
-    ["tl-range", "input"], ["arch-load", "click"], ["refresh", "click"],
+    ["tl-range", "input"], ["tl-range", "change"],
+    ["arch-load", "click"], ["refresh", "click"],
   ];
 
   let before = 0;

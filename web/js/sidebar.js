@@ -209,6 +209,16 @@ function renderSidebar(list) {
       ? `<div class="sb-empty">…외 ${ordered.length - SIDEBAR_CAP}건. 검색·필터로 좁히거나 타임라인을 당겨 보세요.</div>` : "");
 }
 
+/**
+ * 발사 목록의 건수 표시만 고친다 — 행은 그대로 둔다(P20-3).
+ * 목록을 다시 그리는 것의 1/20 도 안 되는 비용이라, 슬라이더를 끄는 동안에도
+ * **숫자는 살아 있게** 할 수 있다. 다른 탭이 열려 있으면 손대지 않는다(`renderSidebar` 와 같은 규칙).
+ */
+function setLaunchCount(n) {
+  if (sidebarTab !== "launches") return;
+  document.getElementById("sidebar-count").textContent = `${n}건`;
+}
+
 function toggleSidebar() {
   const sb = document.getElementById("sidebar");
   const show = sb.classList.contains("hidden");
