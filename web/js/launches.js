@@ -371,8 +371,9 @@ async function loadArchive(year) {
 }
 
 function tlLabelDate(ms) {
-  return new Date(ms).toLocaleDateString("ko-KR",
+  const f = dateFormatter(
     Object.assign({ year: "numeric", month: "long", day: "numeric" }, tzOpts()));
+  return f ? f.format(new Date(ms)) : "";
 }
 
 function onTimeline() {

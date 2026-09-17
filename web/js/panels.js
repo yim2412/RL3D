@@ -236,8 +236,9 @@ function windowText(d) {
   if (isNaN(s) || isNaN(e) || e <= s) return null;
   const mins = Math.round((e - s) / 60000);
   if (mins < 2) return null;  // 순간 발사(instantaneous)면 net 과 같아 의미 없음
-  const hhmm = (dt) => dt.toLocaleTimeString("ko-KR",
-    Object.assign({ hour: "2-digit", minute: "2-digit" }, tzOpts()));
+  const f = dateFormatter(Object.assign({ hour: "2-digit", minute: "2-digit" }, tzOpts()));
+  if (!f) return null;
+  const hhmm = (dt) => f.format(dt);
   const dur = mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60 ? (mins % 60) + "분" : ""}`.trim() : `${mins}분`;
   return `${hhmm(s)} ~ ${hhmm(e)} (${dur})`;
 }

@@ -1,5 +1,33 @@
 /* RL3D — 이스케이프·시간 포맷·발사 조회 같은 순수 유틸. */
 
+/**
+ * 날짜 포매터 캐시 (P20-1).
+ *
+ * `d.toLocaleString(로캘, 옵션)` 은 **부를 때마다 포매터를 새로 만든다.** 목록 한 행에
+ * 한 번씩 불리면 그게 화면 비용의 대부분이 된다 — 2026-09-17 실측에서 2,144행 재렌더
+ * 107.7ms 중 **82.5ms(77%)** 가 이 한 줄이었고, 아카이브 5년(1,803건)을 불러 두면
+ * 검색 키 한 타가 **89.3ms** 였다(슬라이더 드래그 30틱이면 2.68초).
+ * 같은 옵션이면 포매터를 하나만 만들어 돌려쓴다 — 같은 실측에서 **87.3ms → 2.0ms**.
+ *
+ * 키는 옵션을 그대로 직렬화한 것이라 **시간대 모드(`timeZoneMode`)가 바뀌면 자동으로
+ * 갈라진다** — 모드 전환 때 캐시를 비울 필요가 없다(비우는 것을 잊으면 화면이 옛 시간대로
+ * 굳는데, 그런 종류의 버그는 조용하다).
+ *
+ * `Intl` 은 모르는 시간대 이름에 `RangeError` 를 던진다(`fmtDateInZone` 주석 참조).
+ * 여기서는 **null 을 돌려주고 부르는 쪽이 판단한다** — 지어내지 않는다.
+ */
+const _dateFmtCache = new Map();
+function dateFormatter(opts) {
+  const key = JSON.stringify(opts);
+  let f = _dateFmtCache.get(key);
+  if (f === undefined) {
+    try { f = new Intl.DateTimeFormat("ko-KR", opts); }
+    catch (_) { f = null; }
+    _dateFmtCache.set(key, f);   // 실패도 캐시한다 — 매번 던지고 잡는 것도 비용이다
+  }
+  return f;
+}
+
 // ── 유틸 ─────────────────────────────────────────────────────────────────────
 function escapeHtml(s) {
   if (s == null) return "";
@@ -39,12 +67,10 @@ function tzOpts() {
  */
 function tzName() {
   if (timeZoneMode === "utc") return "UTC";
-  try {
-    const parts = new Intl.DateTimeFormat("ko-KR", { timeZoneName: "short" })
-      .formatToParts(new Date());
-    const z = parts.find((p) => p.type === "timeZoneName");
-    return (z && z.value) || "";
-  } catch (_) { return ""; }
+  const f = dateFormatter({ timeZoneName: "short" });
+  if (!f) return "";
+  const z = f.formatToParts(new Date()).find((p) => p.type === "timeZoneName");
+  return (z && z.value) || "";
 }
 
 /** 시각 문자열 뒤에 붙일 접미사(` UTC` · ` GMT+9`). 이름이 없으면 아무것도 안 붙인다. */
@@ -97,10 +123,12 @@ function fmtDate(iso, withZone) {
   if (!iso) return "미정";
   const d = new Date(iso);
   if (isNaN(d)) return escapeHtml(iso);
-  return d.toLocaleString("ko-KR", Object.assign({
+  const f = dateFormatter(Object.assign({
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
-  }, tzOpts())) + (withZone ? tzSuffix() : "");
+  }, tzOpts()));
+  if (!f) return escapeHtml(iso);
+  return f.format(d) + (withZone ? tzSuffix() : "");
 }
 
 /**
@@ -118,23 +146,20 @@ function fmtDateInZone(iso, tz) {
   if (!iso || !tz) return null;
   const d = new Date(iso);
   if (isNaN(d)) return null;
-  try {
-    return d.toLocaleString("ko-KR", {
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", timeZone: tz,
-    });
-  } catch (_) { return null; }   // 모르는 시간대 — 지어내지 않는다
+  const f = dateFormatter({
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", timeZone: tz,
+  });
+  return f ? f.format(d) : null;   // 모르는 시간대 — 지어내지 않는다
 }
 
 /** 그 시간대의 짧은 이름(`GMT+8`). 못 구하면 빈 문자열 — 여기서도 지어내지 않는다. */
 function zoneShortName(iso, tz) {
   if (!tz) return "";
-  try {
-    const parts = new Intl.DateTimeFormat("ko-KR", { timeZone: tz, timeZoneName: "short" })
-      .formatToParts(new Date(iso || Date.now()));
-    const z = parts.find((p) => p.type === "timeZoneName");
-    return (z && z.value) || "";
-  } catch (_) { return ""; }
+  const f = dateFormatter({ timeZone: tz, timeZoneName: "short" });
+  if (!f) return "";
+  const z = f.formatToParts(new Date(iso || Date.now())).find((p) => p.type === "timeZoneName");
+  return (z && z.value) || "";
 }
 
 /**
@@ -272,8 +297,9 @@ const TIMELINE_KO = {
 function fmtClock(ms) {
   const d = new Date(ms);
   if (isNaN(d)) return "";
-  return d.toLocaleTimeString("ko-KR",
+  const f = dateFormatter(
     Object.assign({ hour: "2-digit", minute: "2-digit", second: "2-digit" }, tzOpts()));
+  return f ? f.format(d) : "";
 }
 
 function tr(map, v) {

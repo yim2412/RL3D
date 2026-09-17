@@ -1972,6 +1972,28 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   state.timeZoneMode = "local";
   check("발사 윈도우도 따른다", ctx.windowText(win) !== wu, true);
 
+  // ── 포매터 캐시 (P20-1) ────────────────────────────────────────────────────
+  // **이건 성능 수정이라 결과로는 드러나지 않는다** — 캐시를 통째로 빼도 화면은 똑같고,
+  // 위의 단언은 전부 통과한다(2026-09-17 변이로 확인). 시간으로 재면 실행 PC 에 따라
+  // 흔들리므로, **같은 옵션이면 같은 포매터 객체가 온다**는 것으로 잰다.
+  group("날짜 포매터를 돌려쓴다 (P20-1)");
+  const f1 = ctx.dateFormatter({ year: "numeric", month: "2-digit" });
+  const f2 = ctx.dateFormatter({ year: "numeric", month: "2-digit" });
+  check("같은 옵션이면 포매터를 새로 만들지 않는다", f1 === f2, true);
+  check("옵션이 다르면 다른 포매터다",
+    ctx.dateFormatter({ year: "numeric" }) === f1, false);
+  // 시간대 모드가 옵션에 섞여 들어가므로 **모드가 바뀌면 키도 갈라져야 한다**.
+  // 한 포매터에 갇히면 화면이 옛 시간대로 굳는데, 그건 조용한 고장이다.
+  check("시간대가 섞이면 다른 포매터다",
+    ctx.dateFormatter({ year: "numeric", timeZone: "UTC" }) === ctx.dateFormatter({ year: "numeric" }), false);
+  // 모르는 시간대는 null 이고, **두 번째 호출도 null 이어야 한다**(실패를 캐시하므로).
+  check("모르는 시간대는 두 번 불러도 null",
+    [ctx.dateFormatter({ timeZone: "Mars/Olympus" }), ctx.dateFormatter({ timeZone: "Mars/Olympus" })],
+    [null, null]);
+  // 실패를 캐시한 뒤에도 **정상 옵션은 정상 포매터**여야 한다(캐시가 오염되지 않는가)
+  check("실패 캐시가 다른 키를 오염시키지 않는다",
+    ctx.dateFormatter({ year: "numeric", month: "2-digit" }) === f1, true);
+
   group("시간대 배선 (버튼 · 설정 · 단축키)");
   const { ctx: c2, state: s2, el: e2, map: m2, sel: sel2, doc } = loadApp({
     api: { save_settings: (p) => saved.push(p) },
