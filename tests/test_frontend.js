@@ -3376,5 +3376,198 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("주기가 되면 다시 확인한다", asked, 2);
 }
 
+// ── 물리 기준 회귀 (P21-1) ────────────────────────────────────────────────────
+// **이 앱이 존재하는 이유가 이 숫자들이다.** 그런데 2026-09-17 까지 여기에 회귀가 없었다 —
+// 변이로 재니 큰 오류는 잡혔지만(부호 반전·2배) **실제로 생길 법한 작은 오류는 전부
+// 놓쳤다**: 황도경사 0.44° 오차 · 태양 황경 0.5° 편향(시각 약 12분) · 율리우스일 1분
+// 오프셋 — 셋 다 914개가 전부 통과했다. 틀린 값은 맞는 값과 화면상 똑같이 생긴다.
+//
+// 단언은 **물리·정의가 정한 값**에 댄다(우리 예전 출력이 아니다 — 그건 골든이지 기준이 아니다).
+// 시각은 전부 **고정**이고 입력은 픽스처다 — 실행 시각·캐시·네트워크에 기대지 않는다.
+{
+  const { ctx, date } = loadApp({ realSatellite: true });
+  group("물리 기준 — 시각 계산 (P21-1)");
+  const D = (iso) => date(Date.parse(iso));
+  /** |got-want| <= tol 인가. 실패하면 얼마나 벗어났는지 보여 준다. */
+  const near = (name, got, want, tol) =>
+    check(`${name} (허용 ±${tol})`,
+      Math.abs(got - want) <= tol
+        ? true
+        : `${got.toFixed(4)} (기준 ${want}, 차이 ${Math.abs(got - want).toFixed(4)})`,
+      true);
+
+  // 율리우스일은 **정의**다 — J2000.0 = 2000-01-01 12:00 UTC.
+  near("J2000.0 = JD 2451545.0", ctx.julianDay(D("2000-01-01T12:00:00Z")), 2451545.0, 1e-6);
+  near("Unix epoch = JD 2440587.5", ctx.julianDay(D("1970-01-01T00:00:00Z")), 2440587.5, 1e-6);
+
+  // 그리니치 평균 항성시: J2000.0 에서 18h 41m 50.5s = 18.697374h (정의상 기준값)
+  near("J2000.0 의 GMST = 18.697374h", ctx.gmstHours(2451545.0), 18.697374, 1e-4);
+
+  // **독립 구현과 대조** — satellite.js 의 gstime 은 우리와 다른 코드다.
+  // ⚠ Date 는 반드시 realm 것(`date()`)이어야 한다. Node 쪽 Date 를 넘기면 satellite.js 안의
+  //   `instanceof Date` 가 false 가 되어 **예외 없이** 엉뚱한 값이 나온다(harness.js 주석 참조).
+  //   2026-09-17 에 실제로 이걸로 11.5시간 어긋난 값을 보고 앱을 의심했다.
+  for (const iso of ["2026-09-17T12:00:00Z", "2026-01-01T00:00:00Z", "1999-12-31T23:59:00Z"]) {
+    const ours = ctx.gmstHours(ctx.julianDay(D(iso)));
+    const theirs = ctx.satellite.gstime(D(iso)) * 12 / Math.PI;
+    let d = Math.abs(ours - theirs);
+    if (d > 12) d = 24 - d;                       // 0/24 경계
+    near(`GMST 가 satellite.js 와 같다 ${iso.slice(0, 10)}`, d, 0, 0.01);  // 0.01h = 36초
+  }
+}
+
+{
+  const { ctx, date } = loadApp({ realSatellite: true });
+  group("물리 기준 — 태양 (P21-1)");
+  const D = (iso) => date(Date.parse(iso));
+  const near = (name, got, want, tol) =>
+    check(`${name} (허용 ±${tol})`,
+      Math.abs(got - want) <= tol
+        ? true
+        : `${got.toFixed(4)} (기준 ${want}, 차이 ${Math.abs(got - want).toFixed(4)})`,
+      true);
+
+  // 분점·지점의 태양 적위는 물리가 정한다. 2026년 실제 시각(UTC).
+  const dec = (iso) => ctx.sunEquatorial(ctx.julianDay(D(iso))).delta;
+  near("춘분 적위 = 0", dec("2026-03-20T14:46:00Z"), 0, 0.1);
+  near("하지 적위 = +23.44", dec("2026-06-21T08:25:00Z"), 23.44, 0.1);
+  near("추분 적위 = 0", dec("2026-09-23T00:06:00Z"), 0, 0.1);
+  near("동지 적위 = -23.44", dec("2026-12-21T20:50:00Z"), -23.44, 0.1);
+
+  // 분점에서 황경은 정의상 0°/180° 다. 실측 오차 0.008° — **0.05° 면 0.5° 편향을 잡는다.**
+  // ⚠ 0.02° 규모(중심차 2차항)는 **일부러 안 잡는다** — 코드가 스스로 "저정밀 근사"라고
+  //   밝힌 정밀도 안쪽이라, 더 좁히면 모델을 손댈 때마다 테스트가 헛되이 빨개진다.
+  const lam = (iso) => ((ctx.sunEclipticLongitude(ctx.julianDay(D(iso))) % 360) + 360) % 360;
+  const spring = lam("2026-03-20T14:46:00Z");
+  near("춘분 황경 = 0", Math.min(spring, 360 - spring), 0, 0.05);
+  near("추분 황경 = 180", lam("2026-09-23T00:06:00Z"), 180, 0.05);
+
+  // 남중고도 = 90 - |위도| + 적위 — 위도와 계절이 정하는 값이다.
+  const noonElev = (lat, lng, dayIso) => {
+    const base = Date.parse(dayIso);
+    let best = -90;
+    for (let m = 0; m < 1440; m += 1) {
+      const e = ctx.observerSunElev({ lat, lng }, date(base + m * 60000));
+      if (e > best) best = e;
+    }
+    return best;
+  };
+  near("적도 춘분 남중고도 = 90", noonElev(0, 0, "2026-03-20T00:00:00Z"), 90, 0.5);
+  near("서울 춘분 남중고도 = 52.43", noonElev(37.5665, 126.978, "2026-03-20T00:00:00Z"), 90 - 37.5665, 0.5);
+  near("서울 하지 남중고도 = 75.87", noonElev(37.5665, 126.978, "2026-06-21T00:00:00Z"), 90 - 37.5665 + 23.44, 0.5);
+  near("서울 동지 남중고도 = 28.99", noonElev(37.5665, 126.978, "2026-12-21T00:00:00Z"), 90 - 37.5665 - 23.44, 0.5);
+  near("북극 하지 남중고도 = 23.44", noonElev(90, 0, "2026-06-21T00:00:00Z"), 23.44, 0.5);
+
+  // 일출·일몰(태양 고도 0 통과). 기상청 2026-03-20 서울 일출 06:35 · 일몰 18:43(KST).
+  // 우리는 대기굴절을 일부러 무시하므로 **늦게 뜨고 일찍 진다** — 그 방향까지 단언한다.
+  // ⚠ 허용 15분은 **황경 0.5° 편향(시각 약 12분)을 잡는 폭**이다. 더 넓히면 그 변이를 놓친다.
+  const crossings = (dayIso, obs) => {
+    const base = Date.parse(dayIso);
+    const out = {};
+    let prev = ctx.observerSunElev(obs, date(base));
+    for (let m = 1; m < 1440; m += 1) {
+      const e = ctx.observerSunElev(obs, date(base + m * 60000));
+      if (prev < 0 && e >= 0) out.rise = (m + 540) % 1440;   // UTC 분 → KST
+      if (prev >= 0 && e < 0) out.set = (m + 540) % 1440;
+      prev = e;
+    }
+    return out;
+  };
+  const seoul = crossings("2026-03-20T00:00:00Z", { lat: 37.5665, lng: 126.978 });
+  near("서울 춘분 일출 = 06:35(KST)", seoul.rise, 6 * 60 + 35, 15);
+  near("서울 춘분 일몰 = 18:43(KST)", seoul.set, 18 * 60 + 43, 15);
+  check("굴절을 무시하므로 낮이 실제보다 짧다",
+    (seoul.set - seoul.rise) < (18 * 60 + 43) - (6 * 60 + 35), true);
+
+  // 그림자(원통 근사)가 기하와 맞는가 — 태양 쪽 / 반대쪽 / 원통 밖 셋.
+  const sun = ctx.sunEciUnit(D("2026-03-20T12:00:00Z"));
+  const R = 6371 + 420;
+  const scale = (v, k) => ({ x: v.x * k, y: v.y * k, z: v.z * k });
+  check("태양 쪽 저궤도 점은 조명", ctx.isSunlit(scale(sun, R), sun), true);
+  check("반태양 쪽 저궤도 점은 그림자", ctx.isSunlit(scale(sun, -R), sun), false);
+  // 반태양 쪽이라도 태양축에서 지구 반지름보다 멀면 조명이다(원통 밖).
+  const ax = Math.abs(sun.x) > 0.5 ? { x: -sun.y, y: sun.x, z: 0 } : { x: 0, y: -sun.z, z: sun.y };
+  const n = Math.hypot(ax.x, ax.y, ax.z);
+  const perp = 6371 + 50;
+  check("반태양 쪽이라도 원통 밖이면 조명",
+    ctx.isSunlit({
+      x: -sun.x * 1000 + ax.x / n * perp,
+      y: -sun.y * 1000 + ax.y / n * perp,
+      z: -sun.z * 1000 + ax.z / n * perp,
+    }, sun), true);
+}
+
+{
+  const { ctx, date } = loadApp({ realSatellite: true });
+  group("물리 기준 — 궤도와 관측 기하 (P21-1)");
+  const S = ctx.satellite;
+  const near = (name, got, want, tol) =>
+    check(`${name} (허용 ±${tol})`,
+      Math.abs(got - want) <= tol
+        ? true
+        : `${got.toFixed(4)} (기준 ${want}, 차이 ${Math.abs(got - want).toFixed(4)})`,
+      true);
+  const nfs = require("fs"), npath = require("path");
+  const tle = (f) => nfs.readFileSync(npath.join(__dirname, "fixtures", f), "utf8").trim().split(/\r?\n/);
+
+  // ISS — 픽스처(epoch 2026-07-24)
+  const iss = tle("celestrak_stations.txt").slice(0, 3);
+  const issRec = S.twoline2satrec(iss[1], iss[2]);
+  const nIss = parseFloat(iss[2].slice(52, 63));          // 평균운동(회/일)
+  const incIss = parseFloat(iss[2].slice(8, 16));         // 궤도경사(도)
+  near("ISS 주기 = 1440/평균운동", ctx.orbitPeriodMin(issRec), 1440 / nIss, 0.1);
+  near("ISS 주기가 알려진 값 92.9분", ctx.orbitPeriodMin(issRec), 92.9, 1.0);
+
+  const T0 = Date.parse("2026-07-25T00:00:00Z");   // 픽스처 epoch 다음날 — 고정
+  const geoOf = (rec, ms) => {
+    const d = date(ms);
+    const g = S.eciToGeodetic(S.propagate(rec, d).position, S.gstime(d));
+    return { lat: S.degreesLat(g.latitude), lng: S.degreesLong(g.longitude), alt: g.height };
+  };
+
+  // 한 주기 뒤 같은 위도로 돌아온다 — 주기의 정의다.
+  const per = ctx.orbitPeriodMin(issRec);
+  near("ISS 한 주기 뒤 위도가 돌아온다",
+    geoOf(issRec, T0 + per * 60000).lat, geoOf(issRec, T0).lat, 0.5);
+
+  // 위도는 궤도경사를 못 넘는다 — 물리다. (측지 위도라 약간의 여유를 둔다)
+  let maxLat = 0;
+  for (let m = 0; m < per; m += 1) maxLat = Math.max(maxLat, Math.abs(geoOf(issRec, T0 + m * 60000).lat));
+  check(`ISS 위도가 궤도경사 ${incIss}° 를 넘지 않는다 (실측 최대 ${maxLat.toFixed(2)}°)`,
+    maxLat <= incIss + 0.6, true);
+  near("ISS 고도가 저궤도 범위", geoOf(issRec, T0).alt, 415, 60);
+
+  // 정지위성 — 경사 0.02° 짜리를 골라 픽스처로 뒀다.
+  // ⚠ `tle_geo` 를 아무거나 쓰면 안 된다. 첫 항목(TDRS 3)은 위도가 ±12° 흔들리는
+  //   **경사 정지궤도**라 경도가 움직이는 게 정상이고, 그걸로는 기준이 안 된다(2026-09-17 실수).
+  const geo = tle("celestrak_geo.txt");
+  const geoRec = S.twoline2satrec(geo[1], geo[2]);
+  near("정지궤도 주기 = 항성일 1436.07분", ctx.orbitPeriodMin(geoRec), 1436.07, 2.0);
+  const G0 = Date.parse("2026-09-15T00:00:00Z");   // 고정
+  const samples = [0, 6, 12, 18, 24].map((hrs) => geoOf(geoRec, G0 + hrs * 3600000));
+  near("정지위성 고도 = 35,786km", samples[0].alt, 35786, 120);
+  const lngs = samples.map((p) => p.lng);
+  check(`정지위성은 24시간 경도가 안 변한다 (폭 ${(Math.max(...lngs) - Math.min(...lngs)).toFixed(3)}°)`,
+    Math.max(...lngs) - Math.min(...lngs) <= 0.2, true);
+  check("정지위성은 적도에 머문다", samples.every((p) => Math.abs(p.lat) <= 0.2), true);
+
+  // 관측 기하 — 바로 아래에서 보면 천정(90°), 남/북에서 보면 정남/정북.
+  const look = (rec, obs, ms) => {
+    const d = date(ms);
+    const ecf = S.eciToEcf(S.propagate(rec, d).position, S.gstime(d));
+    const la = S.ecfToLookAngles(
+      { latitude: obs.lat * Math.PI / 180, longitude: obs.lng * Math.PI / 180, height: 0 }, ecf);
+    return { el: la.elevation * 180 / Math.PI, az: la.azimuth * 180 / Math.PI, rng: la.rangeSat };
+  };
+  const subLng = samples[0].lng;
+  const zen = look(geoRec, { lat: 0, lng: subLng }, G0);
+  near("바로 아래 관측지에서 고도 = 90", zen.el, 90, 0.3);
+  near("그때 거리 = 위성 고도", zen.rng, samples[0].alt, 5);
+  near("같은 경도 북쪽에서 방위 = 180(정남)", look(geoRec, { lat: 35, lng: subLng }, G0).az, 180, 0.5);
+  const southAz = look(geoRec, { lat: -35, lng: subLng }, G0).az;
+  near("같은 경도 남쪽에서 방위 = 0(정북)", Math.min(southAz, 360 - southAz), 0, 0.5);
+  check("azToCompass 가 방위를 한글로", [180, 0, 90, 270].map(ctx.azToCompass), ["남", "북", "동", "서"]);
+}
+
   done();
 })();
