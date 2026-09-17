@@ -531,8 +531,9 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   //   주장 자체가 틀렸던 자리다. 태양표를 주입해 **시각과 무관하게** 배선만 잰다.
   const win = { s: Date.now(), h: 24 * 3600 * 1000 };
   const geoTable = ctx.sunTable(SEOUL, win.s, win.s + win.h, 30000);
-  const bright = geoTable.map((e) => ({ unit: e.unit, dark: false }));
-  const dark = geoTable.map((e) => ({ unit: e.unit, dark: true }));
+  // t 를 실어 보낸다 — 표가 시간축을 정하므로(P21-2) 실제 경로를 타게 한다
+  const bright = geoTable.map((e) => ({ t: e.t, unit: e.unit, dark: false }));
+  const dark = geoTable.map((e) => ({ t: e.t, unit: e.unit, dark: true }));
   check("관측자가 내내 밝으면 가시 통과가 하나도 없다",
     ctx.computePasses(geo, SEOUL, 24, 30, 10, bright).some((p) => p.visible), false);
   check("관측자가 내내 어두우면 정지궤도는 가시다(조명 판정은 통과)",
@@ -3567,6 +3568,95 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   const southAz = look(geoRec, { lat: -35, lng: subLng }, G0).az;
   near("같은 경도 남쪽에서 방위 = 0(정북)", Math.min(southAz, 360 - southAz), 0, 0.5);
   check("azToCompass 가 방위를 한글로", [180, 0, 90, 270].map(ctx.azToCompass), ["남", "북", "동", "서"]);
+}
+
+// ── 통과 계산의 시간축 (P21-2) ────────────────────────────────────────────────
+// "오늘 밤" 탭은 태양표를 **한 번** 만들어 위성마다 돌려쓴다. 그런데 `computePasses` 가
+// 안에서 `Date.now()` 를 다시 불러, 조각 처리가 진행될수록 `table[i]` 가 어긋났다
+// (2026-09-17 실측: 61초 경과 → 2칸 = 60초. 1,441개 중 '어둠' 판정이 달라지는 지점 4개).
+// **작다. 그래서 고친 이유는 크기가 아니라 구조다** — 안에서 시각을 만들면 테스트가 못 잰다.
+// 이제 **표가 시간축을 정한다.**
+{
+  const { ctx, date } = loadApp({ realSatellite: true });
+  group("통과 계산의 시간축은 태양표가 정한다 (P21-2)");
+  const nfs2 = require("fs"), npath2 = require("path");
+  const lines = nfs2.readFileSync(npath2.join(__dirname, "fixtures", "celestrak_stations.txt"), "utf8")
+    .trim().split(/\r?\n/);
+  const rec = ctx.satellite.twoline2satrec(lines[1], lines[2]);
+  const SEOUL = { lat: 37.5665, lng: 126.978 };
+
+  // 픽스처 epoch(2026-07-24) 다음날 — **지금보다 한참 과거인 고정 시각**.
+  // 표가 시간축을 정한다면 결과도 그 과거 창 안에 있어야 한다.
+  const T0 = Date.parse("2026-07-25T00:00:00Z");
+  const HOURS = 24, STEP = 30;
+  const table = ctx.sunTable(SEOUL, T0, T0 + HOURS * 3600 * 1000, STEP * 1000);
+  const passes = ctx.computePasses(rec, SEOUL, HOURS, STEP, 10, table);
+
+  check("표를 넘기면 통과가 나온다(경로가 살아 있다)", passes.length > 0, true);
+  check("모든 통과가 표의 창 안에 있다",
+    passes.every((p) => p.start >= T0 && p.end <= T0 + HOURS * 3600 * 1000), true);
+  // 이게 핵심 단언이다 — 안에서 `Date.now()` 를 부르면 결과가 **지금** 근처로 나온다.
+  check("표의 시각을 쓴다(호출 시각이 아니다)",
+    passes[0].start < Date.now() - 24 * 3600 * 1000, true);
+
+  // 같은 표로 여러 번 불러도 같은 답이어야 한다 — 조각 처리가 그렇게 부른다.
+  const again = ctx.computePasses(rec, SEOUL, HOURS, STEP, 10, table);
+  check("같은 표면 몇 번을 불러도 같은 결과",
+    JSON.stringify(again.map((p) => [p.start, p.end])),
+    JSON.stringify(passes.map((p) => [p.start, p.end])));
+
+  // 표 안의 '어둠'과 통과의 가시 판정이 **같은 시각**을 보는가.
+  // 어긋나 있으면 여기서 드러난다(표의 인덱스와 루프의 t 가 짝이 맞는지).
+  const idxOf = (t) => Math.round((t - T0) / (STEP * 1000));
+  const visible = passes.filter((p) => p.visible && p.visStart !== undefined);
+  check("가시 구간의 시작 시각에 표도 '어둠'이라고 말한다",
+    visible.length === 0 || visible.every((p) => {
+      const e = table[idxOf(p.visStart)];
+      return !!e && e.dark === true;
+    }), true);
+
+  // ⚠ 위 단언들로는 **표를 통째로 1분 밀어도 안 잡힌다**(2026-09-17 변이로 확인).
+  //    `dark` 가 길게 이어지는 값이라, 몇 칸 어긋나도 같은 true 를 읽기 때문이다 —
+  //    실제 영향이 작았던 이유가 그대로 **테스트의 눈을 가린다.**
+  //    그래서 통계가 아니라 **짝을 직접 잰다**: 루프가 시각 t 에서 읽은 표 항목의 t 가 같은가.
+  //    표 항목의 `dark` 를 getter 로 바꿔 **읽힌 순서와 그 항목의 t** 를 기록한다.
+  {
+    const reads = [];
+    const probed = table.map((e, i) => ({
+      t: e.t,
+      unit: e.unit,
+      get dark() { reads.push({ i, t: e.t }); return e.dark; },
+    }));
+    const probedPasses = ctx.computePasses(rec, SEOUL, HOURS, STEP, 10, probed);
+    check("표를 읽기는 한다(경로 확인)", reads.length > 0, true);
+    // 첫 통과가 시작된 루프 시각과, 그 순간 읽힌 표 항목의 시각이 같아야 한다.
+    check("루프의 시각과 그때 읽은 표 항목의 시각이 같다",
+      reads.length > 0 && probedPasses.length > 0
+        ? reads[0].t === probedPasses[0].start
+        : "읽기 또는 통과가 없음",
+      true);
+    // 인덱스도 시각과 짝이 맞아야 한다 — table[i].t === start + i*stepMs
+    check("읽힌 인덱스가 시각과 짝이 맞는다",
+      reads.every((r) => r.t === T0 + r.i * STEP * 1000), true);
+  }
+
+  // 표 없이 startMs 를 주면 그 시각부터 — 시각을 주입할 수 있어야 테스트가 이 함수를 잰다.
+  const injected = ctx.computePasses(rec, SEOUL, 6, STEP, 10, null, T0);
+  check("표가 없어도 startMs 로 시각을 주입할 수 있다",
+    injected.length > 0 && injected.every((p) => p.start >= T0 && p.end <= T0 + 6 * 3600 * 1000),
+    true);
+
+  // 아무것도 안 주면 예전처럼 지금부터다(기존 호출부 `showPasses` 가 그 경로다).
+  const nowPasses = ctx.computePasses(rec, SEOUL, 6, STEP, 10);
+  check("표도 startMs 도 없으면 지금부터다",
+    nowPasses.every((p) => p.start >= Date.now() - 60000), true);
+
+  // `t` 없는 표(조명 조건만 바꿔 끼우는 테스트용)를 넘겨도 죽지 않는다 —
+  // 그때는 표가 시간축을 못 정하므로 startMs/지금으로 물러난다.
+  const noT = table.map((e) => ({ unit: e.unit, dark: e.dark }));
+  const fallback = ctx.computePasses(rec, SEOUL, 6, STEP, 10, noT, T0);
+  check("t 없는 표를 넘기면 startMs 로 물러난다",
+    fallback.every((p) => p.start >= T0 && p.end <= T0 + 6 * 3600 * 1000), true);
 }
 
   done();

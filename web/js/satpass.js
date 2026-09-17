@@ -98,12 +98,24 @@ function sunTable(obs, start, end, stepMs) {
  * sun 을 넘기면 미리 계산한 태양표를 쓴다(P12-2 가 157개 위성에 같은 표를 공유).
  * 안 넘기면 이 함수가 직접 만든다 — 위성 1개짜리 기존 호출부는 고치지 않아도 된다.
  */
-function computePasses(rec, obs, hours = 24, stepSec = 30, minEl = 10, sun = null) {
+function computePasses(rec, obs, hours = 24, stepSec = 30, minEl = 10, sun = null, startMs = null) {
   const observerGd = { latitude: obs.lat * DEG, longitude: obs.lng * DEG, height: 0 };
   const passes = [];
   let cur = null;
   const stepMs = stepSec * 1000;
-  const start = Date.now();
+  // **시간축은 태양표가 정한다** (P21-2). 표는 job 이 만들어질 때 한 번 만들어지는데
+  // 여기서 `Date.now()` 를 다시 부르면 아래 `table[i]` 가 그만큼 어긋난다 — "오늘 밤" 탭은
+  // 조각 처리라 호출이 뒤로 갈수록 벌어진다(2026-09-17 실측: 61초 경과 → **2칸**,
+  // 1,441개 중 '어둠' 판정이 달라지는 지점 4개. 작지만, 작다는 것과 맞다는 것은 다르다).
+  //
+  // 덤으로 **위성마다 창이 조금씩 달라지던 것**도 사라진다 — 한 job 은 한 창을 본다.
+  // `startMs` 는 표가 없을 때 시각을 주입하는 길이다. 없으면 예전처럼 지금부터다
+  // (안에서 `Date.now()` 만 부르면 테스트가 이 함수를 잴 수 없다 — P19 에서 같은 자리를 겪었다).
+  //
+  // ⚠ `t` 없는 표를 넘기는 호출부가 있다(테스트가 조명 조건만 바꿔 끼울 때).
+  //    그때는 표가 시간축을 못 정하므로 `startMs`/`Date.now()` 로 물러난다.
+  const start = (sun && sun.length && isFinite(sun[0].t)) ? sun[0].t
+    : (startMs != null ? startMs : Date.now());
   const end = start + hours * 3600 * 1000;
   const table = sun || sunTable(obs, start, end, stepMs);
   let i = 0;
