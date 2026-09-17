@@ -33,7 +33,7 @@ const STATE_KEYS = [
   "trackAheadMin", "futureMarker", "firstRun", "satLoadError", "lastLaunchLoad", "tonightToken", "tonightRows", "updateTimer",
   "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId", "settingObserver", "observerMarker",
   // 읽기 전용 표도 여기로 꺼낸다 — 최상위 const 는 컨텍스트 객체에 안 보인다
-  "CITIES",
+  "CITIES", "SIDEBAR_CAP",
 ];
 
 /** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */

@@ -275,6 +275,39 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
   ctx.renderSidebar([{ id: "z", name: "<img onerror=x>", outcome: "success", net: "2026-01-01T00:00:00Z" }]);
   check("발사명은 이스케이프된다", el("sidebar-list").innerHTML.includes("&lt;img"), true);
+
+  // ── 목록 캡 (P20-2) ────────────────────────────────────────────────────────
+  // 행을 DOM 에 넣는 값이 비싸다(1,803행 56.9ms 실측). 넘치면 자르되 **몇 건이 더 있는지**를
+  // 말한다. 단언은 상수 자체가 아니라 **`SIDEBAR_CAP` 을 읽어서** 한다 — 숫자를 박아 두면
+  // 캡을 조정할 때 테스트가 "틀렸다"고 말하는데 실제로는 아무것도 안 깨진 것이다(P19 의 교훈).
+  const CAP = state.SIDEBAR_CAP;
+  const many = Array.from({ length: CAP + 37 }, (_, i) => ({
+    id: "m" + i, name: "발사 " + i, outcome: "success",
+    net: new Date(Date.UTC(2026, 0, 1) - i * 86400000).toISOString(),
+  }));
+  state.favLaunches = new Set();
+  ctx.renderSidebar(many);
+  const rowCount = (el("sidebar-list").innerHTML.match(/class="sb-row"/g) || []).length;
+  check("캡을 넘으면 캡까지만 그린다", rowCount, CAP);
+  check("건수는 전체를 말한다(자른 수가 아니다)", el("sidebar-count").textContent, CAP + 37 + "건");
+  check("남은 건수를 말해 준다", el("sidebar-list").innerHTML.includes("…외 37건"), true);
+  check("좁히는 방법을 알려 준다",
+    /검색·필터로 좁히거나 타임라인/.test(el("sidebar-list").innerHTML), true);
+
+  // 캡 아래면 안내가 없어야 한다 — 늘 붙으면 "더 있다"는 거짓말이 된다
+  ctx.renderSidebar(many.slice(0, CAP));
+  check("딱 캡이면 안내가 없다", el("sidebar-list").innerHTML.includes("…외"), false);
+  check("딱 캡이면 전부 그린다",
+    (el("sidebar-list").innerHTML.match(/class="sb-row"/g) || []).length, CAP);
+
+  // **자르는 것은 정렬 뒤여야 한다** — 앞에서 자르면 예정 발사가 통째로 날아간다.
+  // 예정을 캡보다 많이 섞어 두고, 잘린 목록의 첫 줄이 예정인지 본다.
+  const mixed = many.slice(0, CAP).concat([
+    { id: "up", name: "예정 임박", outcome: "upcoming", net: "2026-02-01T00:00:00Z" },
+  ]);
+  ctx.renderSidebar(mixed);
+  const first = (el("sidebar-list").innerHTML.match(/sb-name">(?:★ )?([^<]+)</) || [])[1];
+  check("정렬한 뒤에 자른다(예정이 잘려 나가지 않는다)", first, "예정 임박");
 }
 
 // ── 자동 갱신 변화 감지 ───────────────────────────────────────────────────────

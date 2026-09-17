@@ -1,5 +1,22 @@
 /* RL3D — 사이드바(발사/위성/관심 탭)와 목록 렌더. panels.js 에서 분리(P14-4). */
 
+/**
+ * 목록 한 번에 그릴 최대 행 수 (P20-2).
+ *
+ * **행을 DOM 에 넣는 값이 비싸다** — 2026-09-17 실측(Chromium 153, 실제 파싱+레이아웃):
+ * 400행 **12.3ms** · 1,803행 **56.9ms** (행당 약 30µs). HTML **문자열 조립**은 2,925행에
+ * 0.3ms 라 싼데, 그걸 화면에 넣는 쪽이 비용의 전부다 — 조립만 재고 "싸다"고 판단하면
+ * 틀린다(실제로 한 번 틀렸다).
+ *
+ * 값은 **읽기 쉬움에도 있다**: 1,803행을 끝까지 스크롤하는 사람은 없다. 넘치면 잘라내는
+ * 대신 **몇 건이 더 있는지와 좁히는 방법**을 말한다.
+ *
+ * 발사 목록은 예정(가까운 순) → 지난 것(최신순) 으로 정렬한 **뒤** 자르므로,
+ * 잘리는 것은 **항상 가장 오래된 발사**다. 예정 발사는 LL2 가 한 번에 50건쯤 주므로
+ * 이 캡에 걸리지 않는다.
+ */
+const SIDEBAR_CAP = 400;
+
 // ── 사이드바 탭 (발사 / 위성 / 오늘 밤 / 관심) ────────────────────────────────
 let basemap = "dark";       // 배경 지도: dark(CARTO) | satellite(Esri)
 let sidebarTab = "launches";
@@ -124,12 +141,13 @@ function renderSatList() {
       : "조건에 맞는 위성이 없습니다.<br />툴바 <b>그룹 ▾</b>의 궤도 대역 필터를 확인해 보세요."}</div>`;
     return;
   }
-  cont.innerHTML = list.slice(0, 400).map((s) =>
+  cont.innerHTML = list.slice(0, SIDEBAR_CAP).map((s) =>
     `<button class="sb-row" data-norad="${escapeHtml(String(s.norad))}">` +
     `<span class="dot d-sat"></span>` +
     `<span class="sb-main"><span class="sb-name">${escapeHtml(s.name)}</span>` +
     `<span class="sb-sub">NORAD ${escapeHtml(String(s.norad))} · ${bandLabel(s.band)}</span></span></button>`).join("") +
-    (list.length > 400 ? `<div class="sb-empty">…외 ${list.length - 400}개. 검색으로 좁혀보세요.</div>` : "");
+    (list.length > SIDEBAR_CAP
+      ? `<div class="sb-empty">…외 ${list.length - SIDEBAR_CAP}개. 검색으로 좁혀보세요.</div>` : "");
 }
 
 /** 목록에서 위성을 고르면 지도에서 클릭한 것과 같게 동작. */
@@ -175,7 +193,8 @@ function renderSidebar(list) {
     .sort((a, b) => new Date(a.net) - new Date(b.net));
   const rest = list.filter((d) => d.outcome !== "upcoming")
     .sort((a, b) => new Date(b.net) - new Date(a.net));
-  cont.innerHTML = upcoming.concat(rest).map((d) => {
+  const ordered = upcoming.concat(rest);
+  cont.innerHTML = ordered.slice(0, SIDEBAR_CAP).map((d) => {
     const loc = d.location_name ? " · " + escapeHtml(d.location_name) : "";
     const sub = d.outcome === "upcoming"
       ? escapeHtml(countdown(d.net)) + loc
@@ -185,7 +204,9 @@ function renderSidebar(list) {
       `<span class="dot d-${d.outcome}"></span>` +
       `<span class="sb-main"><span class="sb-name">${star}${escapeHtml(d.name)}</span>` +
       `<span class="sb-sub">${sub}</span></span></button>`;
-  }).join("");
+  }).join("") +
+    (ordered.length > SIDEBAR_CAP
+      ? `<div class="sb-empty">…외 ${ordered.length - SIDEBAR_CAP}건. 검색·필터로 좁히거나 타임라인을 당겨 보세요.</div>` : "");
 }
 
 function toggleSidebar() {
