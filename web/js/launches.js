@@ -97,6 +97,13 @@ function setupLaunchLayers() {
   map.on("click", "clusters", (e) => {
     if (settingObserver) return;
     const f = e.features[0];
+    const [lng, lat] = f.geometry.coordinates;
+    // **확대해도 안 갈라지는 무리가 있다**(P23-2). 통째로 한 좌표면 확대는 아무 일도
+    // 하지 않으므로 바로 목록을 연다 — 예전에는 여기서 무한히 확대만 됐다.
+    if (!clusterSplits(allLaunches, lat, lng, f.properties.point_count)) {
+      openPadList(lat, lng);
+      return;
+    }
     map.getSource("launches").getClusterExpansionZoom(f.properties.cluster_id)
       .then((z) => map.easeTo({ center: f.geometry.coordinates, zoom: z }))
       .catch(() => {});
@@ -106,7 +113,9 @@ function setupLaunchLayers() {
     if (settingObserver) return;
     const id = e.features[0].properties.id;
     const d = findLaunch(id);
-    if (d) openPanel(d);
+    // 같은 좌표에 여러 건이면 상세가 아니라 **목록**을 연다(P23-2) — 예전에는
+    // 맨 위 하나만 열리고 나머지 85건은 지도에서 열 길이 없었다.
+    if (d) openLaunchAt(d);
   });
   // 호버 툴팁 + 커서
   map.on("mouseenter", "launch-point", (e) => { map.getCanvas().style.cursor = "pointer"; showLaunchTooltip(e); });
@@ -307,7 +316,12 @@ function showLaunchTooltip(e) {
     document.body.appendChild(tooltipEl);
   }
   const cd = d.outcome === "upcoming" ? ` · ${escapeHtml(countdown(d.net))}` : "";
-  tooltipEl.innerHTML = `<b>${escapeHtml(d.name)}</b><br><span class="tt-sub">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}${cd}</span>`;
+  // 이 점에 몇 건이 포개져 있는지 **먼저 말한다**(P23-2). 안 말하면 나머지가
+  // 있다는 것 자체를 알 수 없다 — 화면상 1건과 86건이 똑같이 생겼다.
+  const stacked = launchesAtPoint(allLaunches, d.lat, d.lng).length;
+  const more = stacked > 1
+    ? `<br><span class="tt-sub">이 지점 ${stacked}건 · 클릭하면 목록</span>` : "";
+  tooltipEl.innerHTML = `<b>${escapeHtml(d.name)}</b><br><span class="tt-sub">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}${cd}</span>${more}`;
   tooltipEl.style.left = `${e.originalEvent.clientX}px`;
   tooltipEl.style.top = `${e.originalEvent.clientY - 14}px`;
   tooltipEl.style.display = "block";
@@ -320,7 +334,12 @@ function showClusterTooltip(e) {
     tooltipEl.className = "tooltip";
     document.body.appendChild(tooltipEl);
   }
-  tooltipEl.innerHTML = `<b>${f.properties.point_count}건의 발사</b><br><span class="tt-sub">클릭하면 펼쳐집니다</span>`;
+  // ⚠ 예전 문구 "클릭하면 펼쳐집니다"는 **동일 좌표 무리에서 거짓말**이었다(P23-2).
+  // 확대해도 안 갈라지는 무리가 실제로 있다(실측: 한 점에 최대 86건).
+  const [clng, clat] = f.geometry.coordinates;
+  const splits = clusterSplits(allLaunches, clat, clng, f.properties.point_count);
+  tooltipEl.innerHTML = `<b>${f.properties.point_count}건의 발사</b><br>`
+    + `<span class="tt-sub">${splits ? "클릭하면 펼쳐집니다" : "같은 지점 · 클릭하면 목록"}</span>`;
   tooltipEl.style.left = `${e.originalEvent.clientX}px`;
   tooltipEl.style.top = `${e.originalEvent.clientY - 14}px`;
   tooltipEl.style.display = "block";
@@ -516,4 +535,124 @@ function startTicker() {
     if (secs % 5 === 0) idx = (idx + 1) % items.length;  // 5초마다 다음 항목
     tick();
   }, 1000);
+}
+
+// ── 한 점에 포개진 발사들 (P23-2) ────────────────────────────────────────────
+// **클러스터를 풀어도 안 갈라지는 점이 있다.** 실측(2026-09-18, 실제 캐시 437건):
+// 서로 다른 발사장 좌표는 **55개**뿐이고, `(34.632, -120.611)` 한 점에 **86건** ·
+// 다음이 85건 · **425건(97%)** 이 겹치는 점 위에 있다. `clusterMaxZoom: 6` 이라
+// 줌 7 이상에서 클러스터가 풀리는데 좌표가 **동일**하므로 갈라지지 않고 전부 같은
+// 픽셀에 그려진다 — 클릭하면 `e.features[0]` 하나만 열리고 나머지 85건은
+// **지도에서 열 길이 없었다.** 히트맵(P12-15)은 "몇 번"만 답하고 "그게 뭔지"는 답하지 않는다.
+//
+// 좌표 하나는 사실상 발사대 하나다(실측: 55곳 중 54곳이 pad 1개) — 그래서 이 목록의
+// 이름이 "발사대"다.
+
+/** 지도 좌표를 묶는 자릿수. 마커는 이 자리까지 같으면 같은 픽셀에 그려진다. */
+const PAD_COORD_DIGITS = 4;
+
+/** 좌표 키 — 순수 함수. 클러스터 판정과 목록이 **같은 기준**을 써야 한다. */
+function coordKey(lat, lng) {
+  if (!validLatLng(lat, lng)) return null;
+  return Number(lat).toFixed(PAD_COORD_DIGITS) + "," + Number(lng).toFixed(PAD_COORD_DIGITS);
+}
+
+/**
+ * 그 점에 있는 발사들 — 순수 함수. 예정은 가까운 순, 지난 것은 최근 순
+ * (사이드바와 같은 정렬이라 두 목록이 서로 다른 말을 하지 않는다).
+ */
+function launchesAtPoint(list, lat, lng) {
+  const key = coordKey(lat, lng);
+  if (!key) return [];
+  const hit = (list || []).filter((d) => coordKey(d.lat, d.lng) === key);
+  const upcoming = hit.filter((d) => d.outcome === "upcoming")
+    .sort((a, b) => new Date(a.net) - new Date(b.net));
+  const rest = hit.filter((d) => d.outcome !== "upcoming")
+    .sort((a, b) => new Date(b.net) - new Date(a.net));
+  return upcoming.concat(rest);
+}
+
+/**
+ * 이 클러스터는 확대해도 갈라지는가 — 순수 함수.
+ *
+ * 클러스터가 **통째로 한 좌표**면 `getClusterExpansionZoom` 이 갈라 줄 것이 없다.
+ * 그때 "클릭하면 펼쳐집니다"라고 말하면 **거짓말**이고(P18 갈래), 확대는 아무 일도
+ * 하지 않는다. 클러스터 좌표에 있는 발사 수가 `point_count` 와 같으면 전부 한 점이다.
+ */
+function clusterSplits(list, lat, lng, pointCount) {
+  return launchesAtPoint(list, lat, lng).length < pointCount;
+}
+
+/**
+ * 발사명에서 **미션 쪽만** — 순수 함수 (P23-2).
+ *
+ * LL2 의 `name` 은 `<로켓> | <미션>` 꼴이다(실측 441/441 = 100%). 이 목록은 한 발사대의
+ * 발사만 모은 것이라 로켓이 거의 늘 같고, 이름과 아래 줄에 **로켓이 두 번** 찍혔다:
+ *   `Falcon 9 Block 5 | Dragon CRS-2 SpX-35` / `T-42일 · Falcon 9 Block 5`
+ * 각 함수를 따로 재는 단언은 전부 통과했고 **실제 캐시로 렌더해 읽고서야 보였다**
+ * (CLAUDE.md: 합쳐진 문장이 앞뒤가 안 맞을 수 있다).
+ *
+ * 로켓을 아래 줄에 남기는 이유: 이름의 로켓과 `rocket` 이 **다른 경우가 7%** 있고
+ * (`Starship | Flight 13` 대 `Starship V3`), 그때는 변형 이름이 새 정보다.
+ */
+function missionTitle(name) {
+  const s = String(name || "");
+  const cut = s.indexOf(" | ");
+  return cut === -1 ? s : s.slice(cut + 3);
+}
+
+/** 목록 한 줄 — 사이드바 행과 같은 모양을 쓴다(두 곳이 다르게 생기면 같은 것으로 안 읽힌다). */
+function padRowHtml(d) {
+  const sub = d.outcome === "upcoming"
+    ? escapeHtml(countdown(d.net)) : escapeHtml(fmtDate(d.net));
+  const star = isFavLaunch(d.id) ? "★ " : "";
+  return `<button class="sb-row pad-row" data-id="${escapeHtml(String(d.id))}">` +
+    `<span class="dot d-${d.outcome}"></span>` +
+    `<span class="sb-main"><span class="sb-name">${star}${escapeHtml(missionTitle(d.name))}</span>` +
+    `<span class="sb-sub">${sub} · ${escapeHtml(d.rocket || "")}</span></span></button>`;
+}
+
+/** 목록 화면의 HTML — 순수 함수라 문자열로 직접 잰다. */
+function padListHtml(rows) {
+  if (!rows.length) return `<div class="sb-empty">이 지점의 발사를 찾지 못했습니다.</div>`;
+  const first = rows[0];
+  const pad = first.pad_name ? escapeHtml(first.pad_name) : "발사대";
+  const site = first.location_name ? `<div class="pad-site">${escapeHtml(first.location_name)}</div>` : "";
+  const up = rows.filter((d) => d.outcome === "upcoming").length;
+  const note = up ? ` · 예정 ${up}건` : "";
+  return `<h2>🛫 ${pad}</h2>${site}` +
+    `<div class="pad-count">이 지점에 포개진 발사 <b>${rows.length}건</b>${note}` +
+    ` — 지도에서는 한 점으로 겹칩니다</div>` +
+    `<div class="pad-list">${rows.map(padRowHtml).join("")}</div>`;
+}
+
+/**
+ * 한 점에 포개진 발사 목록을 상세 패널 자리에 연다.
+ * 행을 누르면 그 발사의 상세로 넘어간다(같은 패널을 갈아 끼운다).
+ */
+function openPadList(lat, lng) {
+  const rows = launchesAtPoint(allLaunches, lat, lng);
+  const panel = document.getElementById("panel");
+  const body = document.getElementById("panel-body");
+  if (!panel || !body) return 0;
+  body.innerHTML = padListHtml(rows);
+  panel.classList.remove("hidden");
+  panelLaunchId = null;   // 상세가 아니라 목록이다 — 카운트다운 갱신이 엉뚱한 걸 집지 않게
+  body.querySelectorAll(".pad-row").forEach((b) =>
+    b.addEventListener("click", () => {
+      const d = findLaunch(b.dataset.id);
+      if (d) openPanel(d);
+    }));
+  return rows.length;
+}
+
+/**
+ * 지도에서 발사 하나를 집었을 때 — 혼자면 상세, 포개져 있으면 목록.
+ * **1건일 때의 동작은 예전 그대로다**(회귀를 만들지 않는다).
+ */
+function openLaunchAt(d) {
+  const rows = launchesAtPoint(allLaunches, d.lat, d.lng);
+  if (rows.length > 1) return openPadList(d.lat, d.lng);
+  openPanel(d);
+  return 1;
 }

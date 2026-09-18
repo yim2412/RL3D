@@ -3865,5 +3865,202 @@ function fresh2(ctx, key, t) {
   check("그래도 지도는 떴다 (initMap 이 돌았다)", !!state.map, true);
 }
 
+// ── 한 점에 포개진 발사 (P23-2) ──────────────────────────────────────────────
+// 실측(2026-09-18, 실제 캐시 437건): 서로 다른 발사장 좌표는 55개뿐이고 한 점에
+// 최대 86건 · 425건(97%)이 겹치는 점 위에 있다. 줌 7 이상에서 클러스터가 풀려도
+// 좌표가 같으면 안 갈라지므로, 예전에는 맨 위 하나만 열리고 나머지는 열 길이 없었다.
+{
+  const { ctx } = loadApp();
+  group("좌표 키와 그 점의 발사 (순수 함수)");
+
+  check("소수 4자리로 묶는다", ctx.coordKey(28.56190001, -80.5774), "28.5619,-80.5774");
+  check("좌표가 없으면 null", ctx.coordKey(null, 1), null);
+  check("범위 밖도 null", ctx.coordKey(91, 0), null);
+
+  const L = (id, lat, lng, outcome, net) => ({ id, name: "L" + id, lat, lng, outcome, net,
+    rocket: "R", pad_name: "SLC-40", location_name: "Cape" });
+  const list = [
+    L("a", 28.5619, -80.5774, "success", "2026-01-01T00:00:00Z"),
+    L("b", 28.5619, -80.5774, "success", "2026-03-01T00:00:00Z"),
+    L("c", 28.5619, -80.5774, "upcoming", "2026-12-01T00:00:00Z"),
+    L("d", 28.5619, -80.5774, "upcoming", "2026-11-01T00:00:00Z"),
+    L("z", 34.6320, -120.6110, "success", "2026-02-01T00:00:00Z"),
+  ];
+  const at = ctx.launchesAtPoint(list, 28.5619, -80.5774);
+  check("그 점의 발사만 모은다", at.length, 4);
+  check("다른 점은 안 섞인다", at.every((d) => d.id !== "z"), true);
+  check("예정이 먼저, 가까운 순", at.slice(0, 2).map((d) => d.id), ["d", "c"]);
+  check("지난 것은 최근 순", at.slice(2).map((d) => d.id), ["b", "a"]);
+  check("없는 점은 빈 목록", ctx.launchesAtPoint(list, 0, 0), []);
+  check("좌표가 깨진 발사는 무시한다",
+    ctx.launchesAtPoint([{ id: "x", lat: null, lng: null }], null, null), []);
+
+  // ⚠ **막지 않았으면 무슨 일이 났을 것인가** — 예전 동작(맨 위 하나)이 실제로
+  //   나머지를 못 보여줬다는 것부터 단언한다. 이게 없으면 목록을 뜯어내도 통과한다.
+  check("이 점에는 1건이 아니라 4건이 있다(예전엔 1건만 열렸다)", at.length > 1, true);
+
+  group("확대하면 갈라지는 클러스터인가 (순수 함수)");
+  check("전부 한 좌표면 안 갈라진다",
+    ctx.clusterSplits(list, 28.5619, -80.5774, 4), false);
+  check("다른 좌표가 섞여 있으면 갈라진다",
+    ctx.clusterSplits(list, 28.5619, -80.5774, 5), true);
+}
+
+{
+  const { ctx, el } = loadApp();
+  group("포개진 목록 화면 (padListHtml — 순수 함수)");
+  const rows = [
+    { id: "1", name: "예정 <b>주의</b>", outcome: "upcoming", net: "2030-01-01T00:00:00Z",
+      rocket: "Falcon 9", pad_name: "SLC-40 & <악성>", location_name: "Cape <script>" },
+    { id: '2" onclick="x', name: "지난 것", outcome: "success",
+      net: "2020-01-01T00:00:00Z", rocket: "R" },
+  ];
+  const html = ctx.padListHtml(rows);
+  check("건수를 말한다", html.includes("<b>2건</b>"), true);
+  check("예정 건수도 말한다", html.includes("예정 1건"), true);
+  check("겹친다는 사실을 말한다", html.includes("한 점으로 겹칩니다"), true);
+  check("발사대 이름을 머리에 쓴다", html.includes("SLC-40"), true);
+  // XSS — 이름·발사대는 API 문자열이다(CLAUDE.md 프론트 규칙 2).
+  check("발사명을 이스케이프한다", html.includes("<b>주의</b>"), false);
+  check("발사대 이름도 이스케이프한다", html.includes("<악성>"), false);
+  // ⚠ 아래 둘은 변이 실험에서 **안 재지고 있던 자리**다(2026-09-18). 픽스처의 값이
+  //   순한 문자열이라 이스케이프를 뜯어도 결과가 같았다 — 적대적인 값으로 바꿔서야 잡혔다.
+  check("발사장 이름도 이스케이프한다", html.includes("Cape <script>"), false);
+  check("행의 id 도 이스케이프한다(속성 탈출 금지)",
+    html.includes('onclick="x'), false);
+  check("행마다 id 를 싣는다", (html.match(/data-id=/g) || []).length, 2);
+  check("빈 목록은 비었다고 말한다(조용히 빈 화면 금지)",
+    ctx.padListHtml([]).includes("찾지 못했습니다"), true);
+
+  // ⚠ 이건 **실제 캐시로 렌더해 읽고서야 보였다** — 각 함수를 따로 재는 단언은 전부
+  //   통과했는데, 합친 문장이 `Falcon 9 Block 5 | Dragon CRS-2` / `T-42일 · Falcon 9 Block 5`
+  //   로 **로켓을 두 번** 말하고 있었다(실측: name 이 `<로켓> | <미션>` 꼴인 것 441/441).
+  group("행 제목에서 로켓 중복을 없앤다 (missionTitle — 순수 함수)");
+  check("구분자 뒤쪽만 쓴다",
+    ctx.missionTitle("Falcon 9 Block 5 | Dragon CRS-2 SpX-35"), "Dragon CRS-2 SpX-35");
+  check("구분자가 없으면 그대로", ctx.missionTitle("Starship"), "Starship");
+  check("미션명 안의 구분자는 살린다",
+    ctx.missionTitle("R | A | B"), "A | B");
+  check("빈 값도 죽지 않는다", ctx.missionTitle(null), "");
+  const dup = ctx.padListHtml([{ id: "1", name: "Falcon 9 Block 5 | Dragon CRS-2",
+    outcome: "success", net: "2026-01-01T00:00:00Z", rocket: "Falcon 9 Block 5",
+    pad_name: "SLC-40", location_name: "Cape" }]);
+  check("한 행에 로켓 이름이 한 번만 나온다",
+    (dup.match(/Falcon 9 Block 5/g) || []).length, 1);
+  check("미션명은 남아 있다", dup.includes("Dragon CRS-2"), true);
+}
+
+{
+  group("지도 클릭 배선 — 혼자면 상세, 포개져 있으면 목록 (P23-2)");
+  const { ctx, el, map, state } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  ctx.setupLaunchLayers();
+
+  const mk = (id, lat, lng) => ({ id, name: "L" + id, lat, lng, outcome: "success",
+    net: "2026-01-0" + id + "T00:00:00Z", rocket: "R", pad_name: "P", location_name: "S" });
+  state.allLaunches = [mk("1", 10, 20), mk("2", 10, 20), mk("3", 10, 20), mk("4", 55, 66)];
+
+  // ── 혼자 있는 점: 예전 그대로 상세가 열려야 한다(회귀를 만들지 않는다)
+  map.fire("click:launch-point", { features: [{ properties: { id: "4" } }] });
+  check("혼자면 상세가 열린다", el("panel-body").innerHTML.includes("L4"), true);
+  check("그때는 목록 문구가 없다",
+    el("panel-body").innerHTML.includes("한 점으로 겹칩니다"), false);
+  check("상세는 panelLaunchId 를 남긴다", String(state.panelLaunchId), "4");
+
+  // ── 포개진 점: 목록이 열려야 한다
+  map.fire("click:launch-point", { features: [{ properties: { id: "1" } }] });
+  const body = el("panel-body").innerHTML;
+  check("포개져 있으면 목록이 열린다", body.includes("한 점으로 겹칩니다"), true);
+  check("그 점의 3건이 전부 있다",
+    ["L1", "L2", "L3"].every((n) => body.includes(n)), true);
+  check("다른 점의 발사는 없다", body.includes("L4"), false);
+  check("패널이 보인다", el("panel").hidden, false);
+  check("목록은 panelLaunchId 를 비운다(카운트다운이 엉뚱한 걸 집지 않게)",
+    state.panelLaunchId, null);
+}
+
+{
+  group("목록의 행을 눌러 상세로 간다");
+  const { ctx, el, map, state } = loadApp();
+  state.map = map;
+  const mk = (id) => ({ id, name: "L" + id, lat: 10, lng: 20, outcome: "success",
+    net: "2026-01-0" + id + "T00:00:00Z", rocket: "R", pad_name: "P", location_name: "S" });
+  state.allLaunches = [mk("1"), mk("2")];
+
+  // 실제 DOM 은 innerHTML 안의 버튼을 querySelectorAll 로 준다 — 스텁은 테스트가 채운다.
+  const row = { dataset: { id: "2" }, handlers: {},
+    addEventListener(e, f) { this.handlers[e] = f; },
+    fire(e) { if (this.handlers[e]) this.handlers[e](); } };
+  el("panel-body").sel[".pad-row"] = [row];
+
+  check("목록이 2건을 세었다", ctx.openPadList(10, 20), 2);
+  check("행에 click 이 걸렸다", !!row.handlers.click, true);
+  row.fire("click");
+  check("누르면 그 발사의 상세로 바뀐다", el("panel-body").innerHTML.includes("L2"), true);
+  check("상세로 바뀌면 목록 문구는 사라진다",
+    el("panel-body").innerHTML.includes("한 점으로 겹칩니다"), false);
+}
+
+{
+  group("클러스터 클릭 — 안 갈라지면 확대하지 않고 목록을 연다");
+  const { ctx, el, map, state } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  ctx.setupLaunchLayers();
+  const mk = (id, lat, lng) => ({ id, name: "L" + id, lat, lng, outcome: "success",
+    net: "2026-01-01T00:00:00Z", rocket: "R", pad_name: "P", location_name: "S" });
+  state.allLaunches = [mk("1", 10, 20), mk("2", 10, 20), mk("3", 10, 20)];
+
+  // 전부 한 좌표인 클러스터 — 확대해도 갈라질 것이 없다.
+  map.fire("click:clusters", {
+    features: [{ properties: { cluster_id: 7, point_count: 3 }, geometry: { coordinates: [20, 10] } }],
+  });
+  check("카메라가 움직이지 않는다", map.moves().length, 0);
+  check("대신 목록이 열린다",
+    el("panel-body").innerHTML.includes("한 점으로 겹칩니다"), true);
+
+  // 좌표가 섞인 클러스터 — 예전처럼 확대한다.
+  state.allLaunches.push(mk("4", 11, 21));
+  map.fire("click:clusters", {
+    features: [{ properties: { cluster_id: 8, point_count: 4 }, geometry: { coordinates: [20, 10] } }],
+  });
+  await new Promise((r) => setImmediate(r));
+  check("갈라지는 클러스터는 확대한다", map.moves().length, 1);
+  check("확대 종류는 easeTo", (map.moves()[0] || [])[0], "easeTo");
+}
+
+{
+  group("툴팁이 참말을 한다 (P23-2 — 예전 문구는 거짓말이었다)");
+  const { ctx, el, map, state } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  ctx.setupLaunchLayers();
+  const mk = (id, lat, lng) => ({ id, name: "L" + id, lat, lng, outcome: "success",
+    status: "Launch Successful", net: "2026-01-01T00:00:00Z", rocket: "R",
+    pad_name: "P", location_name: "S" });
+  state.allLaunches = [mk("1", 10, 20), mk("2", 10, 20), mk("9", 55, 66)];
+  const ev = (extra) => Object.assign({ originalEvent: { clientX: 1, clientY: 2 } }, extra);
+
+  // 개별 점 — 겹쳐 있으면 그 사실을 말한다.
+  map.fire("mousemove:launch-point", ev({ features: [{ properties: { id: "1" } }] }));
+  const tip = ctx.document.body.children[0];
+  check("포개진 점은 건수를 말한다", tip.innerHTML.includes("이 지점 2건"), true);
+
+  map.fire("mousemove:launch-point", ev({ features: [{ properties: { id: "9" } }] }));
+  check("혼자인 점은 건수를 말하지 않는다", tip.innerHTML.includes("이 지점"), false);
+
+  // 클러스터 — "펼쳐집니다"는 동일 좌표에서 거짓말이다.
+  map.fire("mousemove:clusters", ev({
+    features: [{ properties: { point_count: 2 }, geometry: { coordinates: [20, 10] } }] }));
+  check("안 갈라지는 무리에 '펼쳐집니다'라고 하지 않는다",
+    tip.innerHTML.includes("펼쳐집니다"), false);
+  check("대신 목록이라고 말한다", tip.innerHTML.includes("클릭하면 목록"), true);
+
+  map.fire("mousemove:clusters", ev({
+    features: [{ properties: { point_count: 3 }, geometry: { coordinates: [20, 10] } }] }));
+  check("갈라지는 무리에는 예전 문구 그대로", tip.innerHTML.includes("펼쳐집니다"), true);
+}
+
   done();
 })();

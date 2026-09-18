@@ -119,6 +119,8 @@ function loadApp(options = {}) {
   const docHandlers = {};   // document 에 직접 붙는 핸들러(키보드 P12-14)
   const selectors = {};   // 테스트가 채우는 querySelectorAll 응답
   const sources = {};     // 지도 소스별 마지막 setData 값
+  const cameraMoves = [];  // flyTo/easeTo 호출 기록(P23-2 — 안 움직인 것도 단언한다)
+  const clusterZooms = {}; // 클러스터 id → 펼침 줌(테스트가 정한다)
   const layouts = {};     // setLayoutProperty 로 바뀐 값 ("레이어.속성" → 값)
   const paints = {};      // setPaintProperty 로 바뀐 값
   const api = Object.assign({
@@ -184,7 +186,11 @@ function loadApp(options = {}) {
     addSource(id) { sources[id] = null; },
     addLayer() {},
     getSource: (id) => (id in sources
-      ? { setData(d) { sources[id] = d; } }
+      ? {
+        setData(d) { sources[id] = d; },
+        /** 클러스터를 펼치는 줌. 앱은 Promise 를 기대한다(MapLibre 와 같은 모양). */
+        getClusterExpansionZoom: (cid) => Promise.resolve(clusterZooms[cid] === undefined ? 7 : clusterZooms[cid]),
+      }
       : undefined),
     getLayer: () => ({}),
     // 레이아웃·페인트 속성은 **남겨 둔다** — 히트맵(P12-15)처럼 "켜면 다른 레이어가
@@ -194,11 +200,19 @@ function loadApp(options = {}) {
     layout: (id, prop) => layouts[`${id}.${prop}`],
     paint: (id, prop) => paints[`${id}.${prop}`],
     getCanvas: () => ({ style: {} }),
-    flyTo() {}, easeTo() {}, addControl() {},
+    // 카메라 이동은 **남겨 둔다** — "확대해도 안 갈라지는 클러스터"(P23-2)는
+    // *움직이지 않았다*를 단언해야 잴 수 있고, 빈 함수로는 그걸 못 잰다.
+    flyTo(o) { cameraMoves.push(["flyTo", o]); },
+    easeTo(o) { cameraMoves.push(["easeTo", o]); },
+    addControl() {},
     /** 마지막으로 setData 된 값 */
     data: (id) => sources[id],
     /** 소스를 미리 만들어 둔다(setupLaunchLayers 를 부르지 않고 applyFilters 만 볼 때) */
     stubSource: (id) => { sources[id] = null; },
+    /** 지금까지의 카메라 이동 [종류, 옵션] 목록. 비어 있으면 안 움직인 것이다. */
+    moves: () => cameraMoves,
+    /** 클러스터 id → 펼침 줌을 테스트가 정한다. */
+    setClusterZoom: (cid, z) => { clusterZooms[cid] = z; },
   };
   // vm 컨텍스트는 **별도 realm** 이라 Date 생성자가 Node 쪽과 다르다. Node 에서 만든
   // Date 를 satellite.js 에 넘기면 `instanceof Date` 가 실패해 **예외 없이 NaN 좌표**가

@@ -657,6 +657,19 @@ html, body {
 }
 .status.hidden { display: none; }
 
+/* 한 점에 포개진 발사 목록 (P23-2) — 상세 패널 자리를 그대로 쓴다. */
+.pad-site { color: var(--muted); font-size: 12px; margin: -4px 0 8px; }
+.pad-count {
+  font-size: 12px; color: var(--accent);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; margin-bottom: 10px;
+  /* 한글은 기본값(break-all 에 가까운 동작)으로 **단어 중간에서 끊긴다** —
+     캡처에서 "지도에 / 서는" 으로 갈렸다. 어절 단위로 끊는다. */
+  word-break: keep-all; line-height: 1.55;
+}
+.pad-list { display: flex; flex-direction: column; gap: 2px; }
+.pad-row { width: 100%; }
+
 /* 앱 내부 오류 배너 (P23-1) — 상태줄(.status)과 달리 **덮이지 않는다**.
    상태줄은 다음 showStatus 가 덮어쓰지만, 오류는 사용자가 닫을 때까지 남아야 한다.
    지도 위 최상단 중앙: 툴바(z-index 40대)보다 위로 올려 무조건 보이게 한다. */
