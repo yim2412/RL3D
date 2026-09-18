@@ -1,3 +1,11 @@
-pywebview>=6.0
-pyinstaller>=6.0
-pythonnet>=3.0 ; sys_platform == "win32"
+# 정확한 버전으로 고정한다 (P23-3, 2026-09-18).
+#
+# 전에는 전부 `>=` 였다. build.bat 은 빌드마다 `pip install -r requirements.txt` 를
+# 돌리므로 **새 메이저가 나오면 조용히 올라갔고**, 지금 배포된 exe 가 무엇으로
+# 만들어졌는지 리포만 보고는 알 수 없었다. 배포가 전제인 프로젝트라 전역 규칙 9번의
+# 도입 조건이 이미 충족돼 있다.
+#
+# 올릴 때는 `build.bat` 으로 exe 를 만들어 실제로 떠는지 확인하고 함께 커밋한다.
+pywebview==6.2.1
+pyinstaller==6.21.0
+pythonnet==3.1.0 ; sys_platform == "win32"

@@ -462,6 +462,55 @@ class TestWebView2Notice(unittest.TestCase):
         self.assertEqual(self.shown, [])
 
 
+class TestWebLogBridge(unittest.TestCase):
+    """JS→파이썬 로그 통로 (P23-1). 창 없이 Api.log 만 직접 부른다."""
+
+    def setUp(self):
+        self.api = main_mod.Api()
+        self.records = []
+        self.handler = logging.Handler()
+        self.handler.emit = self.records.append
+        self.weblog = logging.getLogger("rl3d.web")
+        self.weblog.addHandler(self.handler)
+        self.weblog.setLevel(logging.DEBUG)
+        self.addCleanup(self.weblog.removeHandler, self.handler)
+
+    def test_error_lands_in_web_logger(self):
+        """**파이썬 오류와 이름이 갈려 있어야** 로그를 볼 때 어느 쪽이 터진 건지 안다."""
+        self.assertTrue(self.api.log("error", "[오류] boom @ sats.js:7"))
+        self.assertEqual(len(self.records), 1)
+        self.assertEqual(self.records[0].name, "rl3d.web")
+        self.assertEqual(self.records[0].levelno, logging.ERROR)
+        self.assertIn("sats.js:7", self.records[0].getMessage())
+
+    def test_warning_level_is_honored(self):
+        self.api.log("warning", "조심")
+        self.assertEqual(self.records[0].levelno, logging.WARNING)
+
+    def test_unknown_level_falls_back_to_error(self):
+        """브릿지로 들어오는 값은 신뢰하지 않는다 — 모르는 레벨은 error 로 본다."""
+        self.api.log("critical", "x")
+        self.assertEqual(self.records[0].levelno, logging.ERROR)
+
+    def test_message_is_truncated(self):
+        """길이를 안 자르면 매초 도는 틱의 예외 하나가 로그를 통째로 밀어낸다."""
+        self.api.log("error", "x" * 99999)
+        self.assertEqual(len(self.records[0].getMessage()), main_mod.WEB_LOG_MAX_CHARS)
+
+    def test_never_raises(self):
+        """여기서 예외가 나면 JS 쪽 보고 경로가 그걸 또 보고해 **재귀한다.**
+
+        막지 않았으면 무슨 일이 났을지부터 단언한다 — `str()` 이 던지는 값을 넣어
+        본다(방어를 뜯으면 이 테스트가 TypeError 가 아니라 실패로 드러나야 한다).
+        """
+        class Hostile:
+            def __str__(self):
+                raise RuntimeError("문자열로 못 바꿈")
+
+        self.assertFalse(self.api.log("error", Hostile()))
+        self.assertEqual(self.records, [])
+
+
 class TestCrashNotice(unittest.TestCase):
     """크래시 안내 (P12-10) — 예외 문구와 로그 경로가 실제로 들어가는가."""
 

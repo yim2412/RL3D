@@ -3659,5 +3659,211 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     fallback.every((p) => p.start >= T0 && p.end <= T0 + 6 * 3600 * 1000), true);
 }
 
+// ── 프론트 예외가 로그와 화면으로 나간다 (P23-1) ──────────────────────────────
+// 여기가 이 기능의 진짜 주장이다: **예외가 나면 어딘가에 남는다.** 그전에는
+// window.onerror·unhandledrejection 이 0건이고 브릿지에 로그 통로가 없어서,
+// 앱이 조용히 죽으면 화면에도 로그에도 아무것도 남지 않았다.
+{
+  const { ctx } = loadApp();
+  group("오류 억제 판정 (shouldReport — 시각 주입)");
+
+  const fresh = () => ({ seen: new Map(), logged: 0, suppressed: 0, capNoted: false,
+    bannerShown: false, queue: [] });
+
+  const st = fresh();
+  check("처음 보는 오류는 남긴다", ctx.shouldReport(st, "a", 1000), "log");
+  check("같은 오류를 곧바로 다시 보면 접는다", ctx.shouldReport(st, "a", 2000), "cooldown");
+  check("접어도 기록 건수는 안 는다", st.logged, 1);
+  check("접은 건수는 센다", st.suppressed, 1);
+  check("다른 오류는 따로 센다", ctx.shouldReport(st, "b", 2000), "log");
+  check("쿨다운(60초)이 지나면 다시 남긴다", ctx.shouldReport(st, "a", 1000 + 60000), "log");
+  check("쿨다운 경계 직전은 아직 접는다",
+    ctx.shouldReport(fresh2(ctx, "a", 0), "a", 59999), "cooldown");
+
+  // 세션 상한 — 매초 도는 틱에서 예외가 나면 로그가 116분 만에 백업까지 덮인다(실측 근거).
+  const cap = fresh();
+  for (let i = 0; i < 50; i++) ctx.shouldReport(cap, "k" + i, i * 100000);
+  check("상한(50건)까지는 남긴다", cap.logged, 50);
+  check("상한을 넘으면 마지막 한 줄만", ctx.shouldReport(cap, "z", 9e9), "cap-final");
+  check("그 뒤로는 아무것도 안 남긴다", ctx.shouldReport(cap, "z2", 9e9), "cap");
+  check("상한 안내는 한 번뿐", ctx.shouldReport(cap, "z3", 9e9), "cap");
+
+  // ⚠ 상한이 없으면 무슨 일이 일어나는가 — **막지 않았을 때를 먼저 단언한다**(CLAUDE.md).
+  // 이게 없으면 상한을 통째로 뜯어내도 위 단언들이 그대로 통과한다.
+  const nocap = fresh();
+  for (let i = 0; i < 200; i++) ctx.shouldReport(nocap, "u" + i, i * 100000);
+  check("서로 다른 오류 200건이 와도 기록은 상한에서 멈춘다", nocap.logged, 50);
+}
+
+/** 쿨다운 경계용 — 키 하나를 시각 `t` 에 기록해 둔 상태를 만든다. */
+function fresh2(ctx, key, t) {
+  const st = { seen: new Map(), logged: 0, suppressed: 0, capNoted: false,
+    bannerShown: false, queue: [] };
+  ctx.shouldReport(st, key, t);
+  return st;
+}
+
+{
+  const { ctx } = loadApp();
+  group("오류 문장 만들기 (formatError·shortSource — 순수 함수)");
+  check("경로에서 파일 이름만 남긴다",
+    ctx.shortSource("file:///C:/Users/x/RL3D/web/js/sats.js"), "sats.js");
+  check("쿼리·해시를 떼어낸다", ctx.shortSource("a/b/c.js?v=2#x"), "c.js");
+  check("없으면 빈 문자열(지어내지 않는다)", ctx.shortSource(null), "");
+  check("파일과 줄번호를 붙인다",
+    ctx.formatError("오류", "boom", "file:///x/web/js/sats.js", 42, null),
+    "[오류] boom @ sats.js:42");
+  check("메시지가 없어도 무언가는 남긴다",
+    ctx.formatError("오류", "", null, null, null), "[오류] (메시지 없음)");
+  check("스택은 앞 6줄만",
+    ctx.formatError("오류", "b", null, null,
+      "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8").split("\n").length, 7);  // 첫 줄 + 스택 6줄
+  const long = ctx.formatError("오류", "x".repeat(5000), null, null, null);
+  check("한 건의 길이를 자른다", long.length <= 1800, true);
+}
+
+{
+  group("오류가 실제로 브릿지로 나간다 (배선)");
+  const sent = [];
+  const { ctx, win, el } = loadApp({ api: { log: (lvl, msg) => { sent.push([lvl, msg]); } } });
+
+  // ⚠ 배선을 재는 것이지 판정을 재는 게 아니다 — window 에 실제로 붙었는지부터.
+  check("window 에 error 를 건다", win.has("error"), true);
+  check("window 에 unhandledrejection 을 건다", win.has("unhandledrejection"), true);
+
+  win.fire("error", { message: "터짐", filename: "file:///x/web/js/sats.js", lineno: 7,
+    error: { stack: "at foo\nat bar" } });
+  check("오류 1건이 브릿지로 갔다", sent.length, 1);
+  check("레벨은 error", (sent[0] || [])[0], "error");
+  check("문장에 파일·줄이 들어 있다", ((sent[0] || [])[1] || "").includes("sats.js:7"), true);
+  check("배너가 떴다", el("app-error").hidden, false);
+  check("배너 문구가 로그 경로를 알려 준다",
+    el("app-error-text").textContent.includes("rl3d.log"), true);
+
+  // 같은 자리에서 매초 반복돼도 로그는 한 줄이다(억제가 실제로 배선돼 있는가).
+  for (let i = 0; i < 100; i++) {
+    win.fire("error", { message: "터짐", filename: "file:///x/web/js/sats.js", lineno: 7,
+      error: { stack: "at foo" } });
+  }
+  check("같은 오류 100건이 더 와도 로그는 그대로", sent.length, 1);
+
+  // 거부(Promise)도 같은 통로를 탄다.
+  win.fire("unhandledrejection", { reason: { message: "거부됨", stack: "at baz" } });
+  check("처리되지 않은 거부도 보낸다", sent.length, 2);
+  check("거부는 종류를 밝힌다", ((sent[1] || [])[1] || "").includes("처리되지 않은 거부"), true);
+
+  // 배너는 세션당 한 번 — 오류가 초당 나도 다시 뜨지 않는다.
+  el("app-error").classList.add("hidden");
+  win.fire("error", { message: "또 다른 것", filename: "x.js", lineno: 1 });
+  check("닫은 배너는 다시 뜨지 않는다", el("app-error").hidden, true);
+}
+
+{
+  group("브릿지가 아직 없을 때 난 오류는 쌓였다가 나간다");
+  const { ctx, win } = loadApp();
+  ctx.window.pywebview = {};        // 브릿지가 아직 준비되지 않은 상태
+  win.fire("error", { message: "부트 전 오류", filename: "state.js", lineno: 3 });
+
+  const sent = [];
+  ctx.window.pywebview = { api: { log: (lvl, msg) => { sent.push(msg); } } };
+  check("브릿지가 없을 땐 안 보낸다", sent.length, 0);
+  check("생긴 뒤 flush 하면 나간다", ctx.flushErrorQueue(), 1);
+  check("그 내용이 그대로 갔다", (sent[0] || "").includes("부트 전 오류"), true);
+  check("두 번 flush 해도 중복되지 않는다", ctx.flushErrorQueue(), 0);
+}
+
+{
+  group("보고 경로가 또 죽어도 재귀하지 않는다");
+  const { ctx, win } = loadApp({ api: { log: () => { throw new Error("브릿지 고장"); } } });
+  let threw = false;
+  try {
+    win.fire("error", { message: "원래 오류", filename: "x.js", lineno: 1 });
+  } catch (e) { threw = true; }
+  check("브릿지가 던져도 밖으로 새지 않는다", threw, false);
+
+  // 브릿지가 거부된 Promise 를 돌려줘도 unhandledrejection 으로 되돌아오면 안 된다.
+  const { ctx: c2, win: w2 } = loadApp({
+    api: { log: () => Promise.reject(new Error("거부")) } });
+  let threw2 = false;
+  try { w2.fire("error", { message: "o", filename: "x.js", lineno: 1 }); }
+  catch (e) { threw2 = true; }
+  check("거부하는 Promise 를 돌려줘도 안전하다", threw2, false);
+}
+
+// ── 배선 한 줄이 죽어도 나머지와 initMap 이 산다 (P23-1) ─────────────────────
+// **이게 없으면 P23-1 의 절반이 공허하다.** 오류를 로그로 보내는 것만으로는
+// 지도가 안 뜨는 상태가 그대로다. 예전 boot.js 는 27줄을 늘어놓은 구조라
+// 첫 줄이 던지면 initMap 까지 통째로 안 돌았다.
+{
+  group("wire/step — 한 줄이 죽어도 나머지가 산다");
+  const sent = [];
+  // `missing` 으로 **없는 요소**를 만든다 — 스텁이 묻는 id 마다 요소를 지어내므로
+  // 그게 없으면 이 경로를 영영 못 잰다(하네스를 그래서 고쳤다).
+  const { ctx, el } = loadApp({
+    api: { log: (lvl, msg) => { sent.push(msg); } },
+    missing: ["없는-아이디"],
+  });
+
+  check("없는 요소에 걸면 false 를 돌려준다", ctx.wire("없는-아이디", "click", () => {}), false);
+  check("그 사실이 사람이 읽는 말로 로그에 나간다",
+    sent.some((m) => m.includes("요소를 찾지 못했습니다") && m.includes("없는-아이디")), true);
+  check("있는 요소는 정상 배선", ctx.wire("search", "input", () => {}), true);
+  check("정말 걸렸다", !!el("search").handlers.input, true);
+
+  // step 은 던지는 덩어리를 삼키고 다음으로 보낸다.
+  let after = false;
+  ctx.step("터지는 단계", () => { throw new Error("퍽"); });
+  ctx.step("다음 단계", () => { after = true; });
+  check("앞 단계가 던져도 다음 단계가 돈다", after, true);
+  check("던진 단계가 로그에 남는다",
+    sent.some((m) => m.includes("터지는 단계") && m.includes("퍽")), true);
+}
+
+{
+  group("bindUI 한 줄이 죽어도 initMap 이 뜬다 (변이 실험의 자리)");
+  // `.flt` 루프에서 일부러 던지게 만들어, 그 뒤 배선과 부트가 계속되는지 본다.
+  const sent = [];
+  const { ctx, el, map, sel, state, win, api } = loadApp({
+    api: { log: (lvl, msg) => { sent.push(msg); } },
+  });
+  state.map = map;
+  sel[".flt"] = { forEach() { throw new Error("필터 배선 폭발"); } };
+
+  let bindThrew = false;
+  try { ctx.bindUI(); } catch (e) { bindThrew = true; }
+  check("bindUI 는 무슨 일이 있어도 밖으로 던지지 않는다", bindThrew, false);
+  check("던진 자리는 로그에 남는다",
+    sent.some((m) => m.includes("결과 필터") && m.includes("필터 배선 폭발")), true);
+  // 그 **뒤쪽** 배선들이 살아 있는가 — 예전 구조라면 전부 죽었다.
+  check("뒤쪽 배선이 산다 (panel-close)", !!el("panel-close").handlers.click, true);
+  check("뒤쪽 배선이 산다 (refresh)", !!el("refresh").handlers.click, true);
+  check("맨 끝 배선도 산다 (tl-range change)", !!el("tl-range").handlers.change, true);
+}
+
+{
+  group("부트 한 단계가 던져도 지도는 뜬다 (P23-1 의 핵심)");
+  // ⚠ 위 bindUI 테스트만으로는 **절반이다.** `pywebviewready` 핸들러의 단계 감싸기를
+  //   통째로 지워도 bindUI 테스트는 전부 초록이다 — 2026-09-11·P19 에서 반복해 당한
+  //   "순수 함수는 맞는데 배선 한 줄이 없는" 구멍과 같은 자리라 여기서 직접 잰다.
+  const sent = [];
+  const { ctx, win, map, state } = loadApp({ api: { log: (lvl, msg) => { sent.push(msg); } } });
+  for (const src of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(src);
+
+  // 부트 **앞쪽** 단계를 터뜨린다. 예전 구조라면 여기서 멈춰 initMap 이 안 돌았다.
+  ctx.applySettings = () => { throw new Error("설정 복원 폭발"); };
+
+  check("부트 전에는 지도가 없다", state.map, null);
+  let bootThrew = false;
+  try {
+    await win.fire("pywebviewready");
+    await new Promise((r) => setImmediate(r));
+  } catch (e) { bootThrew = true; }
+  check("부트 핸들러가 밖으로 던지지 않는다", bootThrew, false);
+
+  check("터진 단계가 로그에 남는다",
+    sent.some((m) => m.includes("applySettings") && m.includes("설정 복원 폭발")), true);
+  check("그래도 지도는 떴다 (initMap 이 돌았다)", !!state.map, true);
+}
+
   done();
 })();

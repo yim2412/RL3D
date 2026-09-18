@@ -11,7 +11,7 @@ const vm = require("vm");
 /** index.html 의 <script> 순서와 같아야 한다 — 클래식 스크립트라 순서가 곧 의존 관계다.
  *  파일을 늘리면 여기에도 추가한다(빠뜨리면 "함수가 없다"는 에러로 바로 드러난다). */
 const APP_FILES = [
-  "state.js", "utils.js", "map.js", "launches.js", "sequence.js", "focus.js",
+  "errors.js", "state.js", "utils.js", "map.js", "launches.js", "sequence.js", "focus.js",
   "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "observer.js", "trajectory.js", "favorites.js", "sidebar.js", "panels.js", "satpanel.js", "stats.js", "keys.js", "settings.js", "update.js", "firstrun.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
@@ -103,7 +103,16 @@ function injectSatelliteLib(ctx) {
  */
 function loadApp(options = {}) {
   const els = {};
-  const el = (id) => (els[id] = els[id] || makeEl(id));
+  /**
+   * options.missing: 이 id 들은 **없는 요소**로 친다(`getElementById` 가 null).
+   *
+   * 스텁은 원래 **묻는 id 마다 요소를 만들어 준다.** 편하지만 그래서
+   * *"`index.html` 에서 요소를 지웠을 때"* 를 영영 잴 수 없었다 — 지워도 테스트는
+   * 전부 통과한다. `wire()`(P23-1)가 지키려는 것이 정확히 그 경로라, 그걸 재려면
+   * 없는 요소를 만들 수 있어야 한다.
+   */
+  const missing = new Set(options.missing || []);
+  const el = (id) => (missing.has(id) ? null : (els[id] = els[id] || makeEl(id)));
 
   const mapHandlers = {};
   const winHandlers = {};

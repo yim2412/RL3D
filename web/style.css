@@ -657,6 +657,31 @@ html, body {
 }
 .status.hidden { display: none; }
 
+/* 앱 내부 오류 배너 (P23-1) — 상태줄(.status)과 달리 **덮이지 않는다**.
+   상태줄은 다음 showStatus 가 덮어쓰지만, 오류는 사용자가 닫을 때까지 남아야 한다.
+   지도 위 최상단 중앙: 툴바(z-index 40대)보다 위로 올려 무조건 보이게 한다. */
+.app-error {
+  position: absolute;
+  top: 62px; left: 50%; transform: translateX(-50%);
+  max-width: min(680px, calc(100% - 40px));
+  display: flex; align-items: flex-start; gap: 10px;
+  background: rgba(60, 22, 26, .97);
+  border: 1px solid var(--failure);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px; line-height: 1.5;
+  color: #ffd9db;
+  z-index: 60;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+}
+.app-error.hidden { display: none; }
+.app-error-close {
+  flex: 0 0 auto;
+  background: none; border: none; cursor: pointer;
+  color: #ffd9db; font-size: 14px; line-height: 1; padding: 2px 4px;
+}
+.app-error-close:hover { color: #fff; }
+
 /* MapLibre 기본 요소 톤 다운 */
 .maplibregl-ctrl-attrib { font-size: 10px; opacity: .6; }
 

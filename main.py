@@ -18,8 +18,13 @@ import applog
 import startup
 
 log = logging.getLogger(__name__)
+# 프론트(JS)가 남기는 로그는 이름을 갈라 둔다 — 파이썬 오류와 섞이면
+# 로그를 볼 때 어느 쪽이 터진 건지 구분할 수 없다(P23-1).
+weblog = logging.getLogger("rl3d.web")
 
-__version__ = "1.46.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+WEB_LOG_MAX_CHARS = 2000   # JS 가 보내는 한 건의 상한(브릿지 입력은 신뢰하지 않는다)
+
+__version__ = "1.47.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -147,6 +152,26 @@ class Api:
     def check_update(self, force=False):
         """GitHub 최신 릴리스와 이 앱의 버전을 비교한다(P12-12)."""
         return api_client.check_update(__version__, force)
+
+    def log(self, level, message):
+        """프론트(JS)에서 난 예외를 파이썬 로그로 받는다 (P23-1).
+
+        `applog.install_excepthook()` 이 파이썬에 해 주는 일을 JS 에도 해 주는 통로다 —
+        GUI 에서는 traceback 이 아무 데도 안 남고, WebView2 의 콘솔은 `pythonw` 로
+        띄우면 볼 수조차 없다.
+
+        **절대 던지지 않는다.** 여기서 예외가 나면 JS 쪽 보고 경로가 그걸 또 보고해
+        재귀한다. 레벨은 화이트리스트로만 받고 길이는 자른다(브릿지 입력이라 신뢰하지 않는다).
+        """
+        try:
+            text = str(message)[:WEB_LOG_MAX_CHARS]
+            if level == "warning":
+                weblog.warning("%s", text)
+            else:
+                weblog.error("%s", text)
+        except Exception:   # noqa: BLE001 — 보고 경로는 실패해도 조용히 끝낸다
+            return False
+        return True
 
     def ping(self):
         return "pong"

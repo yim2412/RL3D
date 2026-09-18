@@ -134,6 +134,13 @@
   <!-- 상태 표시 -->
   <div id="status" class="status hidden"></div>
 
+  <!-- 앱 내부 오류 배너 (P23-1) — 세션당 한 번만 뜨고 닫으면 다시 안 뜨다.
+       문구는 errors.js 가 textContent 로만 넣는다(그래서 XSS 가 구조적으로 막힌다). -->
+  <div id="app-error" class="app-error hidden">
+    <span id="app-error-text"></span>
+    <button id="app-error-close" class="app-error-close">✕</button>
+  </div>
+
   <script src="lib/maplibre-gl.js"></script>
   <script src="lib/satellite.min.js"></script>
   <!-- Natural Earth 육지 폴리곤(퍼블릭 도메인) — 오프라인 배경(P17-2).
@@ -141,6 +148,9 @@
   <script src="lib/ne_land.js"></script>
   <!-- 클래식 스크립트라 최상위 let·function 이 파일 간에 공유된다 → 순서가 곧 의존 관계.
        state 는 가장 먼저, 실행 진입점인 boot 는 가장 마지막(P11-5). -->
+  <!-- errors.js 는 **가장 먼저**— 다른 파일이 로드 중에 던지는 것까지 잡아야 한다(P23-1).
+       그래서 이 파일만은 다른 앱 파일에 의존하지 않는다. -->
+  <script src="js/errors.js"></script>
   <script src="js/state.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/map.js"></script>
