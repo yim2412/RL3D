@@ -1947,8 +1947,10 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     el("stats-body").innerHTML.includes("전 세계 궤도 발사"), true);
   check("기존 모수 안내(P12-7)도 그대로 남아 있다",
     el("stats-body").innerHTML.includes("건 기준"), true);
+  // ⚠ 예전에는 `net_precision` 없이 열었는데, P24-1 이후로는 **모르면 순번을 안 말한다**
+  //   (`focus.js` 와 같은 처리). 배선을 재려면 날짜가 확정된 발사로 열어야 한다.
   c2.openPanel({ id: "1", name: "테스트", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
-                 lat: 28.5, lng: -80.6, orbital_year_count: 356 });
+                 net_precision: "Minute", lat: 28.5, lng: -80.6, orbital_year_count: 356 });
   check("상세 패널의 맥락 줄에도 올해 순번이 실린다",
     el("panel-body").innerHTML.includes("전 세계 올해 356번째"), true);
 }
@@ -4060,6 +4062,74 @@ function fresh2(ctx, key, t) {
   map.fire("mousemove:clusters", ev({
     features: [{ properties: { point_count: 3 }, geometry: { coordinates: [20, 10] } }] }));
   check("갈라지는 무리에는 예전 문구 그대로", tip.innerHTML.includes("펼쳐집니다"), true);
+}
+
+// ── 순번은 날짜가 확정된 발사에만 (P24-1) ────────────────────────────────────
+// **LL2 는 날짜가 미정인 예정 발사에 같은 누적치를 복사해 준다.** 실측(실제 캐시 441건):
+// Cape Canaveral 예정 7건이 전부 `1170` · SpaceX 통산 `778` 을 9건 · 전 세계 `7530` 을
+// **23건**이 공유한다. 화면은 그 23건에 전부 "전 세계 올해 7,530번째"라고 말하고 있었다.
+{
+  const { ctx } = loadApp();
+  group("순번을 말해도 되는가 (canShowOrdinal — 순수 함수)");
+
+  const L = (outcome, prec) => ({ outcome, net_precision: prec });
+  check("이미 일어난 일은 정밀도와 무관하게 순번이 사실이다",
+    ["Year", "Month", undefined, "Second"].map((p) => ctx.canShowOrdinal(L("success", p))),
+    [true, true, true, true]);
+  check("예정 + 시각 확정(Second·Minute·Hour·Day)은 말한다",
+    ["Second", "Minute", "Hour", "Day"].map((p) => ctx.canShowOrdinal(L("upcoming", p))),
+    [true, true, true, true]);
+  check("예정 + 날짜 미정(Month·Quarter·Year)은 말하지 않는다",
+    ["Month", "Quarter 3", "Quarter 4", "Year", "Year Half 2"]
+      .map((p) => ctx.canShowOrdinal(L("upcoming", p))),
+    [false, false, false, false, false]);
+  check("정밀도를 모르면 말하지 않는다(모르면 안 띄운다)",
+    ctx.canShowOrdinal(L("upcoming", undefined)), false);
+  check("발사가 없으면 false", ctx.canShowOrdinal(null), false);
+
+  group("맥락 줄 — 순번과 시제 (contextText)");
+  const full = {
+    outcome: "success", net_precision: "Second", provider: "SpaceX",
+    pad_count: 296, pad_year_count: 58, location_count: 1129, location_year_count: 60,
+    agency_count: 778, agency_year_count: 120, orbital_count: 7530, orbital_year_count: 223,
+    pad_turnaround_sec: 86400 * 3,
+  };
+  const done = ctx.contextText(full);
+  check("완료 발사는 순번을 그대로 말한다", done.includes("이 발사장 통산 1,129번째"), true);
+  check("완료 발사는 미래형이 아니다", done.includes("번째가 됩니다"), false);
+
+  // ⚠ **막지 않았으면 무슨 일이 났을 것인가** — 이게 없으면 규칙을 뜯어내도 위가 통과한다.
+  const vague = ctx.contextText(Object.assign({}, full,
+    { outcome: "upcoming", net_precision: "Year" }));
+  check("날짜 미정 예정은 발사장 순번을 말하지 않는다",
+    /이 발사장 통산/.test(vague || ""), false);
+  check("날짜 미정 예정은 발사대 순번도 말하지 않는다", /이 발사대 /.test(vague || ""), false);
+  check("날짜 미정 예정은 기관 순번도 말하지 않는다", /SpaceX 올해/.test(vague || ""), false);
+  check("날짜 미정 예정은 전 세계 순번도 말하지 않는다", /전 세계 올해/.test(vague || ""), false);
+  // 순번이 아닌 것은 남는다 — 재사용 간격은 "직전 발사와의 간격"이라 미정과 무관하다.
+  check("그래도 발사대 재사용 간격은 남는다", /직전 발사로부터/.test(vague || ""), true);
+
+  const soon = ctx.contextText(Object.assign({}, full,
+    { outcome: "upcoming", net_precision: "Minute" }));
+  check("날짜 확정 예정은 순번을 말한다", /이 발사장 통산 1,129번째/.test(soon), true);
+  // ⚠ 시제는 **앞머리에 한 번만**이다. 조각마다 붙였더니 실제 캐시로 렌더한 한 줄에
+  //   "됩니다"가 네 번 나왔다 — 조각을 따로 재는 단언은 전부 통과했었다.
+  check("그때는 시제를 앞머리에 밝힌다(아직 안 일어났다)",
+    soon.startsWith("예정 기준 — "), true);
+  check("조각마다 반복하지 않는다", (soon.match(/됩니다/g) || []).length, 0);
+  check("완료 발사에는 그 표시가 없다", done.startsWith("예정 기준"), false);
+  check("순번을 안 말하는 예정에는 표시도 없다(말할 순번이 없다)",
+    (vague || "").startsWith("예정 기준"), false);
+
+  // 네 축이 전부 같은 판정을 쓰는가 — 하나만 빠뜨리면 한 줄에서 섞여 나온다.
+  check("날짜 미정이면 네 축이 모두 조용하다",
+    ["이 발사대", "이 발사장 통산", "SpaceX 올해", "전 세계 올해"]
+      .filter((k) => (vague || "").includes(k)), []);
+  check("줄이 통째로 사라지지는 않는다(재사용 간격이 있으면)", !!vague, true);
+
+  // 아무 정보가 없으면 줄 자체가 없다(없는 말을 지어내지 않는다).
+  check("말할 것이 없으면 null",
+    ctx.contextText({ outcome: "upcoming", net_precision: "Year", location_count: 5 }), null);
 }
 
   done();

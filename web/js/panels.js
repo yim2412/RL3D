@@ -273,11 +273,40 @@ function turnaroundText(sec) {
 }
 
 /**
+ * 순번("N번째")을 말해도 되는 발사인가 — 순수 함수 (P24-1).
+ *
+ * **LL2 는 날짜가 미정인 예정 발사에 같은 누적치를 그대로 복사해 준다.** 실측(2026-09-18,
+ * 실제 캐시 441건): Cape Canaveral 의 예정 **7건이 전부 `1170`**, SpaceX 통산 `778` 을
+ * **9건**이, 전 세계 통산 `7530` 을 **23건**이 공유한다. 화면은 서로 다른 23개 발사에
+ * 전부 *"전 세계 올해 7,530번째"* 라고 말하고 있었다 — **일곱이 같은 번째일 수는 없다.**
+ *
+ * 경계는 데이터가 정했다. 완료 발사는 네 축 모두 중복 **0건**이고, 예정은 정밀도가 가른다:
+ *   `Second`·`Minute`·`Hour`·`Day` → 중복 **0%**  ·  `Month` 53% · `Quarter` 60~100% · `Year` 88%
+ *
+ * 이 앱은 **이미 같은 규칙을 두 곳에 갖고 있다** — `focus.js` 의 `FOCUS_PRECISIONS` 와
+ * `sequence.js` 의 `canShowClock`. 둘 다 *"없는 정밀도를 지어내지 않는다"* 는 같은 말이고,
+ * 순번에만 그 규칙이 없었다.
+ *
+ * ⚠ `Day`·`Hour` 는 실측 표본이 각각 2건뿐이다 — 중복 0%지만 근거가 얇다. 그래도
+ *   `Month` 쪽(53%)과는 성격이 뚜렷이 갈려 여기에 선을 긋는다.
+ */
+const ORDINAL_NET = ["Second", "Minute", "Hour", "Day"];
+function canShowOrdinal(d) {
+  if (!d) return false;
+  if (d.outcome !== "upcoming") return true;   // 이미 일어난 일은 순번이 사실이다
+  return ORDINAL_NET.includes(d.net_precision);
+}
+
+/**
  * "이 발사대 296번째(올해 58)" — 한 축의 두 기준을 한 조각으로(P15-1).
  *
  * **둘이 같으면 괄호를 안 붙인다.** 새로 만든 발사대는 `통산 1 · 올해 1` 로 와서
  * `1번째(올해 1)` 이 되는데, 실측 라이브 100건에 그런 발사가 있었다 — 정보량 0인 괄호다.
  * 반쪽이 없거나 0 이어도 안 붙인다(`orbital_count` 는 옛 발사에서 `null`·`0` 으로 온다).
+ *
+ * 시제는 **여기서 붙이지 않는다** — `contextText` 가 줄 앞머리에 한 번만 밝힌다(P24-1).
+ * 조각마다 붙였더니 실제 캐시로 렌더한 한 줄에 *"됩니다"* 가 **네 번** 나왔다
+ * (각 조각을 따로 재는 단언은 전부 통과했고, 읽어 보고서야 보였다).
  */
 function countPair(label, main, sub, subLabel) {
   if (!main) return null;
@@ -288,19 +317,33 @@ function countPair(label, main, sub, subLabel) {
 
 function contextText(d) {
   const parts = [];
+  // **날짜가 미정인 예정 발사에는 순번을 아예 말하지 않는다**(P24-1) — LL2 가 같은 누적치를
+  // 여러 발사에 복사해 주므로, 말하면 그 자체가 거짓이 된다. 발사대 재사용 간격은 순번이
+  // 아니라 **직전 발사와의 간격**이라 이 판정과 무관하게 남긴다.
+  const ordinal = canShowOrdinal(d);
   // 네 축 모두 "통산과 올해"를 함께 말한다(P15-1). 전에는 축마다 한쪽만 말해서,
   // `이 발사장 통산 912번째 · SpaceX 올해 108번째` 처럼 **기준이 다른 숫자가 나란히** 섰다.
-  const pad = countPair("이 발사대", d.pad_count, d.pad_year_count, "올해");
-  if (pad) parts.push(pad);
+  if (ordinal) {
+    const pad = countPair("이 발사대", d.pad_count, d.pad_year_count, "올해");
+    if (pad) parts.push(pad);
+  }
   const ta = turnaroundText(d.pad_turnaround_sec);
   if (ta) parts.push(`직전 발사로부터 ${ta} 만`);
-  const loc = countPair("이 발사장 통산", d.location_count, d.location_year_count, "올해");
-  if (loc) parts.push(loc);
-  const ag = countPair(`${d.provider || "이 기관"} 올해`, d.agency_year_count, d.agency_count, "통산");
-  if (ag) parts.push(ag);
-  const orb = countPair("전 세계 올해", d.orbital_year_count, d.orbital_count, "통산");
-  if (orb) parts.push(orb + " 궤도 발사");
-  return parts.length ? parts.join(" · ") : null;
+  if (ordinal) {
+    const loc = countPair("이 발사장 통산", d.location_count, d.location_year_count, "올해");
+    if (loc) parts.push(loc);
+    const ag = countPair(`${d.provider || "이 기관"} 올해`, d.agency_year_count, d.agency_count, "통산");
+    if (ag) parts.push(ag);
+    const orb = countPair("전 세계 올해", d.orbital_year_count, d.orbital_count, "통산");
+    if (orb) parts.push(orb + " 궤도 발사");
+  }
+  if (!parts.length) return null;
+  // **아직 안 일어난 일이라는 것을 한 번만 밝힌다**(P24-1). 조각마다 "됩니다"를 붙이면
+  // 한 줄에 네 번 나온다. 앞머리에 두는 이유는 읽는 순서다 — 뒤의 숫자들을 읽기 **전에**
+  // 그것이 미래임을 알아야 관점 화면의 *"지금까지 N회"* 와 나란히 놓아도 안 어긋난다.
+  // 어투("… 기준")는 통계 패널·범례와 같은 말을 쓴다.
+  const line = parts.join(" · ");
+  return ordinal && d.outcome === "upcoming" ? `예정 기준 — ${line}` : line;
 }
 
 function updatesBlock(d) {
