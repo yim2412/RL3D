@@ -46,8 +46,28 @@ function statsScope(list, loaded, nowYear) {
   return { total: (list || []).length, from, to, full, partial, nowYear };
 }
 
-/** 모수 안내 문구 HTML. 부분 표본 연도가 있으면 그것을 **이름으로** 알린다. */
-function scopeNoteHtml(sc) {
+/**
+ * 화면 조건이 지금 무언가를 걸러내고 있는가 — 순수 함수 (P24-2).
+ * 검색어·결과 필터·타임라인 중 하나라도 걸리면 "불러온 것"과 "보이는 것"이 갈린다.
+ */
+function filterNarrows(total, shown) {
+  return typeof total === "number" && typeof shown === "number" && shown < total;
+}
+
+/**
+ * 모수 안내 문구 HTML. 부분 표본 연도가 있으면 그것을 **이름으로** 알린다.
+ *
+ * `scope` 로 **무엇을 센 숫자인지** 밝힌다 (P24-2). 전에는 통계 패널과 히트맵 범례가
+ * **글자 그대로 같은 문장**(`현재 불러온 N건 기준`)을 썼는데, 통계는 `allLaunches`(필터 전),
+ * 범례는 필터된 목록을 넘겼다 — 실측(2026-09-18): 결과=성공만 → 범례 **378** · 통계 **441**,
+ * 검색 `starlink` → 지도 137인데 통계 **441**. 즉 **"불러온"이라는 한 단어가 한쪽에서는
+ * "필터된"을 가리켰다.** 어느 동작이 옳은지가 아니라, 같은 말로 다른 것을 센 것이 문제다.
+ *   `scope: "loaded"` → 불러온 전체          (통계 패널)
+ *   `scope: "shown"`  → 지금 화면에 보이는 것  (히트맵 범례)
+ *   `scope: "entity"` → 이 관점 화면의 대상    (발사장·기관·로켓 화면)
+ * 범위를 안 넘기면 **예전 문구 그대로** 둔다 — 호출부를 놓쳤을 때 뜻이 조용히 바뀌지 않게.
+ */
+function scopeNoteHtml(sc, scope, otherTotal) {
   const span = sc.from != null
     ? `${escapeHtml(tlLabelDate(sc.from))} ~ ${escapeHtml(tlLabelDate(sc.to))}` : null;
   const partialWarn = sc.partial.length
@@ -57,7 +77,21 @@ function scopeNoteHtml(sc) {
     : "";
   const fullNote = sc.full.length
     ? `<div class="st-full">✓ 연도 전체를 불러온 해: ${sc.full.join("·")}</div>` : "";
-  return `<div class="st-note">현재 불러온 ${sc.total}건 기준` +
+  let head = `현재 불러온 ${sc.total}건 기준`;
+  if (scope === "shown") {
+    head = `지금 보이는 ${sc.total}건 기준`;
+    if (filterNarrows(otherTotal, sc.total)) {
+      head += ` (불러온 ${otherTotal}건 중 · 검색·필터·타임라인 적용)`;
+    }
+  } else if (scope === "entity") {
+    head = `이 화면 대상의 ${sc.total}건 기준`;
+  } else if (scope === "loaded") {
+    head = `불러온 ${sc.total}건 전체 기준`;
+    if (filterNarrows(sc.total, otherTotal)) {
+      head += ` — 지금 화면에는 ${otherTotal}건만 보입니다(통계는 검색·필터와 무관하게 전체를 셉니다)`;
+    }
+  }
+  return `<div class="st-note">${head}` +
     (span ? ` · ${span}` : "") + `</div>` + partialWarn + fullNote;
 }
 
@@ -257,7 +291,9 @@ function showEntityStats(kind, value) {
 
   document.getElementById("stats-body").innerHTML =
     `<h2>${view.icon} ${escapeHtml(value)}${view.suffix || ""}</h2>` +
-    scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear())) +
+    // 관점 화면은 **그 대상의 발사**를 센다 — 화면 필터와도, 불러온 전체와도 다른 세 번째
+    // 모수다. 셋이 같은 문장을 쓰면 어느 것을 본 숫자인지 알 수 없다(P24-2).
+    scopeNoteHtml(statsScope(list, completeYears(), new Date().getFullYear()), "entity") +
     familyUpHtml(kind, list) +
     (kind === "site" ? siteTotalsHtml(list) : "") +
     (kind === "provider" ? providerLandingsHtml(list) : "") +
@@ -368,7 +404,10 @@ function showStats() {
     return;
   }
   const s = computeStats(allLaunches);
+  // 통계는 **필터를 일부러 안 받는다** — "성공만" 필터를 켜고 열면 성공률 100% 같은
+  // 무의미한 숫자가 나온다. 그건 옳은 동작이지만 **화면이 그 사실을 말하지 않았다**(P24-2).
   const scope = statsScope(allLaunches, completeYears(), new Date().getFullYear());
+  const shownNow = currentFilteredLaunches().length;
   const decided = s.byOutcome.success + s.byOutcome.failure + s.byOutcome.partial;
   const rate = decided ? Math.round(s.byOutcome.success / decided * 100) : null;
   const providers = Object.entries(s.byProvider).sort((a, b) => b[1] - a[1]).slice(0, 8);
@@ -377,7 +416,7 @@ function showStats() {
 
   document.getElementById("stats-body").innerHTML =
     `<h2>📊 발사 통계</h2>` +
-    scopeNoteHtml(scope) +
+    scopeNoteHtml(scope, "loaded", shownNow) +
     orbitalYearNoteHtml(allLaunches, new Date().getFullYear()) +
     `<div class="st-tiles">` +
       `<div class="st-tile"><div class="st-num">${s.total}</div><div class="st-lab">총 발사</div></div>` +

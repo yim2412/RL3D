@@ -237,7 +237,8 @@ function renderHeatLegend(list, scale) {
     `<div class="hl-title">🔥 발사 밀도</div>` +
     `<div class="hl-bar"></div>` +
     `<div class="hl-ends">${ends}</div>` +
-    scopeNoteHtml(sc);
+    // 범례는 **지금 보이는 것**을 센다 — 통계 패널과 같은 문장을 쓰면 안 된다(P24-2).
+    scopeNoteHtml(sc, "shown", (allLaunches || []).length);
 }
 
 /** 발사 배열 → GeoJSON. 좌표 없는 발사는 제외. 상세는 id로 원본을 되찾는다. */
@@ -281,13 +282,25 @@ function launchPasses(d, active, q) {
  * 걸려 있다. 그래서 `opts.countOnly === true` 로만 판정한다(Event 에는 그 필드가 없어
  * 자동으로 전체 렌더가 된다). `if (opts)` 로 갈랐다면 검색이 조용히 목록을 안 그렸을 것이다.
  */
-function applyFilters(opts) {
-  const countOnly = !!(opts && opts.countOnly === true);
+/**
+ * 지금 화면 조건(결과 필터·검색어·타임라인)을 통과하는 발사 — **한 경로만 둔다**(P24-2).
+ *
+ * 통계 패널이 *"지금 지도에는 N건만 보입니다"* 라고 말하려면 이 수가 필요한데,
+ * 지도 소스를 세면 안 된다 — 히트맵을 켜면 다른 레이어를 세게 되고, 좌표 없는 발사도
+ * 빠져 사이드바와 어긋난다. **같은 함수를 다시 태우는 것**이 두 화면이 갈라지지 않는
+ * 유일한 방법이다(전에는 이 필터가 `applyFilters` 안에 인라인으로만 있었다).
+ */
+function currentFilteredLaunches() {
   const active = new Set(
     Array.from(document.querySelectorAll(".flt:checked")).map((c) => c.value)
   );
   const q = document.getElementById("search").value.trim().toLowerCase();
-  const filtered = allLaunches.filter((d) => launchPasses(d, active, q));
+  return allLaunches.filter((d) => launchPasses(d, active, q));
+}
+
+function applyFilters(opts) {
+  const countOnly = !!(opts && opts.countOnly === true);
+  const filtered = currentFilteredLaunches();
   const src = map.getSource("launches");
   if (src) src.setData(launchesToFC(filtered));  // 클러스터는 자동 재계산
   // 히트맵도 **같은** filtered 로 채운다 — 갈라지면 한 지도의 두 표현이 서로 다른 말을 한다.
@@ -299,6 +312,10 @@ function applyFilters(opts) {
     map.setPaintProperty("launch-heat", "heatmap-weight", scale.weight);
   }
   renderHeatLegend(filtered, scale);
+  // **속보 띠는 필터를 받지 않는다**(P24-3) — `buildTickerItems` 는 라이브 목록을 읽는다.
+  // 그 자체는 설계지만, 필터를 걸어 지도에 13건만 남았는데 속보가 성공 발사를 흘리면
+  // 화면 둘이 서로 다른 말을 하는 것처럼 보인다. **그럴 때만 그렇다고 말한다.**
+  updateTickerScope(filtered.length);
   if (countOnly) setLaunchCount(filtered.length);
   else renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
 }
@@ -499,6 +516,18 @@ function tickerHtml(item) {
   const label = OUTCOME_LABEL[d.outcome] || d.outcome;
   return `<span class="tk-res tk-${escapeHtml(d.outcome)}">${escapeHtml(label)}</span>` +
          ` · ${escapeHtml(d.name)}${where} · <span class="tk-ago">${escapeHtml(agoText(d.net))}</span>`;
+}
+
+/**
+ * 속보 띠 옆의 "전체 기준" 표시 — 필터가 좁히고 있을 때만 보인다 (P24-3).
+ * `shown` 은 지금 화면에 보이는 발사 수. 판정은 `filterNarrows` 한 곳에만 둔다.
+ */
+function updateTickerScope(shown) {
+  const el = document.getElementById("ticker-scope");
+  if (!el) return false;
+  const narrowed = filterNarrows((allLaunches || []).length, shown);
+  el.classList.toggle("hidden", !narrowed);
+  return narrowed;
 }
 
 function startTicker() {

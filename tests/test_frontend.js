@@ -1945,8 +1945,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   c2.showStats();
   check("통계 패널에 전 세계 모수가 실린다",
     el("stats-body").innerHTML.includes("전 세계 궤도 발사"), true);
-  check("기존 모수 안내(P12-7)도 그대로 남아 있다",
-    el("stats-body").innerHTML.includes("건 기준"), true);
+  check("기존 모수 안내(P12-7)도 그대로 남아 있다 — 이제 무엇을 센 것인지까지 밝힌다",
+    el("stats-body").innerHTML.includes("전체 기준"), true);
   // ⚠ 예전에는 `net_precision` 없이 열었는데, P24-1 이후로는 **모르면 순번을 안 말한다**
   //   (`focus.js` 와 같은 처리). 배선을 재려면 날짜가 확정된 발사로 열어야 한다.
   c2.openPanel({ id: "1", name: "테스트", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
@@ -3089,7 +3089,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   const one = el("stats-body").innerHTML;
   check("1건이면 숫자판을 그린다", one.includes("st-tile"), true);
   check("그때는 빈 상태 문구가 없다", one.includes("st-empty"), false);
-  check("모수 안내도 평소대로 붙는다", one.includes("현재 불러온 1건 기준"), true);
+  // P24-2 로 문구가 갈렸다 — 통계는 "불러온 N건 전체 기준"이다.
+  check("모수 안내도 평소대로 붙는다", one.includes("불러온 1건 전체 기준"), true);
 }
 
 // ── 실패·빈 상태를 화면이 말하는가 (P18-1·2·3) ───────────────────────────────
@@ -4130,6 +4131,179 @@ function fresh2(ctx, key, t) {
   // 아무 정보가 없으면 줄 자체가 없다(없는 말을 지어내지 않는다).
   check("말할 것이 없으면 null",
     ctx.contextText({ outcome: "upcoming", net_precision: "Year", location_count: 5 }), null);
+}
+
+// ── 같은 문장이 다른 것을 세던 것을 가른다 (P24-2) ───────────────────────────
+// 통계 패널과 히트맵 범례가 **글자 그대로 같은 문장**(`현재 불러온 N건 기준`)을 썼는데
+// 통계는 필터 전(441), 범례는 필터 후(378)를 넘겼다. 즉 "불러온"이 한쪽에서 "필터된"을
+// 가리켰다. 어느 동작이 옳은지가 아니라 **같은 말로 다른 것을 센 것**이 결함이다.
+{
+  const { ctx } = loadApp();
+  group("모수 문구가 무엇을 센 것인지 밝힌다 (scopeNoteHtml)");
+
+  const sc = (n) => ({ total: n, from: null, to: null, full: [], partial: [], nowYear: 2026 });
+
+  check("범위를 안 밝히면 예전 문구 그대로(호출부를 놓쳐도 뜻이 안 바뀐다)",
+    ctx.scopeNoteHtml(sc(441)).includes("현재 불러온 441건 기준"), true);
+
+  const shown = ctx.scopeNoteHtml(sc(378), "shown", 441);
+  check("보이는 것은 '지금 보이는 N건'", shown.includes("지금 보이는 378건 기준"), true);
+  check("그게 전체가 아니라는 것도 말한다", shown.includes("불러온 441건 중"), true);
+  check("무엇이 걸렀는지도 말한다", shown.includes("검색·필터·타임라인"), true);
+
+  const loaded = ctx.scopeNoteHtml(sc(441), "loaded", 378);
+  check("전체는 '불러온 N건 전체'", loaded.includes("불러온 441건 전체 기준"), true);
+  check("지금 화면에는 몇 건인지도 말한다", loaded.includes("378건만 보입니다"), true);
+  check("통계가 필터와 무관하다는 것을 밝힌다",
+    loaded.includes("검색·필터와 무관하게 전체를 셉니다"), true);
+
+  // ⚠ 필터가 없을 때는 군더더기를 안 붙인다 — 늘 붙이면 안 읽힌다.
+  const same = ctx.scopeNoteHtml(sc(441), "loaded", 441);
+  check("필터가 없으면 덧말이 없다", same.includes("만 보입니다"), false);
+  check("그래도 무엇을 센 것인지는 밝힌다", same.includes("전체 기준"), true);
+  const same2 = ctx.scopeNoteHtml(sc(441), "shown", 441);
+  check("보이는 쪽도 필터가 없으면 덧말이 없다", same2.includes("중 ·"), false);
+
+  // 관점 화면(발사장·기관·로켓)은 **세 번째 모수**다 — 화면 필터와도, 불러온 전체와도 다르다.
+  const ent = ctx.scopeNoteHtml(sc(14), "entity");
+  check("관점 화면은 '이 화면 대상의 N건'", ent.includes("이 화면 대상의 14건 기준"), true);
+  check("관점 화면은 다른 둘의 문장을 쓰지 않는다",
+    [ent.includes("불러온"), ent.includes("지금 보이는")], [false, false]);
+
+  // ⚠ 세 문장이 서로 달라야 한다 — 같으면 이 항목이 통째로 공허하다.
+  const three = [ctx.scopeNoteHtml(sc(9), "loaded"), ctx.scopeNoteHtml(sc(9), "shown"),
+    ctx.scopeNoteHtml(sc(9), "entity")];
+  check("셋이 서로 다른 문장이다", new Set(three).size, 3);
+
+  check("filterNarrows 는 좁아졌을 때만 참",
+    [ctx.filterNarrows(441, 378), ctx.filterNarrows(441, 441), ctx.filterNarrows(378, 441),
+     ctx.filterNarrows(null, 3), ctx.filterNarrows(3, undefined)],
+    [true, false, false, false, false]);
+}
+
+{
+  group("두 화면이 같은 상태에서 서로 다른 말을 하지 않는다 (P24-2 배선)");
+  const { ctx, state, el, map, sel } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  const mk = (id, outcome) => ({ id, name: "L" + id, outcome, lat: 10 + (+id), lng: 20,
+    net: "2026-0" + ((+id % 9) + 1) + "-01T00:00:00Z", rocket: "R" });
+  state.allLaunches = [mk("1", "success"), mk("2", "success"), mk("3", "failure")];
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+
+  // 결과 필터를 '성공'만 남긴다 → 보이는 것 2 / 불러온 것 3
+  sel[".flt:checked"] = [{ value: "success" }];
+  el("search").value = "";
+  ctx.setHeatVisible(true);
+  ctx.applyFilters();
+
+  const legend = el("heat-legend").innerHTML;
+  check("범례는 보이는 수(2)를 말한다", legend.includes("지금 보이는 2건"), true);
+  check("범례가 전체(3)도 밝힌다", legend.includes("불러온 3건 중"), true);
+
+  ctx.showStats();
+  const stats = el("stats-body").innerHTML;
+  check("통계는 전체(3)를 말한다", stats.includes("불러온 3건 전체 기준"), true);
+  check("통계가 지금 보이는 수(2)도 밝힌다", stats.includes("2건만 보입니다"), true);
+
+  // ⚠ **막지 않았으면 무슨 일이 났을 것인가** — 두 화면이 같은 숫자를 주장하면 안 된다.
+  check("둘이 같은 문장을 쓰지 않는다",
+    legend.includes("불러온 2건 전체 기준"), false);
+
+  // 필터를 풀면 둘이 같은 수를 말한다.
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" },
+    { value: "upcoming" }, { value: "partial" }];
+  ctx.applyFilters();
+  ctx.showStats();
+  check("필터를 풀면 범례도 3건", el("heat-legend").innerHTML.includes("지금 보이는 3건"), true);
+  check("그때는 덧말이 없다", el("heat-legend").innerHTML.includes("중 ·"), false);
+  check("통계도 3건", el("stats-body").innerHTML.includes("불러온 3건 전체 기준"), true);
+  check("통계에도 덧말이 없다", el("stats-body").innerHTML.includes("만 보입니다"), false);
+}
+
+{
+  group("관점 화면도 제 모수를 밝힌다 (P24-2 배선)");
+  // ⚠ 순수 함수만 재면 **호출부가 어느 범위를 넘기는지**는 안 보인다 — 변이 실험에서
+  //   `showEntityStats` 가 "loaded" 를 넘기게 바꿔도 전부 초록이었다.
+  const { ctx, state, el, map } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  const mk = (id, site) => ({ id, name: "L" + id, outcome: "success", lat: 10, lng: 20,
+    net: "2026-01-01T00:00:00Z", rocket: "R", provider: "P", location_name: site });
+  state.allLaunches = [mk("1", "가"), mk("2", "가"), mk("3", "나")];
+  state.loadedYears = new Set();
+  state.truncatedYears = new Set();
+
+  ctx.showEntityStats("site", "가");
+  const body = el("stats-body").innerHTML;
+  check("관점 화면은 '이 화면 대상의 2건'", body.includes("이 화면 대상의 2건 기준"), true);
+  check("통계 패널의 문장을 쓰지 않는다", body.includes("전체 기준"), false);
+  check("범례의 문장도 쓰지 않는다", body.includes("지금 보이는"), false);
+}
+
+{
+  group("속보 띠가 필터를 안 받는다는 것을 말한다 (P24-3)");
+  // 실측(2026-09-18): 결과=실패만으로 좁혀 지도에 **13건**만 남아도 티커는 **58항목 그대로**
+  // 성공 발사를 흘렸다. `buildTickerItems` 가 `allLaunches` 가 아니라 `launches`(라이브)를
+  // 읽고 필터도 안 받기 때문이다. 동작은 그대로 두고 **그 사실을 말하게** 한다.
+  const { ctx, state, el, map, sel } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  const mk = (id, o) => ({ id, name: "L" + id, outcome: o, lat: 10 + (+id), lng: 20,
+    net: "2026-01-01T00:00:00Z", rocket: "R" });
+  // ⚠ 티커는 `allLaunches` 가 아니라 **`launches`(라이브)** 를 읽는다 — 그게 이 항목의
+  //   절반이다. 둘을 따로 채워 두 변수가 다르다는 것까지 잰다.
+  state.launches = [mk("1", "success"), mk("2", "success"), mk("3", "failure")];
+  state.allLaunches = state.launches.slice();
+  el("search").value = "";
+
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" },
+    { value: "upcoming" }, { value: "partial" }];
+  ctx.applyFilters();
+  check("필터가 없으면 표시가 숨어 있다", el("ticker-scope").hidden, true);
+  const tickerAll = ctx.buildTickerItems().length;
+  check("속보에 항목이 있다(기준선)", tickerAll > 0, true);
+
+  sel[".flt:checked"] = [{ value: "failure" }];
+  ctx.applyFilters();
+  check("필터가 좁히면 표시가 뜬다", el("ticker-scope").hidden, false);
+
+  el("search").value = "";
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" },
+    { value: "upcoming" }, { value: "partial" }];
+  ctx.applyFilters();
+  check("필터를 풀면 다시 숨는다", el("ticker-scope").hidden, true);
+
+  // 검색으로 좁혀도 마찬가지 — 세 조건(필터·검색·타임라인)이 한 판정을 쓴다.
+  el("search").value = "L1";
+  ctx.applyFilters();
+  check("검색으로 좁혀도 뜬다", el("ticker-scope").hidden, false);
+
+  // ⚠ **막지 않았으면 무슨 일이 났을 것인가** — 그 상태에서 속보는 여전히 전체를 본다.
+  check("그때도 속보 항목 수는 안 줄어든다(동작은 그대로다)",
+    ctx.buildTickerItems().length, tickerAll);
+}
+
+{
+  group("필터 경로가 하나다 (currentFilteredLaunches)");
+  // 갈라지면 통계가 말하는 "지금 보이는 N건"과 지도가 그린 수가 어긋난다.
+  const { ctx, state, el, map, sel } = loadApp();
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  const mk = (id, outcome) => ({ id, name: "L" + id, outcome, lat: 10 + (+id), lng: 20,
+    net: "2026-01-01T00:00:00Z", rocket: "R" });
+  state.allLaunches = [mk("1", "success"), mk("2", "failure"), mk("3", "success")];
+  sel[".flt:checked"] = [{ value: "success" }];
+  el("search").value = "";
+  ctx.applyFilters();
+  const drawn = (map.data("launches").features || []).length;
+  check("지도에 그린 수와 currentFilteredLaunches 가 같다",
+    ctx.currentFilteredLaunches().length, drawn);
+  el("search").value = "L3";
+  ctx.applyFilters();
+  check("검색을 걸어도 같다",
+    ctx.currentFilteredLaunches().length, (map.data("launches").features || []).length);
 }
 
   done();
