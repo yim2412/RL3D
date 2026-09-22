@@ -221,14 +221,24 @@ function openObsPopover() {
   const mapBtn = document.getElementById("obs-map-btn");
   if (mapBtn) mapBtn.addEventListener("click", () => { closeObsPopover(); beginSetObserver(); });
   const clearBtn = document.getElementById("obs-clear-btn");
-  if (clearBtn) clearBtn.addEventListener("click", () => {
-    observer = null;
-    saveSettings({ observer: null });
-    if (observerMarker && observerMarker.remove) observerMarker.remove();
-    updateSatCtrl();
-    if (sidebarTab === "tonight") renderTonightList();
-    closeObsPopover();
-  });
+  if (clearBtn) clearBtn.addEventListener("click", () => { clearObserver(); closeObsPopover(); });
+}
+
+/**
+ * 관측 위치를 지운다 — **관측지에 종속인 화면도 같이 되돌린다**(P25-2).
+ *
+ * 통과 예측표는 위성과 관측지 **둘 다**에 종속인데, `deselectSatellite()` 는 닫고
+ * 여기서는 안 닫고 있었다. 그래서 해제한 뒤에도 표가 *"관측지 37.566, 126.978"* 를
+ * 머리에 달고 남았다 — **모든 행이 없는 관측지 기준으로 계산된 값**이다.
+ */
+function clearObserver() {
+  observer = null;
+  saveSettings({ observer: null });
+  if (observerMarker && observerMarker.remove) observerMarker.remove();
+  const pass = document.getElementById("pass-panel");
+  if (pass) pass.classList.add("hidden");
+  updateSatCtrl();
+  if (sidebarTab === "tonight") renderTonightList();
 }
 
 function closeObsPopover() {

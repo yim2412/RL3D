@@ -318,6 +318,8 @@ function applyFilters(opts) {
   updateTickerScope(filtered.length);
   if (countOnly) setLaunchCount(filtered.length);
   else renderSidebar(filtered);  // 같은 필터 결과를 좌측 목록에도 반영
+  // 열어 둔 상세가 이 결과에서 빠졌으면 그 사실을 말한다(P25-1). 지도 점선도 여기서 정리한다.
+  updatePanelScope(filtered);
 }
 
 // ── 마커 호버 툴팁 ────────────────────────────────────────────────────────────

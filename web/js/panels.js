@@ -415,9 +415,48 @@ function openPanel(d) {
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panelLaunchId = String(d.id);  // 시간대를 바꾸면 이 패널을 다시 그린다(P13-5)
   panel.classList.remove("hidden");
+  updatePanelScope(currentFilteredLaunches());  // 앞서 연 발사의 안내가 남지 않게(P25-1)
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
   if (typeof d.lng === "number" && typeof d.lat === "number")
     map.flyTo({ center: [d.lng, d.lat], zoom: 4.5, speed: 1.2 });
+}
+
+/**
+ * 열어 둔 발사 상세가 **지금 화면에 없는 것**을 가리키고 있으면 뭐라고 적을지. 순수 함수.
+ *
+ * `exists=false` 는 갱신으로 데이터에서 아예 빠진 경우다(`findLaunch()` 가 undefined).
+ * 라이브 목록은 100건이라 오래된 발사가 실제로 밀려 나간다 — 그때 패널은 **마지막으로
+ * 받은 내용**을 보여주고 있는 것이고, 그 사실을 안 적으면 최신값으로 읽힌다.
+ */
+function panelScopeNote(id, shownIds, exists, hasPath) {
+  if (id == null) return null;
+  if (!exists) return "이 발사는 최신 목록에서 빠졌습니다 — 아래는 마지막으로 받은 내용입니다.";
+  if (!shownIds.has(String(id))) {
+    // 선을 지운다는 말을 여기서 같이 한다. 안 적으면 **본문이 없는 선을 설명하게 된다** —
+    // 아래에 "🚀 상승 궤적(근사) 가정: …" 블록이 그대로 남아 있기 때문이다(렌더해 보고 찾았다).
+    return "이 발사는 지금 화면 조건(검색·필터·기간)에서 벗어나 있어 지도와 목록에 없습니다."
+      + (hasPath ? " 아래 상승 궤적 근사선도 지도에서 함께 내렸습니다." : "");
+  }
+  return null;
+}
+
+/**
+ * 위 판정을 화면에 반영한다(P25-1). `applyFilters()` 와 `openPanel()` 이 부른다.
+ *
+ * 문구만이 아니라 **지도의 근사 상승선도 함께** 다룬다 — 마커가 한 건도 없는 지도에
+ * 점선만 남으면 무엇의 선인지 알 수 없다. `closePanel()` 이 같은 이유로 지운다.
+ */
+function updatePanelScope(list) {
+  const box = document.getElementById("panel-scope");
+  if (!box) return;
+  if (panelLaunchId == null) { box.classList.add("hidden"); box.textContent = ""; return; }
+  const shown = new Set((list || []).map((d) => String(d.id)));
+  const d = findLaunch(panelLaunchId);
+  const note = panelScopeNote(panelLaunchId, shown, !!d, !!(d && ascentPath(d)));
+  box.textContent = note ? "⚠ " + note : "";
+  box.classList.toggle("hidden", !note);
+  if (note) clearAscentPath();
+  else if (d) drawAscentPath(d);
 }
 
 function closePanel() {
@@ -425,6 +464,8 @@ function closePanel() {
   satPanelId = null;
   panelLaunchId = null;
   clearAscentPath();   // 패널을 닫으면 근사선도 같이 지운다(P12-4) — 남으면 무엇의 선인지 알 수 없다
+  const scope = document.getElementById("panel-scope");
+  if (scope) { scope.classList.add("hidden"); scope.textContent = ""; }
 }
 
 /**

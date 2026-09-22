@@ -148,6 +148,13 @@ html, body {
   font-size: 16px; cursor: pointer;
 }
 .panel-close:hover { color: var(--text); }
+/* 화면 조건에서 벗어난 발사를 보고 있을 때의 안내(P25-1).
+   패널 맨 위·본문 밖에 둔다 — 본문은 openPanel 이 innerHTML 로 통째로 갈아 끼운다. */
+.panel-scope {
+  font-size: 11px; line-height: 1.5; color: var(--partial);
+  background: rgba(234,179,8,.10); border: 1px solid rgba(234,179,8,.28);
+  border-radius: 6px; padding: 6px 8px; margin: 0 28px 10px 0;
+}
 .panel img { width: 100%; border-radius: 8px; margin: 6px 0 12px; }
 .panel h2 { font-size: 16px; margin: 4px 40px 10px 0; line-height: 1.35; }
 .panel .badge {

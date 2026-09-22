@@ -1374,7 +1374,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 // 널리 알려진 실제 발사 방위각으로 잰다. 조용히 깨지는 자리: 방위각 해의 선택(순행/역행)과
 // 경도 정규화 — 둘 다 선은 "그럴듯하게" 그려진다.
 {
-  const { ctx, state, el, map } = loadApp();
+  const { ctx, state, el, map, sel } = loadApp();
   group("발사 방위각 (ascentAzimuth)");
   const A = (inc, lat) => Number(ctx.ascentAzimuth(inc, lat).toFixed(1));
 
@@ -1453,6 +1453,19 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   state.map = map;
   map.stubSource("launch-track");
   map.stubSource("launches");
+  // 여는 발사가 **지금 화면 조건 안에 있어야** 선을 그린다(P25-1) — 밖이면 일부러 지운다.
+  // 그래서 여기서 목록과 필터를 실제와 같게 세운다. 세우지 않으면 "0건 중 하나를 연" 상태다.
+  const ascL = [
+    { id: "1", name: "테스트 발사", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
+      orbit: "Sun-Synchronous Orbit", lat: 34.7, lng: -120.6 },
+    { id: "3", name: "날짜변경선 옆 발사", outcome: "upcoming", net: "2026-12-01T00:00:00Z",
+      orbit: "Low Earth Orbit", lat: 9, lng: 167.7 },
+    { id: "2", name: "탄도 비행", outcome: "success", net: "2026-01-01T00:00:00Z",
+      orbit: "Suborbital", lat: 32.99, lng: -106.97 },
+  ];
+  state.launches = ascL;
+  ctx.rebuildAll();
+  sel[".flt:checked"] = [{ value: "upcoming" }, { value: "success" }];
   const seg = () => {
     const d = map.data("launch-track");
     return d && d.geometry ? d.geometry.coordinates.length : 0;
@@ -4304,6 +4317,93 @@ function fresh2(ctx, key, t) {
   ctx.applyFilters();
   check("검색을 걸어도 같다",
     ctx.currentFilteredLaunches().length, (map.data("launches").features || []).length);
+}
+
+// ── 사라진 대상을 가리키는 화면 (P25-1 · P25-2) ───────────────────────────────
+// 이 축의 버그는 **예외가 안 난다.** 필터로 걸러진 발사의 상세가 그대로 떠 있고
+// 마커 0건인 지도에 점선만 남아도 앱은 정상으로 보인다 — 값으로만 잴 수 있다.
+{
+  const { ctx } = loadApp();
+  group("화면 밖 발사 안내 (panelScopeNote · 순수)");
+  const shown = new Set(["1", "2"]);
+  check("보이는 발사면 아무 말도 안 한다", ctx.panelScopeNote("1", shown, true), null);
+  check("패널이 안 열려 있으면 null", ctx.panelScopeNote(null, shown, true), null);
+  check("걸러진 발사는 화면 조건을 말한다",
+    ctx.panelScopeNote("9", shown, true).includes("화면 조건"), true);
+  // 본문에는 "🚀 상승 궤적(근사) 가정: …" 블록이 그대로 남는다. 선을 지운 사실을 안 적으면
+  // **없는 선을 설명하는 문장**이 된다 — 렌더해 읽고서야 보인 자리다.
+  check("선이 있었으면 내렸다고 말한다",
+    ctx.panelScopeNote("9", shown, true, true).includes("함께 내렸습니다"), true);
+  check("선이 없던 발사(탄도 등)에는 그 말을 안 붙인다",
+    ctx.panelScopeNote("9", shown, true, false).includes("내렸습니다"), false);
+  // 갱신으로 데이터에서 빠진 것과 필터로 가려진 것은 **다른 사실**이다. 같은 문구로
+  // 뭉뚱그리면 "검색을 지우면 다시 보인다"는 틀린 기대를 준다.
+  check("데이터에서 빠졌으면 다른 말을 한다",
+    ctx.panelScopeNote("9", shown, false).includes("최신 목록에서 빠졌"), true);
+  check("데이터에서 빠진 쪽이 필터 탓으로 읽히지 않는다",
+    ctx.panelScopeNote("9", shown, false).includes("화면 조건"), false);
+  check("id 는 숫자로 와도 문자열 집합과 맞춘다", ctx.panelScopeNote(1, shown, true), null);
+}
+{
+  // 배선 — **applyFilters 가 실제로 부르는가.** 순수 함수만 재면 판정이 전부 맞아도
+  // 호출 한 줄이 없어 화면에는 아무 일도 안 일어난다(2026-09-11 이후 같은 자리에서 반복).
+  const { ctx, state, el, map, sel } = loadApp();
+  group("화면 밖 발사 안내 배선 (applyFilters → 패널·점선)");
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(s);
+  const mk = (id, outcome) => ({ id, name: "L" + id, outcome, lat: 34.7, lng: -120.6,
+    net: "2026-12-01T00:00:00Z", orbit: "Sun-Synchronous Orbit", rocket: "R" });
+  state.launches = [mk("1", "success"), mk("2", "failure")];
+  ctx.rebuildAll();
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }];
+  el("search").value = "";
+  ctx.openPanel(state.allLaunches[0]);
+  const line = () => JSON.stringify((map.data("launch-track") || {}).geometry || null);
+  check("보이는 동안은 안내가 없다", el("panel-scope").hidden, true);
+  check("보이는 동안은 점선이 있다", line() !== "null", true);
+
+  sel[".flt:checked"] = [{ value: "failure" }];   // 연 발사(success)를 걸러낸다
+  ctx.applyFilters();
+  check("걸러지면 안내가 뜬다", el("panel-scope").hidden, false);
+  check("문구에 ⚠ 를 달아 본문과 구분한다", el("panel-scope").textContent.startsWith("⚠"), true);
+  // 마커가 한 건도 없는 지도에 점선만 남으면 무엇의 선인지 알 수 없다 — closePanel 과 같은 규칙.
+  check("걸러지면 지도 점선도 지운다", line(), "null");
+
+  sel[".flt:checked"] = [{ value: "success" }, { value: "failure" }];
+  ctx.applyFilters();
+  check("다시 보이면 안내가 사라진다", el("panel-scope").hidden, true);
+  check("다시 보이면 점선도 돌아온다", line() !== "null", true);
+
+  // 갱신으로 데이터에서 빠지는 경로 — findLaunch 가 undefined 를 주는 상태
+  state.launches = [mk("2", "failure")];
+  ctx.rebuildAll();
+  ctx.applyFilters();
+  check("데이터에서 빠져도 예외 없이 안내로 말한다",
+    [el("panel-scope").hidden, el("panel-scope").textContent.includes("최신 목록에서 빠졌")],
+    [false, true]);
+
+  ctx.closePanel();
+  check("패널을 닫으면 안내도 내린다", [el("panel-scope").hidden, el("panel-scope").textContent],
+    [true, ""]);
+}
+{
+  // P25-2 — 관측지 해제. **버튼을 실제로 눌러** 잰다(붙었는지만 보면 이 버그는 안 잡힌다:
+  // 배선은 처음부터 있었고 통과 패널을 안 닫았을 뿐이다).
+  const { ctx, el, state, map } = loadApp();
+  group("관측지 해제 (P25-2)");
+  state.map = map;
+  ctx.setObserver(37.5665, 126.978, "서울");
+  el("pass-panel").classList.remove("hidden");   // 통과 예측을 열어 둔 상태
+  check("해제 전: 관측지가 있고 통과표가 떠 있다",
+    [!!state.observer, el("pass-panel").hidden], [true, false]);
+  ctx.openObsPopover();
+  const clear = el("obs-clear-btn");
+  check("해제 버튼이 배선돼 있다", !!(clear && clear.handlers.click), true);
+  clear.fire("click", {});
+  check("해제하면 관측지가 없어진다", state.observer, null);
+  // 통과표의 **모든 행**이 없는 관측지 기준으로 계산된 값이다. 남기면 틀린 표를 보여주는 것.
+  check("통과 예측표도 같이 닫는다", el("pass-panel").hidden, true);
+  check("팝오버도 닫는다", el("obs-popover").hidden, true);
 }
 
   done();
