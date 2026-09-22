@@ -22,10 +22,15 @@ const KEY_TOGGLES = {
  * 검색을 쓸 수 없다 — 화면으로는 "글자가 안 써진다"로만 보이는, 조용한 종류의 고장이다.
  * 조합키(Ctrl/Alt/Meta)도 비켜난다: Ctrl+F 같은 브라우저·시스템 단축키를 뺏지 않는다.
  */
+/** 지금 글자를 치고 있는 중인가(입력 요소에 포커스). 순수 함수. */
+function isTypingTarget(e) {
+  const tag = ((e && e.target && e.target.tagName) || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
 function keyAction(e) {
   const key = e.key;
-  const tag = ((e.target && e.target.tagName) || "").toLowerCase();
-  const typing = tag === "input" || tag === "textarea" || tag === "select";
+  const typing = isTypingTarget(e);
   if (typing) return key === "Escape" ? "blur" : null;  // 입력 중 Esc 는 입력에서 빠져나오기
   if (e.ctrlKey || e.altKey || e.metaKey) return null;
   if (key === "Escape") return "escape";
@@ -138,12 +143,20 @@ function toggleKeyHelp(show) {
 
 function handleKey(e) {
   const action = keyAction(e);
-  if (!action) return;
-  // 도움말이 떠 있으면 무슨 키든 먼저 닫는다(안내대로) — Esc 만이 아니다.
-  if (!document.getElementById("keyhelp").classList.contains("hidden") && action !== "help") {
+  // 도움말이 떠 있으면 **정말로 아무 키나** 닫는다 — 안내가 그렇게 적혀 있다(P28-1).
+  // 예전에는 `action` 이 없으면 위에서 바로 빠져나가, 등록된 단축키만 닫혔다:
+  // 실측으로 `q`·`Enter`·`Space`·`←`·`F5`·`x` **여섯 개 중 0개**가 닫았다.
+  // **도움말을 여는 사람은 단축키를 모르는 사람**이라, 그 여섯 개가 정확히 눌러 볼 키다.
+  // 글자를 치는 중에는 비켜난다 — 입력창에는 글자가 들어가야 한다.
+  if (!document.getElementById("keyhelp").classList.contains("hidden")
+      && action !== "help" && !isTypingTarget(e)) {
     toggleKeyHelp(false);
-    if (action === "escape" || action === "blur") return;
+    if (!action || action === "escape" || action === "blur") {
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
   }
+  if (!action) return;
   if (e.preventDefault) e.preventDefault();
   if (action === "blur") { if (e.target && e.target.blur) e.target.blur(); return; }
   if (action === "escape") { closeOverlay(escapeTarget(openOverlays())); return; }

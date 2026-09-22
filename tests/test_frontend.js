@@ -4406,6 +4406,61 @@ function fresh2(ctx, key, t) {
   check("팝오버도 닫는다", el("obs-popover").hidden, true);
 }
 
+// ── 화면이 약속한 것을 하는가 (P28-1 · P28-2) ────────────────────────────────
+{
+  const { ctx, el } = loadApp();
+  group("도움말은 안내대로 닫힌다 (P28-1)");
+  // 도움말 아래에 "아무 키나 누르면 닫힙니다" 가 적혀 있다. 예전에는 **등록된 단축키만**
+  // 닫았고, 실측으로 q·Enter·Space·←·F5·x 여섯 개 중 **0개**가 닫았다.
+  check("안내 문구가 그렇게 적혀 있다", (() => {
+    ctx.toggleKeyHelp(true);
+    return el("keyhelp").innerHTML.includes("아무 키나 누르면 닫힙니다");
+  })(), true);
+  const closes = (key, target) => {
+    ctx.toggleKeyHelp(true);
+    ctx.handleKey({ key, target: target || {} });
+    return el("keyhelp").hidden;
+  };
+  check("등록되지 않은 키로도 닫힌다",
+    ["q", "Enter", " ", "ArrowLeft", "F5", "x"].map((k) => closes(k)),
+    [true, true, true, true, true, true]);
+  check("Esc 로도 닫힌다", closes("Escape"), true);
+  check("? 는 토글이라 닫힌다", closes("?"), true);
+  // 글자를 치는 중에는 비켜나야 한다 — 검색어에 글자가 들어가야 한다.
+  check("입력창에 포커스가 있으면 닫지 않는다", closes("q", { tagName: "INPUT" }), false);
+  // 단축키는 **닫으면서 그 동작도** 한다(예전부터 그랬다 — 여기서 잃지 않았는지 못 박는다).
+  ctx.toggleKeyHelp(true);
+  const before = el("sidebar").hidden;
+  ctx.handleKey({ key: "s", target: {} });
+  check("단축키는 닫으면서 제 동작도 한다",
+    [el("keyhelp").hidden, el("sidebar").hidden !== before], [true, true]);
+}
+{
+  // P28-2 — 패널 안쪽 버튼. 하네스의 `querySelector` 가 **항상 null 이라 한 번도 잰 적이
+  // 없던 자리**다(배선이 죽어도 전부 초록이었다). 이제 잴 수 있으니 못 박는다.
+  const { ctx, el, map, state, sel } = loadApp();
+  group("상세 패널의 ☆ 관심 (P28-2)");
+  state.map = map;
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  const d = { id: "L1", name: "테스트", outcome: "success", net: "2026-01-01T00:00:00Z",
+    net_precision: "Minute", lat: 1, lng: 2, rocket: "R", provider: "P", pad_name: "PAD", location: "LOC" };
+  state.launches = [d];
+  ctx.rebuildAll();
+  sel[".flt:checked"] = [{ value: "success" }];
+  el("search").value = "";
+  ctx.applyFilters();
+  ctx.openPanel(d);
+  const b = el("fav-btn");
+  check("버튼이 그려지고 배선된다", !!(b && b.handlers.click), true);
+  // **`data-kind` 로 분기한다** — 비어 있으면 발사를 위성 쪽 함수로 보낸다(실제로 그랬다).
+  check("발사임을 data 로 싣는다", [b.dataset.kind, b.dataset.key], ["launch", "L1"]);
+  b.fire("click", {});
+  check("누르면 관심 목록에 담긴다", [...state.favLaunches], ["L1"]);
+  check("버튼 표시도 바뀐다", el("fav-btn").textContent, "★ 관심");
+  b.fire("click", {});
+  check("다시 누르면 빠진다", [[...state.favLaunches], el("fav-btn").textContent], [[], "☆ 관심"]);
+}
+
 // ── 발사 시각의 정밀도 (P27-1 · P27-2) ───────────────────────────────────────
 // 예정 발사의 78%가 "언제인지 모르는" 값인데 화면은 초까지 셌다(28건이 같은 문자열).
 // **틀린 숫자가 아니라 없는 정확도를 꾸며 내는 것**이라 눈으로는 알아채기 어렵다.

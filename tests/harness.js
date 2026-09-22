@@ -36,8 +36,9 @@ const STATE_KEYS = [
   "CITIES", "SIDEBAR_CAP",
 ];
 
-/** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다. */
-function makeEl(id) {
+/** 테스트가 만드는 가짜 엘리먼트. hidden 은 classList 로만 바뀌므로 그대로 흉내 낸다.
+ *  `lookup` 은 id 로 다른 스텁 엘리먼트를 얻는 함수(`querySelector("#id")` 가 쓴다). */
+function makeEl(id, lookup) {
   let hidden = true;
   const classes = new Set();
   let html = "";
@@ -49,7 +50,25 @@ function makeEl(id) {
     // 실제 DOM 은 innerHTML 을 덮어쓰면 자식이 **날아간다**. 스텁이 그걸 안 하면
     // 앞서 열었던 패널의 자식이 남아 "안 그렸는데 그려졌다"로 잘못 통과한다(P12-4 에서 실제로 겪음).
     get innerHTML() { return html; },
-    set innerHTML(v) { html = v; children.length = 0; },
+    set innerHTML(v) {
+      html = v; children.length = 0;
+      // **`data-*` 를 그 id 의 스텁에 실어 준다**(P28-2). 이 앱은 `innerHTML` 로 버튼을 만들고
+      // `b.dataset.kind` 로 **분기**한다(`bindFavBtn` 이 launch/sat 을 그렇게 가른다).
+      // 안 실어 주면 배선이 붙은 것까지만 보이고 **엉뚱한 분기로 가는 것**은 못 본다 —
+      // 실제로 그래서 관심 버튼이 발사인데 위성 쪽 함수를 부르는 것처럼 보였다.
+      if (!lookup) return;
+      const tag = /<[a-z]+[^>]*\bid="([\w-]+)"[^>]*>/gi;
+      let m;
+      while ((m = tag.exec(v))) {
+        const child = lookup(m[1]);
+        if (!child) continue;
+        const attr = /\bdata-([\w-]+)="([^"]*)"/g;
+        let d;
+        while ((d = attr.exec(m[0]))) {
+          child.dataset[d[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = d[2];
+        }
+      }
+    },
     get hidden() { return hidden; },
     classList: {
       add: (c) => { if (c === "hidden") hidden = true; else classes.add(c); },
@@ -75,7 +94,21 @@ function makeEl(id) {
      */
     sel: {},
     querySelectorAll(s) { return this.sel[s] || { forEach() {} }; },
-    querySelector: () => null,
+    /**
+     * 엘리먼트 단위 `querySelector` — **예전에는 언제나 null 이었다**(P28-2).
+     *
+     * `bindFavBtn(root)` 처럼 `root.querySelector("#fav-btn")` 로 버튼을 찾는 배선은
+     * 테스트에서 **항상 "버튼이 없다"로 빠져나갔다** — 배선이 죽어도 전부 초록이었다.
+     * 복수형(`sel`)은 P12-4 에서 이미 열어 뒀는데 단수형만 빈 채로 남아 있었다.
+     *
+     * 규칙: `sel` 에 지정한 것이 있으면 그 **첫 항목**을, 없고 `#id` 꼴이면 그 id 의
+     * 스텁 엘리먼트를 준다(실제 DOM 이 패널 안에서 찾는 것과 같은 결과가 된다).
+     */
+    querySelector(s) {
+      if (this.sel[s] && this.sel[s].length) return this.sel[s][0];
+      const m = /^#([\w-]+)$/.exec(s);
+      return m && lookup ? lookup(m[1]) : null;
+    },
   };
 }
 
@@ -112,7 +145,7 @@ function loadApp(options = {}) {
    * 없는 요소를 만들 수 있어야 한다.
    */
   const missing = new Set(options.missing || []);
-  const el = (id) => (missing.has(id) ? null : (els[id] = els[id] || makeEl(id)));
+  const el = (id) => (missing.has(id) ? null : (els[id] = els[id] || makeEl(id, (x) => el(x))));
 
   const mapHandlers = {};
   const winHandlers = {};
