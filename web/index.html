@@ -78,8 +78,10 @@
       <button id="tab-tonight" class="sb-tab" title="오늘 밤 눈으로 볼 만한 위성 통과">🌙 오늘 밤</button>
     </div>
     <input id="sat-search" class="sb-search hidden" type="text" placeholder="🔍 위성명 · NORAD" />
-    <div class="sidebar-head"><span id="sidebar-count">0건</span></div>
-    <div id="sidebar-list" class="sidebar-list"></div>
+    <div class="sidebar-head"><span id="sidebar-count">불러오는 중…</span></div>
+    <!-- 처음에는 **없는 숫자를 말하지 않는다**(P31-1). 예전에는 `0건` + 빈 목록으로 시작해,
+         첫 로드 8.5초 동안 화면이 "받는 중"이 아니라 "발사가 0건"이라고 말했다. -->
+    <div id="sidebar-list" class="sidebar-list"><div class="sb-empty">발사 데이터를 불러오는 중…</div></div>
   </aside>
 
   <!-- 상세 패널 -->

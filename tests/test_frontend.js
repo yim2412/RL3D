@@ -4406,6 +4406,54 @@ function fresh2(ctx, key, t) {
   check("팝오버도 닫는다", el("obs-popover").hidden, true);
 }
 
+// ── 데이터가 오기 전의 첫 화면 (P31-1 · P31-2) ───────────────────────────────
+// 실제 exe 로그에서 첫 발사 로드가 **8.5초** 였다(P30 이 그 숫자를 처음 남겼다).
+// 그동안 화면은 `0건` 이라고 말했다 — 아직 못 받았는데 **없는 숫자**를 말한 것이다.
+// 초기 문구는 `index.html` 이 정하므로, 하네스가 그걸 읽어 와야만 잴 수 있다(P31-2).
+{
+  const { el, ctx, map, state, sel } = loadApp();
+  group("첫 화면 (P31-1)");
+  const text = (id) => el(id).textContent || "";
+  const body = (id) => (el(id).innerHTML || "").replace(/<[^>]*>/g, " ").trim();
+  // 없는 숫자를 말하지 않는다. "0건"은 **틀린 사실**이다 — 0건인 것과 아직 모르는 것은 다르다.
+  check("개수 자리가 0건으로 시작하지 않는다", text("sidebar-count").includes("0건"), false);
+  check("개수 자리가 받는 중이라고 말한다", text("sidebar-count").includes("불러오는 중"), true);
+  check("목록도 같은 말을 한다", body("sidebar-list").includes("불러오는 중"), true);
+  check("티커도 말한다(원래부터 말하던 한 곳)", text("ticker-text").includes("불러오는 중"), true);
+
+  // 데이터가 오면 **숫자가 된다** — 안내가 남아 있으면 그게 더 나쁘다.
+  state.map = map;
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  const mk = (id) => ({ id, name: "L" + id, outcome: "success", lat: 1, lng: 2,
+    net: "2026-01-01T00:00:00Z", net_precision: "Minute", rocket: "R" });
+  state.launches = [mk("1"), mk("2")];
+  ctx.rebuildAll();
+  sel[".flt:checked"] = [{ value: "success" }];
+  el("search").value = "";
+  ctx.applyFilters();
+  check("데이터가 오면 숫자가 된다", text("sidebar-count"), "2건");
+  check("목록에서 안내가 사라진다", body("sidebar-list").includes("불러오는 중"), false);
+
+  // 진짜로 0건일 때는 **P18-4 의 안내**로 간다 — "불러오는 중"으로 남으면 안 된다.
+  state.launches = [];
+  ctx.rebuildAll();
+  ctx.applyFilters();
+  check("정말 0건이면 0건이라고 말한다", text("sidebar-count"), "0건");
+  check("0건 안내는 불러오는 중이 아니다",
+    [body("sidebar-list").includes("불러오는 중"), body("sidebar-list").includes("갱신")],
+    [false, true]);
+}
+{
+  // P31-2 — 장치 자체를 잰다. 하네스가 `index.html` 을 안 읽으면 위 검사는 **전부 공허하게**
+  // 통과한다(빈 문자열은 "0건"을 포함하지 않으니까). 그래서 **읽었다는 사실**을 따로 못 박는다.
+  const { el } = loadApp();
+  group("하네스가 index.html 초기 상태를 읽는다 (P31-2)");
+  check("빈 문자열로 시작하지 않는다", el("sidebar-count").textContent.length > 0, true);
+  check("정적 버튼 라벨도 읽는다", el("basemap-btn").textContent.includes("다크"), true);
+  check("자식 요소 안의 문구도 읽는다", el("sidebar-list").textContent.includes("불러오는 중"), true);
+  check("정말로 비어 있는 요소는 빈 채로 둔다", el("panel-body").textContent, "");
+}
+
 // ── 화면이 약속한 것을 하는가 (P28-1 · P28-2) ────────────────────────────────
 {
   const { ctx, el } = loadApp();

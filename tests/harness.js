@@ -15,6 +15,42 @@ const APP_FILES = [
   "sats.js", "satfilter.js", "sattrack.js", "satpass.js", "observer.js", "trajectory.js", "favorites.js", "sidebar.js", "panels.js", "satpanel.js", "stats.js", "keys.js", "settings.js", "update.js", "firstrun.js", "boot.js",
 ];
 const JS_DIR = path.join(__dirname, "..", "web", "js");
+const INDEX_HTML = path.join(__dirname, "..", "web", "index.html");
+
+/**
+ * `index.html` 의 **초기 상태**를 id → {text} 로 읽는다(P31-2).
+ *
+ * 스텁은 늘 빈 문자열로 시작했다. 그래서 *"데이터가 오기 전에 화면이 뭐라고 말하나"* 를
+ * **한 번도 잰 적이 없다** — 사이드바 머리글이 `0건` 으로 시작하는 것(아직 못 받았는데
+ * 0건이라고 말하는 것)도 테스트가 아니라 **파일을 직접 열어 보고** 알았다.
+ *
+ * 아주 단순한 파서다: 여는 태그에 `id="X"` 가 있으면 다음 여는/닫는 태그 전까지의
+ * 텍스트를 그 id 의 초기 `textContent` 로 쓴다. 중첩 구조는 보지 않는다 —
+ * **초기 문구를 잴 수 있으면 충분**하고, 더 하면 하네스가 브라우저 흉내를 내기 시작한다.
+ */
+function readInitialDom() {
+  let html = "";
+  try { html = fs.readFileSync(INDEX_HTML, "utf8"); } catch (_) { return {}; }
+  const out = {};
+  const tag = /<([a-z]+)[^>]*\bid="([\w-]+)"[^>]*>/gi;
+  let m;
+  while ((m = tag.exec(html))) {
+    const [open, name, id] = m;
+    const rest = html.slice(m.index + open.length);
+    // 자식 없이 바로 텍스트가 오는 흔한 경우. 없으면 닫는 태그까지 훑어 태그를 걷어낸다
+    // (`<div id="sidebar-list"><div class="sb-empty">불러오는 중…</div></div>` 같은 모양).
+    let text = (rest.match(/^([^<]*)/) || ["", ""])[1].trim();
+    if (!text) {
+      const close = rest.search(new RegExp("</" + name + ">", "i"));
+      if (close > 0) {
+        text = rest.slice(0, close).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      }
+    }
+    if (text) out[id] = text.slice(0, 200);
+  }
+  return out;
+}
+const INITIAL_DOM = readInitialDom();
 
 /** 여러 파일을 한 스크립트로 이어 붙인다 — 브라우저에서 여러 <script> 가 같은 전역
  *  렉시컬 스코프를 공유하는 것과 같은 상태를 vm 안에서 재현한다. */
@@ -41,10 +77,15 @@ const STATE_KEYS = [
 function makeEl(id, lookup) {
   let hidden = true;
   const classes = new Set();
-  let html = "";
+  // `index.html` 이 정해 둔 초기 문구로 시작한다(P31-2) — 실제 첫 화면과 같은 상태.
+  // `innerHTML` 에도 같은 텍스트를 넣는다(태그는 뺀 채로): 화면을 그리는 쪽은 대부분
+  // `innerHTML` 로 읽고 덮으므로, 여기가 비어 있으면 **"처음에 뭐라고 쓰여 있었나"** 를
+  // 그쪽에서는 여전히 못 본다. 태그까지 흉내 내지는 않는다 — 문구를 재면 충분하다.
+  const initialText = INITIAL_DOM[id] || "";
+  let html = initialText;
   const children = [];
   return {
-    id, checked: false, value: "", textContent: "",
+    id, checked: false, value: "", textContent: initialText,
     dataset: {}, style: {}, disabled: false,
     handlers: {},
     // 실제 DOM 은 innerHTML 을 덮어쓰면 자식이 **날아간다**. 스텁이 그걸 안 하면
