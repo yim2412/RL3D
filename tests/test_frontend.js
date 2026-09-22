@@ -2448,7 +2448,12 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
   group("오늘 밤 계산 조각 (tonightJob)");
   state.satrecs = [1, 2, 3, 4, 5].map((n) => ({ name: "S" + n, norad: n, rec: rec, band: "leo" }));
-  const job = ctx.tonightJob(state.observer);
+  // **시각을 고정한다.** 예전에는 둘 다 `Date.now()` 를 써서, 조각 계산과 한 번에 계산
+  // 사이에 흐른 시간만큼 최대고도가 달라졌다 — 로컬에서는 빨라서 안 보이고 **CI 에서만
+  // 반올림 경계를 넘어 빨개졌다**(2026-09-22 실측: `67` 대 `66`). 전역 규칙이 말하는
+  // *"순수 함수는 고정 시각·합성 입력으로"* 가 정확히 이 자리다.
+  const FIXED_NOW = Date.UTC(2026, 8, 20, 12, 0, 0);
+  const job = ctx.tonightJob(state.observer, undefined, undefined, FIXED_NOW);
   check("대상 수를 미리 안다(진행률을 말할 수 있다)", job.total, 5);
   check("시작 전에는 끝난 것이 아니다", job.done, false);
   check("한 조각만 돌 수 있다", (job.step(2), job.done), false);
@@ -2460,12 +2465,24 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
   // **쪼개서 돌아도 결과가 같아야 한다** — 이게 이 변경의 유일한 위험이다
   const chunked = job.result();
-  const whole = ctx.computeTonight(state.observer);
+  const whole = ctx.computeTonight(state.observer, undefined, undefined, FIXED_NOW);
   check("조각으로 돈 결과가 한 번에 돈 것과 같다",
     chunked.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)),
     whole.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)));
   check("대상이 없으면 즉시 끝난다(빈 화면에서 헛돌지 않는다)",
     (state.satrecs = [], ctx.tonightJob(state.observer).done), true);
+
+  // **고정 시각이 실제로 무엇을 막는지**를 한 줄로 못 박는다. 시각을 넘기지 않으면
+  // 두 계산이 각자 "지금"을 쓰고, 그 사이에 흐른 시간만큼 결과가 갈린다 —
+  // 로컬(0.3초)에서는 안 보이고 **느린 CI 에서만** 반올림 경계를 넘는다(실측: 8초 차이에서 67→63).
+  // 같은 시각을 넘기면 **간격이 얼마든 같아야 한다.**
+  state.satrecs = [1, 2, 3].map((n) => ({ name: "S" + n, norad: n, rec: rec, band: "leo" }));
+  const A = ctx.computeTonight(state.observer, undefined, undefined, FIXED_NOW);
+  const B = ctx.computeTonight(state.observer, undefined, undefined, FIXED_NOW + 8000);
+  const C = ctx.computeTonight(state.observer, undefined, undefined, FIXED_NOW);
+  const peak = (rows) => rows.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)).join(",");
+  check("같은 시각을 주면 언제 불러도 결과가 같다", peak(A), peak(C));
+  check("시각이 8초만 달라도 결과가 달라진다(그래서 고정해야 한다)", peak(A) !== peak(B), true);
 }
 {
   // 렌더가 **실제로 쪼개 도는가.** setTimeout 을 테스트가 들고 있다가 직접 돌린다 —

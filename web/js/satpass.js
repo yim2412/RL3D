@@ -255,8 +255,11 @@ const TONIGHT_CHUNK = 10;
  * 순수 구조로 둔 것은 테스트 때문이다: `setTimeout` 으로 돌리는 부분을 얇게 남기고,
  * 판정·집계는 `step()` 을 직접 불러 잰다.
  */
-function tonightJob(obs, hours = TONIGHT_HOURS, stepSec = 30) {
-  const start = Date.now(), end = start + hours * 3600 * 1000;
+function tonightJob(obs, hours = TONIGHT_HOURS, stepSec = 30, now = null) {
+  // `now` 는 **테스트가 시각을 고정하기 위한 것**이다(P32 에서 CI 가 빨개져 알았다):
+  // 같은 입력으로 두 번 계산해 비교할 때, 두 호출 사이에 시간이 흐르면 최대고도가
+  // 미세하게 달라져 **반올림 경계에서 갈린다**(CI 실측 `67` 대 `66`). 앱은 늘 지금을 쓴다.
+  const start = now == null ? Date.now() : now, end = start + hours * 3600 * 1000;
   const table = sunTable(obs, start, end, stepSec * 1000);
   const targets = tonightTargets();
   const rows = [];
@@ -303,8 +306,8 @@ function dropPastPasses(rows, nowMs) {
 }
 
 /** 끝까지 한 번에 돌린다 — 테스트와, 대상이 적을 때의 경로. */
-function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30) {
-  const job = tonightJob(obs, hours, stepSec);
+function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30, now = null) {
+  const job = tonightJob(obs, hours, stepSec, now);
   while (!job.step(Infinity)) { /* 한 번에 끝난다 */ }
   return job.result();
 }
