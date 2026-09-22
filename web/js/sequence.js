@@ -61,9 +61,10 @@ function eventTime(netIso, sec) {
  * **`net_precision` 이 분 단위 아래면 붙이지 않는다** — 날짜만 확정된 발사에
  * `05:12:58 MECO` 를 찍는 것은 **없는 정밀도를 지어내는 것**이다(P12-3 에서 같은 자리를 겪었다).
  */
-const PRECISE_NET = ["Second", "Minute"];
+// 정밀도 표는 utils.js 에 한 곳으로 모았다(P27-2) — 여기서 따로 목록을 들지 않는다.
+// 등급 3 = 시·분까지 확정. 그 아래에서 초 단위 시계를 보여주면 없는 정확도를 꾸며 낸다.
 function canShowClock(netPrecision) {
-  return PRECISE_NET.includes(netPrecision);
+  return netRank(netPrecision) >= 3;
 }
 
 /** 순서표 HTML. `nowElapsed` 가 숫자면 그 시점의 단계를 강조한다. */

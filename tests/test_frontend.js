@@ -4406,6 +4406,103 @@ function fresh2(ctx, key, t) {
   check("팝오버도 닫는다", el("obs-popover").hidden, true);
 }
 
+// ── 발사 시각의 정밀도 (P27-1 · P27-2) ───────────────────────────────────────
+// 예정 발사의 78%가 "언제인지 모르는" 값인데 화면은 초까지 셌다(28건이 같은 문자열).
+// **틀린 숫자가 아니라 없는 정확도를 꾸며 내는 것**이라 눈으로는 알아채기 어렵다.
+{
+  const { ctx } = loadApp();
+  group("정밀도 등급 (netRank · 순수)");
+  check("시·분은 3등급", [ctx.netRank("Second"), ctx.netRank("Minute")], [3, 3]);
+  check("시간은 2등급", ctx.netRank("Hour"), 2);
+  check("날짜는 1등급", ctx.netRank("Day"), 1);
+  check("달·분기·반기·연은 0등급",
+    ["Month", "Quarter 4", "Year Half 2", "Year"].map((p) => ctx.netRank(p)), [0, 0, 0, 0]);
+  // LL2 가 새 표기를 내놓아도 "모른다" 쪽으로 떨어져야 한다. 반대로 떨어지면
+  // 모르는 값에 초 단위 시계를 붙이게 된다.
+  check("모르는 값과 빈 값은 0등급", [ctx.netRank("Decade"), ctx.netRank(undefined)], [0, 0]);
+
+  group("세 규칙이 같은 표를 본다 (P27-2)");
+  // 표로 합치기 전과 **같은 판정**이어야 한다 — 합치면서 조용히 넓어지면
+  // 시계를 보여선 안 되는 발사에 시계가 붙는다.
+  check("순서표 시계: Second·Minute 만",
+    ["Second", "Minute", "Hour", "Day", "Month", "Year"].map((p) => ctx.canShowClock(p)),
+    [true, true, false, false, false, false]);
+  check("발사장 순번: Day 까지",
+    ["Second", "Minute", "Hour", "Day", "Month", "Year"]
+      .map((p) => ctx.canShowOrdinal({ outcome: "upcoming", net_precision: p })),
+    [true, true, true, true, false, false]);
+  check("포커스 카드: 3등급만 고른다",
+    ctx.pickFocusLaunch([{ id: "1", outcome: "upcoming", net: new Date(Date.now() + 3600e3).toISOString(),
+      net_precision: "Month" }], Date.now(), new Set()), null);
+}
+{
+  const { ctx } = loadApp();
+  group("카운트다운 문구 (countdownText · 순수)");
+  const iso = (ms) => new Date(Date.now() + ms).toISOString();
+  check("시·분 확정이면 초까지 센다",
+    /^T-\d+일 \d\d:\d\d:\d\d$/.test(ctx.countdownText({ net: iso(3 * 86400e3 + 5000), net_precision: "Minute" })), true);
+  check("날짜만 확정이면 초를 세지 않는다",
+    ctx.countdownText({ net: iso(3 * 86400e3 + 5000), net_precision: "Day" }), "T-3일");
+  check("시간 단위도 초를 세지 않는다",
+    ctx.countdownText({ net: iso(3 * 86400e3 + 5000), net_precision: "Hour" }), "T-3일");
+  check("오늘·내일은 그렇게 말한다",
+    [ctx.countdownText({ net: iso(3600e3), net_precision: "Day" }),
+     ctx.countdownText({ net: iso(30 * 3600e3), net_precision: "Day" })], ["오늘 중", "내일 중"]);
+  check("연 단위는 그 해를 말한다",
+    ctx.countdownText({ net: "2026-12-31T00:00:00Z", net_precision: "Year" }), "2026년 중");
+  check("달 단위는 그 달을 말한다",
+    ctx.countdownText({ net: "2026-10-31T00:00:00Z", net_precision: "Month" }), "2026년 10월 중");
+  // **UTC 로 읽는다.** 지금 데이터는 전부 `00:00:00Z` 라 현지로 읽어도 같지만(실측 37건 중
+  // 0건 차이), `…T23:00:00Z` 가 한 번이라도 오면 현지(KST)로는 **다음 해**가 된다.
+  // 그때 화면에는 `2027년 중` 이라고 적힐 뿐 아무 경고도 안 난다 — 그래서 여기서 못 박는다.
+  check("UTC 자정을 넘는 값도 UTC 기준 연도로 말한다",
+    ctx.countdownText({ net: "2026-12-31T23:00:00Z", net_precision: "Year" }), "2026년 중");
+  check("UTC 월말 늦은 시각도 그 달로 말한다",
+    ctx.countdownText({ net: "2026-10-31T23:00:00Z", net_precision: "Month" }), "2026년 10월 중");
+  check("분기·반기", [ctx.countdownText({ net: "2026-12-31T00:00:00Z", net_precision: "Quarter 4" }),
+    ctx.countdownText({ net: "2026-12-31T00:00:00Z", net_precision: "Year Half 2" })],
+    ["2026년 4분기 중", "2026년 하반기 중"]);
+  check("모르는 표기도 연도까지는 참이므로 그만큼 말한다",
+    ctx.countdownText({ net: "2026-12-31T00:00:00Z", net_precision: "Decade" }), "2026년 중");
+  check("net 이 깨졌으면 시기 미정",
+    ctx.countdownText({ net: "이상한값", net_precision: "Year" }), "시기 미정");
+  check("net 이 없으면 빈 문자열", ctx.countdownText({ net: null }), "");
+}
+{
+  // 배선 — **여덟 화면이 같은 창구를 쓰는가.** 순수 함수만 재면 한 화면이 옛 `countdown()`
+  // 을 그대로 써도 전부 통과한다(실제로 그래서 일곱 곳이 초를 세고 있었다).
+  const { ctx, el, map, state, sel } = loadApp();
+  group("정밀도 배선 — 여덟 화면이 같은 말을 한다 (P27-1)");
+  state.map = map;
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  const vague = { id: "v", name: "미정 발사", outcome: "upcoming", net: "2026-12-31T00:00:00Z",
+    net_precision: "Year", lat: 28.5, lng: -80.5, rocket: "R", provider: "P",
+    pad_name: "PAD", location: "LOC" };
+  state.launches = [vague];
+  ctx.rebuildAll();
+  sel[".flt:checked"] = [{ value: "upcoming" }];
+  el("search").value = "";
+  ctx.applyFilters();
+  const txt = (id) => (el(id).innerHTML || "").replace(/<[^>]*>/g, " ");
+  check("사이드바 목록", txt("sidebar-list").includes("2026년 중"), true);
+  check("사이드바에 초 단위가 남아 있지 않다", /\d\d:\d\d:\d\d/.test(txt("sidebar-list")), false);
+  ctx.startTicker();
+  check("속보 티커", txt("ticker-text").includes("2026년 중"), true);
+  ctx.toggleFavLaunch("v");
+  ctx.setSidebarTab("favs");
+  check("관심 목록", txt("sidebar-list").includes("2026년 중"), true);
+  ctx.openPanel(vague);
+  check("상세 패널", txt("panel-body").includes("2026년 중"), true);
+  // 같은 사실을 두 번 말하면 안 된다 — 카운트다운 자리가 이미 "2026년 중" 이다.
+  check("상세 패널이 '연 단위로만 확정'을 또 적지 않는다",
+    txt("panel-body").includes("연 단위로만 확정"), false);
+  // 날짜까지 확정된 발사에서는 그 경고가 여전히 필요하다(그 자리는 "T-3일" 뿐이다).
+  ctx.openPanel(Object.assign({}, vague, { net_precision: "Day", net: "2026-12-31T00:00:00Z" }));
+  check("날짜 단위 발사에는 경고가 남는다", txt("panel-body").includes("날짜만 확정"), true);
+  check("날짜 단위 발사의 카운트다운은 일 단위다", /T-\d+일(?! \d)/.test(txt("panel-body")), true);
+  check("패드 목록", ctx.padListHtml([vague], "").includes("2026년 중"), true);
+}
+
 // ── 겹치는 요청 (P26-1 · P26-2) ───────────────────────────────────────────────
 // 이 축의 버그도 예외가 안 난다. **요청 수만 조용히 늘고**(429 가 뜨고 나서야 안다),
 // 화면은 늦게 온 옛 응답으로 소리 없이 되돌아간다.

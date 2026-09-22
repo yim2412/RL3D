@@ -342,7 +342,7 @@ function showLaunchTooltip(e) {
     tooltipEl.className = "tooltip";
     document.body.appendChild(tooltipEl);
   }
-  const cd = d.outcome === "upcoming" ? ` · ${escapeHtml(countdown(d.net))}` : "";
+  const cd = d.outcome === "upcoming" ? ` · ${escapeHtml(countdownText(d))}` : "";
   // 이 점에 몇 건이 포개져 있는지 **먼저 말한다**(P23-2). 안 말하면 나머지가
   // 있다는 것 자체를 알 수 없다 — 화면상 1건과 86건이 똑같이 생겼다.
   const stacked = launchesAtPoint(allLaunches, d.lat, d.lng).length;
@@ -530,7 +530,7 @@ function tickerHtml(item) {
   const d = item.d;
   const where = d.location_name ? ` · ${escapeHtml(d.location_name)}` : "";
   if (item.kind === "upcoming") {
-    return `<span class="tk-cd">${escapeHtml(countdown(d.net))}</span> · ${escapeHtml(d.name)}${where}`;
+    return `<span class="tk-cd">${escapeHtml(countdownText(d))}</span> · ${escapeHtml(d.name)}${where}`;
   }
   const label = OUTCOME_LABEL[d.outcome] || d.outcome;
   return `<span class="tk-res tk-${escapeHtml(d.outcome)}">${escapeHtml(label)}</span>` +
@@ -574,7 +574,8 @@ function startTicker() {
     }
     // 패널이 열려있으면 그 카운트다운도 갱신
     const cd = document.querySelector("#panel-body .cd");
-    if (cd && cd.dataset.net) cd.textContent = countdown(cd.dataset.net);
+    if (cd && cd.dataset.net)
+      cd.textContent = countdownText({ net: cd.dataset.net, net_precision: cd.dataset.prec });
   };
   tick();
   let secs = 0;
@@ -652,7 +653,7 @@ function missionTitle(name) {
 /** 목록 한 줄 — 사이드바 행과 같은 모양을 쓴다(두 곳이 다르게 생기면 같은 것으로 안 읽힌다). */
 function padRowHtml(d) {
   const sub = d.outcome === "upcoming"
-    ? escapeHtml(countdown(d.net)) : escapeHtml(fmtDate(d.net));
+    ? escapeHtml(countdownText(d)) : escapeHtml(fmtDate(d.net));
   const star = isFavLaunch(d.id) ? "★ " : "";
   return `<button class="sb-row pad-row" data-id="${escapeHtml(String(d.id))}">` +
     `<span class="dot d-${d.outcome}"></span>` +

@@ -290,11 +290,11 @@ function turnaroundText(sec) {
  * ⚠ `Day`·`Hour` 는 실측 표본이 각각 2건뿐이다 — 중복 0%지만 근거가 얇다. 그래도
  *   `Month` 쪽(53%)과는 성격이 뚜렷이 갈려 여기에 선을 긋는다.
  */
-const ORDINAL_NET = ["Second", "Minute", "Hour", "Day"];
+// 등급 1 이상(날짜까지는 확정) 이면 순번을 말해도 된다 — 표는 utils.js 에 있다(P27-2).
 function canShowOrdinal(d) {
   if (!d) return false;
   if (d.outcome !== "upcoming") return true;   // 이미 일어난 일은 순번이 사실이다
-  return ORDINAL_NET.includes(d.net_precision);
+  return netRank(d.net_precision) >= 1;
 }
 
 /**
@@ -362,9 +362,15 @@ function updatesBlock(d) {
 function openPanel(d) {
   const panel = document.getElementById("panel");
   const body = document.getElementById("panel-body");
+  // 매초 갱신(`startTicker`)이 같은 규칙을 타려면 **정밀도도 함께 실어야** 한다 —
+  // `data-net` 만 있으면 거기서 다시 초 단위로 세게 된다(P27-1).
   const cd = d.outcome === "upcoming"
-    ? `<div class="cd" data-net="${escapeHtml(d.net)}">${escapeHtml(countdown(d.net))}</div>` : "";
-  const precision = netPrecisionNote(d.net_precision);
+    ? `<div class="cd" data-net="${escapeHtml(d.net)}" data-prec="${escapeHtml(d.net_precision || "")}">` +
+      `${escapeHtml(countdownText(d))}</div>` : "";
+  // 등급 0(달·분기·반기·연)은 **카운트다운 자리가 이미 "2026년 10월 중" 이라고 말한다**(P27-1).
+  // 여기서 또 적으면 한 화면이 같은 사실을 두 번 말한다 — 렌더해 읽고서야 보였다.
+  // 판정 함수(`netPrecisionNote`)는 그대로 둔다 — 중복을 뺄지는 **조립하는 쪽**의 결정이다.
+  const precision = netRank(d.net_precision) === 0 ? null : netPrecisionNote(d.net_precision);
   const progs = (d.programs || []).map((p) =>
     `<span class="prog-tag">${escapeHtml(p)}</span>`).join("");
   // 발사 궤적 근사선(P12-4) — 그리고, 무엇을 가정했는지를 **패널 위쪽에** 적는다.

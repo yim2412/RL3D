@@ -203,6 +203,70 @@ function countdown(iso) {
   return sign + (d > 0 ? `${d}일 ` : "") + `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+// ── 발사 시각의 정밀도 (P27) ──────────────────────────────────────────────────
+/**
+ * LL2 `net_precision` → **이 값으로 어디까지 말해도 되는가**.
+ *
+ * 규칙이 세 곳에 세 이름으로 흩어져 있었다(`PRECISE_NET`·`ORDINAL_NET`·`FOCUS_PRECISIONS`).
+ * 각각은 옳았지만 한 곳을 고칠 때 나머지를 찾을 길이 없었고, **정작 가장 눈에 띄는
+ * 카운트다운에는 아무 규칙도 안 걸려 있었다** — 예정 발사의 78%가 "언제인지 모르는"
+ * 값인데 화면은 `T-99일 14:26:02` 라고 초까지 셌다(28건이 같은 문자열이었다).
+ *
+ * 등급: 3=시·분까지 확정 · 2=시간 단위 · 1=날짜만 · 0=그보다 흐림.
+ * **모르는 값은 0으로 본다** — LL2 가 새 표기를 내놓아도 "모른다"로 떨어지는 쪽이 안전하다.
+ */
+const NET_PRECISION_RANK = { Second: 3, Minute: 3, Hour: 2, Day: 1 };
+function netRank(precision) {
+  const r = NET_PRECISION_RANK[precision];
+  return r === undefined ? 0 : r;
+}
+
+/**
+ * 흐린 정밀도를 사람 말로. **UTC 기준으로 연·월을 읽는다.**
+ *
+ * LL2 의 미정 표기는 그 구간의 **끝을 UTC 자정**으로 준다(실측: 흐린 정밀도 37건의 시각이
+ * 전부 `00:00:00Z`). 지금 이 데이터에서는 현지로 읽어도 결과가 같다 —
+ * **실측으로 확인했다: 37건 중 연·월이 달라지는 것은 0건.** 그래도 UTC 로 읽는다:
+ * `…T23:00:00Z` 같은 값이 한 번이라도 오면 **한 해를 통째로 잘못 말하게 되고**,
+ * 그때는 화면에 `2027년 중` 이라고 적힐 뿐 아무 경고도 안 난다.
+ */
+function vagueWhen(iso, precision) {
+  const t = new Date(iso);
+  if (!isFinite(t.getTime())) return "시기 미정";
+  const y = t.getUTCFullYear();
+  const p = String(precision || "");
+  if (p.startsWith("Month")) return `${y}년 ${t.getUTCMonth() + 1}월 중`;
+  const q = p.match(/^Quarter\s*([1-4])$/);
+  if (q) return `${y}년 ${q[1]}분기 중`;
+  const h = p.match(/^Year Half\s*([12])$/);
+  if (h) return `${y}년 ${h[1] === "1" ? "상" : "하"}반기 중`;
+  // 모르는 표기(LL2 가 새로 내놓은 값 등)도 **연도는 참이다** — 아무 말도 안 하느니
+  // 확실히 참인 만큼만 말한다.
+  return `${y}년 중`;
+}
+
+/** 날짜만 확정된 발사 — **초를 세지 않는다.** 시각을 모르는데 시계를 보여주면 안 된다. */
+function coarseCountdown(iso) {
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return "";
+  const days = Math.floor((t - Date.now()) / 86400000);
+  if (days === 0) return "오늘 중";
+  if (days === 1) return "내일 중";
+  return days > 0 ? `T-${days}일` : `T+${-days}일`;
+}
+
+/**
+ * 화면에 적을 카운트다운. **정밀도를 보는 유일한 창구**다 — 여덟 곳이 이걸 쓴다.
+ * `countdown()` 은 이제 "시·분까지 확정된 발사"에만 간접적으로 쓰인다.
+ */
+function countdownText(d) {
+  if (!d || !d.net) return "";
+  const rank = netRank(d.net_precision);
+  if (rank >= 3) return countdown(d.net);
+  if (rank >= 1) return coarseCountdown(d.net);
+  return vagueWhen(d.net, d.net_precision);
+}
+
 const OUTCOME_LABEL = {
   upcoming: "예정", success: "성공", failure: "실패", partial: "부분 실패",
 };

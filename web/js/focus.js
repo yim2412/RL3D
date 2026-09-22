@@ -9,7 +9,7 @@ const FOCUS_LEAD_MS = 60 * 60 * 1000;   // T-60분부터 띄운다
 const FOCUS_TAIL_MS = 30 * 60 * 1000;   // T+30분까지 남겨 둔다(중계는 발사 뒤에도 이어진다)
 // **초 단위 카운트다운은 net 이 그만큼 확정일 때만 참말이다.** LL2 의 net_precision 이
 // Hour/Day/Month 면 "T-00:47:12" 는 지어낸 정밀도가 된다 → 집중 화면을 띄우지 않는다.
-const FOCUS_PRECISIONS = new Set(["Second", "Minute"]);
+// 등급 3(시·분 확정)에서만 카드를 띄운다 — 표는 utils.js 에 있다(P27-2).
 
 let focusDismissed = new Set();  // ✕ 로 닫은 발사 id(문자열). 재시작하면 초기화된다
 let focusShownId = null;         // 지금 그려져 있는 발사 — 매초 카드 전체를 다시 그리지 않는다
@@ -23,7 +23,7 @@ function pickFocusLaunch(list, now, dismissed) {
   let next = null, justFlown = null;
   for (const d of list || []) {
     if (!d || d.outcome !== "upcoming" || !d.net) continue;
-    if (!FOCUS_PRECISIONS.has(d.net_precision)) continue;
+    if (netRank(d.net_precision) < 3) continue;
     if (dismissed && dismissed.has(String(d.id))) continue;
     const t = new Date(d.net).getTime();
     if (!isFinite(t)) continue;
@@ -45,7 +45,7 @@ function renderFocus(d) {
     `<button id="focus-close" class="focus-close" title="이 발사는 다시 띄우지 않음">✕</button>` +
     `<div class="focus-head">🚀 발사 임박 ${live}</div>` +
     (d.patch ? `<img class="focus-patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : "") +
-    `<div id="focus-cd" class="focus-cd">${escapeHtml(countdown(d.net))}</div>` +
+    `<div id="focus-cd" class="focus-cd">${escapeHtml(countdownText(d))}</div>` +
     `<div class="focus-name">${escapeHtml(d.name)}</div>` +
     `<div id="focus-phase-slot">${phaseLineHtml(d, Date.now())}</div>` +
     (where ? `<div class="focus-sub">${where}</div>` : "") +
@@ -80,7 +80,7 @@ function updateFocus() {
     }
   } else {
     const cdEl = document.getElementById("focus-cd");
-    if (cdEl) cdEl.textContent = countdown(d.net);
+    if (cdEl) cdEl.textContent = countdownText(d);
     // 순서표가 있으면 "지금 어느 단계"도 매초 갱신한다 — 카운트다운만 움직이면
     // 리프토프 뒤에는 카드가 멈춘 것처럼 보인다(P13-1).
     const phEl = document.getElementById("focus-phase-slot");

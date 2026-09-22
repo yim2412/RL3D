@@ -71,7 +71,7 @@ function renderFavList() {
     `<button class="sb-row" data-id="${escapeHtml(String(d.id))}">` +
     `<span class="dot d-${d.outcome}"></span>` +
     `<span class="sb-main"><span class="sb-name">★ ${escapeHtml(d.name)}</span>` +
-    `<span class="sb-sub">${escapeHtml(d.outcome === "upcoming" ? countdown(d.net) : fmtDate(d.net))}</span>` +
+    `<span class="sb-sub">${escapeHtml(d.outcome === "upcoming" ? countdownText(d) : fmtDate(d.net))}</span>` +
     `</span></button>`).join("");
   const satRows = favS.map((s) =>
     `<button class="sb-row" data-norad="${escapeHtml(String(s.norad))}">` +

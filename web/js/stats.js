@@ -281,7 +281,7 @@ function showEntityStats(kind, value) {
     `<button class="site-row" data-id="${escapeHtml(String(d.id))}">` +
     `<span class="dot d-${d.outcome}"></span>` +
     `<span class="site-row-main"><span class="site-row-name">${escapeHtml(d.name)}</span>` +
-    `<span class="site-row-sub">${escapeHtml(d.outcome === "upcoming" ? countdown(d.net) : fmtDate(d.net))}</span>` +
+    `<span class="site-row-sub">${escapeHtml(d.outcome === "upcoming" ? countdownText(d) : fmtDate(d.net))}</span>` +
     `</span></button>`).join("");
 
   const bars = entityBars(kind, list, s)

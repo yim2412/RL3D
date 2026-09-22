@@ -197,7 +197,7 @@ function renderSidebar(list) {
   cont.innerHTML = ordered.slice(0, SIDEBAR_CAP).map((d) => {
     const loc = d.location_name ? " · " + escapeHtml(d.location_name) : "";
     const sub = d.outcome === "upcoming"
-      ? escapeHtml(countdown(d.net)) + loc
+      ? escapeHtml(countdownText(d)) + loc
       : escapeHtml(fmtDate(d.net)) + loc;
     const star = isFavLaunch(d.id) ? "★ " : "";
     return `<button class="sb-row" data-id="${escapeHtml(String(d.id))}">` +
