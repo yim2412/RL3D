@@ -50,6 +50,9 @@ jobs:
       - name: 프론트 회귀 테스트 (스텁 DOM)
         run: node tests/test_frontend.js
 
+      - name: 문서 회귀 테스트 (문서 ↔ 코드 대조)
+        run: node tests/test_docs.js
+
       - name: 로그 스모크 (네트워크 불필요)
         # api_client.py 스모크는 네트워크를 쓰므로 CI 에서 돌리지 않는다.
         # startup.py 스모크도 넣지 않는다 — GitHub 러너에는 WebView2 런타임이 없어

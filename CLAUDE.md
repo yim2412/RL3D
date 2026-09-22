@@ -22,7 +22,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `satcat_codes.py` | SATCAT 코드표(소유국·궤도·타입) — 숫자·약어를 한국어로 |
 | `RL3D.spec` | PyInstaller 산출물. `build.bat` 이 플래그로 빌드하므로 **이 파일은 쓰이지 않는다**(생성물) |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 22개 파일: `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 23개 파일: `errors` → `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
@@ -153,6 +153,11 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   **로컬 530 통과 / CI 526 통과·4 실패가 다섯 커밋 동안 이어졌다**(아무도 안 봤다).
   같은 갈래로 **로캘 문자열도 비교하지 않는다** — Node 의 ICU 는 `AM 12:30`, 앱(WebView2)은
   `오전 12:30` 을 낸다. 단언은 **차이와 구조**로 한다.
+- **문서를 고쳤거나 파일을 늘렸으면 `node tests/test_docs.js`** — 계획서 제목이 본문과
+  어긋나는지(끝난 Phase 가 *착수 전* 이라 말하는지) · 이 표의 파일 개수와 **로드 순서**가
+  실제와 같은지 · README·CI 에 실행 명령이 빠졌는지 · 버전이 세 곳에서 같은지를 잰다.
+  **사람이 기억해서 고치는 규칙은 또 어긋난다** — 2026-09-22 에 끝난 Phase **12개**의
+  제목이 *착수 전* 인 채였고, 이 표는 23개 파일을 **22개**라고 적고 있었다.
 - **푸시한 뒤 CI 를 본다.** `gh run list --workflow=tests.yml --limit 5` 한 줄이면 된다 —
   로컬이 초록이어도 CI 는 다른 환경이다(위가 그 증거다).
 - **시각·실제 데이터에 기대는 단언은 그 자리를 덮는지가 우연이다.** 2026-09-11 하루에 세 개를

@@ -198,6 +198,8 @@ python applog.py                # 로그 파일 경로·기록 확인 (네트워
 python startup.py               # 이 PC 의 WebView2 런타임 버전 확인 (네트워크 불필요)
 python tests/test_parsing.py    # 파이썬 정규화 회귀 테스트 (픽스처 기반, 네트워크 불필요)
 node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저·네트워크 불필요)
+python tests/test_cache.py     # 캐시·TTL·폴백·아카이브·설정 회귀 (네트워크 불필요)
+node tests/test_docs.js        # 문서가 코드와 같은 말을 하는지 (파일 개수·순서·명령·버전)
 ```
 
 두 회귀 테스트는 **네트워크가 필요 없어** GitHub Actions 에서도 그대로 돈다
