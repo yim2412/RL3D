@@ -4,6 +4,8 @@
 `api_client.py` 가 모듈 경유로 부른다: `api_errors._friendly_error(e)`.
 """
 
+import http.client
+import ssl
 import urllib.error
 
 # ── 에러 메시지(사람이 읽는 말로) ─────────────────────────────────────────────
@@ -22,6 +24,15 @@ HTTP_ERROR_MESSAGES = {
 }
 
 TIMEOUT_MESSAGE = "응답이 지연됩니다(타임아웃). 잠시 후 다시 시도하세요."
+
+# **연결이 끊긴 것**과 **받은 것이 깨진 것**은 사용자가 할 일이 다르다 — 전자는 연결 확인,
+# 후자는 잠시 후 재시도. 예전에는 둘 다 기본 문구("데이터를 불러오지 못했습니다")였다.
+# P29-1 이 `except` 를 넓히면서 이 일곱 종이 **전부 기본 문구로 들어오게 됐다**:
+# ConnectionResetError · RemoteDisconnected · IncompleteRead · BadStatusLine · SSLError ·
+# SSLEOFError · 일반 OSError.
+DISCONNECT_MESSAGE = ("연결이 중간에 끊겼습니다. 인터넷 연결을 확인하고 다시 시도하세요.")
+TLS_MESSAGE = ("보안 연결(HTTPS)에 실패했습니다. 회사·학교 네트워크나 백신의 "
+               "가로채기 설정이 원인일 수 있습니다.")
 
 
 def _is_timeout(e):
@@ -47,4 +58,15 @@ def _friendly_error(e):
         return TIMEOUT_MESSAGE
     if isinstance(e, urllib.error.URLError):
         return "네트워크에 연결할 수 없습니다. 인터넷 연결을 확인하세요."
+    # TLS 는 연결 끊김보다 **먼저** 본다 — `SSLError` 도 `OSError` 하위라 아래에 두면 가려진다.
+    if isinstance(e, ssl.SSLError) or isinstance(getattr(e, "reason", None), ssl.SSLError):
+        return TLS_MESSAGE
+    # 응답을 **읽는 도중** 끊긴 경우들. 연결 자체가 안 된 것(URLError)과 달리
+    # 사용자는 "잠깐 끊겼다"를 겪는다 — 같은 말로 뭉뚱그리면 원인을 엉뚱한 데서 찾는다.
+    if isinstance(e, (ConnectionError, http.client.HTTPException)):
+        return DISCONNECT_MESSAGE
+    if isinstance(e, ValueError):
+        return "받은 데이터를 읽지 못했습니다. 잠시 후 다시 시도하세요."
+    if isinstance(e, OSError):
+        return DISCONNECT_MESSAGE
     return "데이터를 불러오지 못했습니다."

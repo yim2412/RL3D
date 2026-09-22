@@ -11,6 +11,7 @@ HTTP 는 `api_client._http_get` 을 갈아끼워 막는다. 캐시·설정 경�
 디렉터리로 재대입한다 — **이름 import 가 아니라 모듈 경유**여야 재대입이 보인다(전역 규칙 8번).
 """
 import builtins
+import http.client
 import json
 import logging
 import os
@@ -20,6 +21,7 @@ import tempfile
 import threading
 import time
 import unittest
+import ssl
 import urllib.error
 from unittest import mock
 
@@ -154,6 +156,65 @@ class TestStaleFallback(CacheTestBase):
         with open(api_client._cache_path("launches.json"), "rb") as f:
             raw = f.read()
         self.assertIn("테스트 발사".encode("utf-8"), raw)
+
+
+class TestNetworkErrorKinds(CacheTestBase):
+    """**연결이 끊기는 방식마다** 폴백이 도는가(P29-1).
+
+    예전에는 `(URLError, HTTPError, ValueError, TimeoutError)` 네 가지만 잡았다.
+    나머지는 **예외가 그대로 올라가 캐시 폴백이 통째로 건너뛰어졌다** — 가진 데이터가
+    있는데 화면은 비었다. 실측으로 13종 중 7종이 그랬고, 전부 실제 인터넷에서 흔하다.
+
+    예외는 **터지지 않는 것만으로는 부족하다**: 폴백이 돌아 `stale=True` 와 **건수**가
+    나와야 하고, 문구가 예외 이름이 아니라 사람 말이어야 한다.
+    """
+
+    # (이름, 예외, 문구에 들어가야 할 말)
+    KINDS = [
+        ("URLError", urllib.error.URLError("refused"), "인터넷 연결"),
+        ("HTTPError 429", urllib.error.HTTPError("u", 429, "Too Many", None, None), "한도"),
+        ("TimeoutError", TimeoutError("timed out"), "타임아웃"),
+        ("ValueError", ValueError("bad json"), "읽지 못했습니다"),
+        ("ConnectionResetError", ConnectionResetError(10054, "reset"), "중간에 끊겼"),
+        ("RemoteDisconnected", http.client.RemoteDisconnected("bye"), "중간에 끊겼"),
+        ("IncompleteRead", http.client.IncompleteRead(b"", 10), "중간에 끊겼"),
+        ("BadStatusLine", http.client.BadStatusLine("junk"), "중간에 끊겼"),
+        ("SSLError", ssl.SSLError("handshake"), "보안 연결"),
+        ("SSLEOFError", ssl.SSLEOFError("eof"), "보안 연결"),
+        ("OSError", OSError(9, "bad fd"), "중간에 끊겼"),
+        ("UnicodeDecodeError", UnicodeDecodeError("utf-8", bytes([255]), 0, 1, "invalid"), "읽지 못했습니다"),
+    ]
+
+    def test_every_kind_falls_back_to_cache(self):
+        for name, exc, phrase in self.KINDS:
+            with self.subTest(kind=name):
+                self.setUp()
+                try:
+                    self.serve(_page(3), _page(0))
+                    self.assertEqual(len(api_client.get_launches()["launches"]), 3)
+                    self.age_cache("launches.json", api_client.TTL_LAUNCHES + 1)
+                    self.fail_with(exc)
+                    res = api_client.get_launches()
+                    self.assertEqual(len(res["launches"]), 3,
+                                     f"{name}: 캐시가 있는데 화면이 비었다")
+                    self.assertTrue(res["stale"], f"{name}: 오래된 캐시를 쓰면서 stale 이 아니다")
+                    self.assertIn(phrase, res["error"], f"{name}: 원인에 맞는 말을 안 한다")
+                    self.assertNotIn(type(exc).__name__, res["error"],
+                                     f"{name}: 예외 이름이 그대로 화면에 나온다")
+                finally:
+                    self.tearDown()
+
+    def test_archive_and_tle_use_the_same_net_errors(self):
+        """같은 묶음을 쓰는 다섯 곳 중 **다른 경로도** 폴백하는가.
+
+        발사만 고치고 아카이브·TLE 를 빼면, 그쪽은 여전히 조용히 터진다.
+        """
+        self.serve(_page(2), _page(0))
+        api_client.get_archive(2024)
+        self.fail_with(ConnectionResetError(10054, "reset"))
+        res = api_client.get_archive(2024, force=True)
+        self.assertTrue(res["stale"], "아카이브: 연결이 끊겼는데 폴백을 안 했다")
+        self.assertIn("중간에 끊겼", res["error"])
 
 
 class TestArchive(CacheTestBase):

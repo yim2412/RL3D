@@ -11,6 +11,7 @@ Launch Library 2(발사)와 Celestrak(위성 TLE)을 호출·정규화·디스�
 터미널 스모크: `python api_client.py` → 소스별 [OK]/[FAIL]·건수 출력.
 """
 
+import http.client
 import json
 import logging
 import os
@@ -88,6 +89,23 @@ ARCHIVE_PAGE_DELAY = 2              # 페이지 사이 딜레이(초) — 레이
 
 
 # ── 저수준 HTTP / 캐시 ────────────────────────────────────────────────────────
+# 네트워크 호출에서 **잡아야 할 예외**. 다섯 곳(발사·아카이브·TLE·SATCAT·업데이트)이 같은 묶음을 쓴다.
+#
+# 예전에는 `(URLError, HTTPError, ValueError, TimeoutError)` 네 가지만 잡았고, 그래서
+# **연결이 끊기는 방식에 따라 폴백이 갈렸다**(2026-09-22 실측: 13종 중 **7종이 그대로 터졌다**) —
+# `ConnectionResetError` · `RemoteDisconnected` · `IncompleteRead` · `BadStatusLine` ·
+# `SSLError` · `SSLEOFError` · 일반 `OSError`. 전부 실제 인터넷에서 흔한 것들이다
+# (끊기는 와이파이 · 프록시 · 서버 재시작 · **응답을 읽는 도중** 끊김).
+# 터지면 오래된 캐시 폴백이 통째로 건너뛰어져 **가진 데이터가 있는데 빈 화면**이 된다.
+#
+# 세 갈래면 실측한 13종을 전부 덮는다: `URLError`·`HTTPError`·`TimeoutError`·`socket.timeout`·
+# `ConnectionResetError`·`SSLError` 는 `OSError` 하위, `UnicodeDecodeError` 는 `ValueError` 하위,
+# `IncompleteRead`·`BadStatusLine`·`RemoteDisconnected` 는 `http.client.HTTPException`.
+# 이 블록 안에는 네트워크 호출과 파싱만 있고 캐시 쓰기는 자체 `try` 를 갖고 있어,
+# 넓혀도 삼킬 프로그래밍 오류가 없다.
+NET_ERRORS = (OSError, ValueError, http.client.HTTPException)
+
+
 def _http_get(url):
     """텍스트 응답을 반환. 실패는 예외로 올린다(상위에서 캐시 폴백)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -370,7 +388,7 @@ def get_launches(force=False):
         launches = api_parsing._dedupe_launches(previous + upcoming)
         _cache_write("launches.json", launches)
         return {"launches": launches, "stale": False, "error": None, "age": 0}
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+    except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
         if cached is None:
             cached, age = _stale_fallback("launches.json")   # 모양이 낡아도 빈 화면보다 낫다
@@ -426,7 +444,7 @@ def get_archive(year, force=False):
         _cache_write(name, {"launches": launches, "truncated": truncated})
         return {"launches": launches, "year": year, "stale": False, "error": None,
                 "truncated": truncated}
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+    except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
         if cached is None:
             cached, _ = _stale_fallback(name)
@@ -465,7 +483,7 @@ def _get_group_tle(group, force=False):
             sats = sats[:cap]  # 대형 그룹은 상한까지만(렌더 성능)
         _cache_write(name, sats)
         return sats, False, None
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+    except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
         if cached is None:
             cached, _ = _stale_fallback(name)
@@ -520,7 +538,7 @@ def _get_group_satcat(group, force=False):
         meta = {str(k): v for k, v in meta.items()}
         _cache_write(name, meta)
         return meta, False, None
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+    except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
         if cached is None:
             cached, _ = _stale_fallback(name)
@@ -585,7 +603,7 @@ def check_update(current_version, force=False):
         name = payload.get("name")
         _cache_write("update.json", {"latest": latest, "url": url, "name": name})
         return result(latest, url, name, False, None, 0)
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError) as e:
+    except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
         log.warning("업데이트 확인 실패(%s) — %s", e,
                     "오래된 캐시 사용" if isinstance(cached, dict) else "캐시 없음")
