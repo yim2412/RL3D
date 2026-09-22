@@ -162,6 +162,20 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   거기서 한 번 돌려 본다.** 로컬에는 있고 **저장소에는 없는 파일**(`RL3D.spec` 같은 생성물,
   `%APPDATA%` 캐시)에 기대면 **로컬만 초록**이다 — 2026-09-22 에 문서 테스트가 그렇게
   올라가 CI 를 바로 빨갛게 만들었다.
+- **메모리·CPU 를 잴 때는 `msedgewebview2` 자식 프로세스를 함께 센다.**
+  `Get-Process -Name RL3D` 는 **파이썬 쪽만** 준다 — 화면(지도·위성·JS)은 WebView2 자식에 있다.
+  2026-09-22 실측: 파이썬 **121MB** · WebView2 6프로세스 **466MB** → 실제 앱은 **587MB** 인데
+  **79%를 안 세고 있었다.** 재는 법:
+  ```powershell
+  $rl = @(Get-Process -Name RL3D | % Id)
+  $ws = @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Select ProcessId,ParentProcessId)
+  $d  = @($ws | ? { $rl -contains $_.ParentProcessId } | % ProcessId)   # 자식
+  $k  = @($ws | ? { $d  -contains $_.ParentProcessId } | % ProcessId)   # 손자
+  Get-Process -Id (@($d)+@($k)) | Measure-Object WorkingSet64 -Sum
+  ```
+  **PID 는 한 번만 잡고 그 뒤로는 `Get-Process -Id` 로 폴링한다** — `Get-CimInstance` 전체 조회를
+  매번 돌리면 한 번에 2분씩 걸려 표본이 안 쌓인다(같은 날 실측).
+  기준선(다음에 비교할 값): 위성 20개 **578~588MB** · 전 그룹 2,896개 **691~748MB**(톱니, 바닥 일정).
 - **푸시한 뒤 CI 를 본다.** `gh run list --workflow=tests.yml --limit 5` 한 줄이면 된다 —
   로컬이 초록이어도 CI 는 다른 환경이다(위가 그 증거다).
 - **시각·실제 데이터에 기대는 단언은 그 자리를 덮는지가 우연이다.** 2026-09-11 하루에 세 개를
