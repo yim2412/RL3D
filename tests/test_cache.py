@@ -158,6 +158,63 @@ class TestStaleFallback(CacheTestBase):
         self.assertIn("테스트 발사".encode("utf-8"), raw)
 
 
+class TestResultLogging(CacheTestBase):
+    """데이터 한 번을 받을 때마다 **한 줄** 남는가(P30-1).
+
+    예전에는 **성공이 한 줄도 안 남았다** — 실제 exe 를 13분 띄운 로그가 3줄뿐이었다.
+    그래서 "화면이 비었다"는 말이 나와도 **캐시를 썼는지 네트워크를 탔는지** 알 수 없었다.
+    로그는 눈으로 보는 것이라 깨져도 아무도 모른다 — 그래서 여기서 못 박는다.
+    """
+
+    def setUp(self):
+        super().setUp()
+        logging.disable(logging.NOTSET)   # 이 클래스는 로그 자체를 잰다
+
+    def test_network_fetch_logs_one_line(self):
+        self.serve(_page(3), _page(0))
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_launches()
+        line = chr(10).join(cm.output)
+        self.assertIn("발사 3건", line)
+        self.assertIn("네트워크", line, "어디서 받았는지가 안 남는다")
+
+    def test_cache_hit_says_cache_and_age(self):
+        self.serve(_page(3), _page(0))
+        api_client.get_launches()
+        self.age_cache("launches.json", 120)
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_launches()
+        line = chr(10).join(cm.output)
+        # **"캐시를 썼다"가 바로 알고 싶은 것**이다 — 네트워크와 구별되지 않으면 의미가 없다.
+        self.assertIn("캐시", line)
+        self.assertIn("2분 전", line, "캐시 나이가 안 남는다")
+        self.assertNotIn("네트워크", line)
+
+    def test_archive_and_satellites_log_too(self):
+        self.serve(_page(2), _page(0))
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_archive(2024)
+        self.assertIn("아카이브 2024", chr(10).join(cm.output))
+
+        tle = chr(10).join([
+            "ISS (ZARYA)",
+            "1 25544U 98067A   24001.00000000  .00000000  00000-0  00000-0 0  9990",
+            "2 25544  51.6400 000.0000 0001000 000.0000 000.0000 15.50000000000000",
+        ])
+        api_client._http_get = lambda url: tle
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_satellites(groups=["stations"])
+        self.assertIn("위성 TLE", chr(10).join(cm.output))
+
+    def test_truncated_archive_says_so_in_the_line(self):
+        """잘린 아카이브는 **그 줄에서** 드러나야 한다 — 따로 찾아 맞춰 보지 않아도 되게."""
+        pages = [json.dumps({"results": [], "next": "http://x/next"})] * 20
+        self.serve(*pages)
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_archive(2024)
+        self.assertIn("잘림", chr(10).join(cm.output))
+
+
 class TestNetworkErrorKinds(CacheTestBase):
     """**연결이 끊기는 방식마다** 폴백이 도는가(P29-1).
 

@@ -106,6 +106,33 @@ ARCHIVE_PAGE_DELAY = 2              # 페이지 사이 딜레이(초) — 레이
 NET_ERRORS = (OSError, ValueError, http.client.HTTPException)
 
 
+def _age_text(age):
+    """캐시 나이를 사람이 읽는 말로. 로그에만 쓴다."""
+    if age is None:
+        return "나이 모름"
+    if age < 90:
+        return "%d초 전" % int(age)
+    if age < 5400:
+        return "%d분 전" % int(age // 60)
+    return "%.1f시간 전" % (age / 3600.0)
+
+
+def _log_result(what, count, source, t0=None):
+    """데이터 한 번을 받을 때마다 **한 줄** 남긴다(P30-1).
+
+    예전에는 **성공이 한 줄도 안 남았다** — 실제 exe 를 13분 띄운 로그가 3줄뿐이었고
+    (시작·런타임·창 생성) 그사이 받은 발사·위성의 흔적이 없었다. 그래서 *"화면이 비었다"* ·
+    *"데이터가 오래됐다"* 는 말이 나와도 **캐시를 썼는지 네트워크를 탔는지** 알 수 없었다.
+
+    남기는 것은 넷뿐이다: 무엇을 · 몇 건 · 어디서 · 얼마나. 그 이상(요청 URL마다,
+    페이지마다)은 안 남긴다 — 기준은 용량이 아니라 **읽을 수 있는가** 이다.
+    """
+    if t0 is None:
+        log.info("%s %d건 (%s)", what, count, source)
+    else:
+        log.info("%s %d건 (%s, %.1f초)", what, count, source, time.time() - t0)
+
+
 def _http_get(url):
     """텍스트 응답을 반환. 실패는 예외로 올린다(상위에서 캐시 폴백)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -378,8 +405,10 @@ def get_launches(force=False):
     """
     cached, age = _cache_read("launches.json")
     if not force and cached is not None and age is not None and age < TTL_LAUNCHES:
+        _log_result("발사", len(cached), "캐시 " + _age_text(age))
         return {"launches": cached, "stale": False, "error": None, "age": age}
 
+    t0 = time.time()
     try:
         upcoming = api_parsing._parse_launches(json.loads(_http_get(LL2_UPCOMING)))
         previous = api_parsing._parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
@@ -387,6 +416,7 @@ def get_launches(force=False):
         # (안 하면 마커·통계·티커에 같은 발사가 두 번 잡힌다. previous 쪽이 결과가 최신)
         launches = api_parsing._dedupe_launches(previous + upcoming)
         _cache_write("launches.json", launches)
+        _log_result("발사", len(launches), "네트워크", t0)
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
@@ -433,15 +463,19 @@ def get_archive(year, force=False):
         not is_current or (age is not None and age < TTL_ARCHIVE_CURRENT)
     )
     if not force and fresh:
+        _log_result("아카이브 %s" % year, len(cached), "캐시 " + _age_text(age))
         return {"launches": cached, "year": year, "stale": False, "error": None,
                 "truncated": cached_truncated}
 
+    t0 = time.time()
     try:
         launches, truncated = _fetch_launch_pages(LL2_ARCHIVE.format(year=year), ARCHIVE_MAX_PAGES)
         if truncated:
             log.warning("아카이브 %s 가 페이지 상한(%s)에 걸려 잘렸다 — %s건까지만 받았다",
                         year, ARCHIVE_MAX_PAGES, len(launches))
         _cache_write(name, {"launches": launches, "truncated": truncated})
+        _log_result("아카이브 %s" % year, len(launches),
+                    "네트워크" + (", 상한에 걸려 잘림" if truncated else ""), t0)
         return {"launches": launches, "year": year, "stale": False, "error": None,
                 "truncated": truncated}
     except NET_ERRORS as e:
@@ -505,6 +539,7 @@ def get_satellites(force=False, groups=None):
     else:
         groups = [g for g in groups if g in SATELLITE_GROUP_CATALOG]
 
+    t0 = time.time()
     combined, seen = [], set()
     stale_any, err = False, None
     for g in groups:
@@ -517,6 +552,8 @@ def get_satellites(force=False, groups=None):
                 continue
             seen.add(s["norad_id"])
             combined.append(s)
+    _log_result("위성 TLE", len(combined),
+                "그룹 %s%s" % (",".join(groups) or "없음", " · 오래된 캐시 포함" if stale_any else ""), t0)
     return {"satellites": combined, "stale": stale_any, "error": err, "groups": groups}
 
 
@@ -557,12 +594,15 @@ def get_satcat(groups=None, force=False):
     """
     groups = [g for g in (groups or DEFAULT_SATELLITE_GROUPS)
               if g in SATELLITE_GROUP_CATALOG]
+    t0 = time.time()
     merged, stale, error = {}, False, None
     for g in groups:
         meta, g_stale, g_err = _get_group_satcat(g, force=force)
         merged.update(meta or {})
         stale = stale or g_stale
         error = error or g_err
+    _log_result("위성 정보(SATCAT)", len(merged),
+                "그룹 %s%s" % (",".join(groups) or "없음", " · 오래된 캐시 포함" if stale else ""), t0)
     return {"satcat": merged, "stale": stale, "error": error}
 
 

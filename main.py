@@ -7,6 +7,7 @@
 
 import logging
 import os
+import platform
 import sys
 import urllib.parse
 import webbrowser
@@ -24,7 +25,7 @@ weblog = logging.getLogger("rl3d.web")
 
 WEB_LOG_MAX_CHARS = 2000   # JS 가 보내는 한 건의 상한(브릿지 입력은 신뢰하지 않는다)
 
-__version__ = "1.55.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.56.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -239,6 +240,11 @@ def main():
     log_file = applog.setup(api_client.APP_DIR)
     applog.install_excepthook()
     log.info("RL3D v%s 시작", __version__)
+    # 로그만 받아서는 **어떤 환경인지 몰랐다**(P30-2). 재현에 필요한 것만 한 줄로.
+    # 이 앱의 `%APPDATA%` 경로는 한글 사용자명을 지나갈 수 있고, 그 자체가 과거에 문제를 냈다.
+    log.info("환경: %s · Python %s · 캐시 %s · 설정 %s",
+             platform.platform(), platform.python_version(),
+             api_client.CACHE_DIR, api_client.SETTINGS_PATH)
 
     startup.check_webview2()  # 없어도 계속 진행 — 사용자가 상황을 보게 한다(P12-11)
 
