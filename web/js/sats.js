@@ -159,6 +159,8 @@ function tleAgeText(days) {
  * 보던 위성이 풀리면** 그건 기능이 아니라 고장으로 읽힌다(추적 모드까지 꺼진다).
  */
 async function loadSatellites(keepSelection = false) {
+  // 체크박스를 켬-끔-켬 하면 두 번 나간다(P26-1) — 진행 중이면 보내지 않는다.
+  if (!beginLoad("satellites")) return;
   // 재로드로 satrec 객체가 통째로 갈리므로, 유지할 때는 **NORAD 로 다시 붙인다**
   const keepNorad = keepSelection && selectedSat ? String(selectedSat.norad) : null;
   const keepTracking = keepSelection && tracking;
@@ -209,6 +211,8 @@ async function loadSatellites(keepSelection = false) {
     satLoadError = "앱에서 위성 계산을 시작하지 못했습니다.";
     showStatus("⚠ 위성 데이터를 불러오지 못했습니다.");
     if (sidebarTab === "sats") renderSatList();
+  } finally {
+    endLoad("satellites");   // 빠뜨리면 이후 위성 로드가 영영 막힌다
   }
 }
 

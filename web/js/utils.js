@@ -37,6 +37,20 @@ function escapeHtml(s) {
 }
 
 /** 라이브+아카이브 합본 재계산(라이브 id 우선, 아카이브 중복 제거). */
+// ── 겹치는 요청 (P26) ─────────────────────────────────────────────────────────
+/** 이 키의 요청을 지금 보내도 되나. 보낼 수 있으면 표시하고 true. */
+function beginLoad(key) {
+  if (inFlight.has(key)) return false;
+  inFlight.add(key);
+  return true;
+}
+/** 요청이 끝났다(성공·실패 무관 — `finally` 에서 부른다. 안 부르면 그 키가 영영 막힌다). */
+function endLoad(key) { inFlight.delete(key); }
+/** 이 종류의 최신 요청 번호를 하나 올려 받는다. 응답 뒤 `isLatest` 로 확인한다. */
+function nextSeq(kind) { return ++loadSeq[kind]; }
+/** 받아 둔 번호가 아직 최신인가. 아니면 그 사이 더 새 요청이 나갔다는 뜻이다. */
+function isLatest(kind, token) { return loadSeq[kind] === token; }
+
 function rebuildAll() {
   const seen = new Set(launches.map((d) => d.id));
   allLaunches = launches.concat(archiveLaunches.filter((d) => !seen.has(d.id)));

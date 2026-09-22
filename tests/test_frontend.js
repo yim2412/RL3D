@@ -4406,5 +4406,158 @@ function fresh2(ctx, key, t) {
   check("팝오버도 닫는다", el("obs-popover").hidden, true);
 }
 
-  done();
+// ── 겹치는 요청 (P26-1 · P26-2) ───────────────────────────────────────────────
+// 이 축의 버그도 예외가 안 난다. **요청 수만 조용히 늘고**(429 가 뜨고 나서야 안다),
+// 화면은 늦게 온 옛 응답으로 소리 없이 되돌아간다.
+{
+  const { ctx } = loadApp();
+  group("겹침 헬퍼 (beginLoad · nextSeq · 순수)");
+  check("처음 부르면 보낸다", ctx.beginLoad("x"), true);
+  check("진행 중이면 안 보낸다", ctx.beginLoad("x"), false);
+  check("키가 다르면 막지 않는다", ctx.beginLoad("y"), true);
+  ctx.endLoad("x");
+  check("끝나면 다시 보낼 수 있다", ctx.beginLoad("x"), true);
+  const t1 = ctx.nextSeq("launches");
+  check("받아 둔 번호는 최신이다", ctx.isLatest("launches", t1), true);
+  const t2 = ctx.nextSeq("launches");
+  check("더 새 요청이 나가면 옛 번호는 최신이 아니다", ctx.isLatest("launches", t1), false);
+  check("마지막으로 받은 번호는 최신이다", ctx.isLatest("launches", t2), true);
+  // 위성에는 토큰이 없다(가드가 직렬화해 늦게 온 옛 응답이 생길 수 없다) — 그래서
+  // 없는 종류를 물으면 **아무것도 최신이 아니다**. 조용히 true 를 주면 안 쓰는 종류에
+  // 토큰을 걸어 두고 통과한 줄 알게 된다.
+  check("없는 종류는 최신이 아니다", ctx.isLatest("satellites", 0), false);
+}
+{
+  // 배선 — **단축키 경로**로 잰다. 버튼은 `disabled` 로 이미 막히고 있었고,
+  // 새는 곳은 버튼을 거치지 않는 `keys.js` 였다(실측에서 R 3연타 = 3회).
+  const later = [];
+  let calls = 0;
+  const { ctx, el, map, state, win, doc } = loadApp({ api: {
+    get_settings: async () => ({}), save_settings: () => {},
+    get_launches: async () => { calls++; return new Promise((r) => later.push(() => r({ launches: [] }))); },
+    get_archive: async () => ({ launches: [] }),
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("겹침 배선 — 단축키 연타 (P26-1)");
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  state.map = map;
+  // **실제 부트를 거쳐야 단축키가 붙는다** — `bindUI()` 가 document 에 keydown 을 단다.
+  // 함수를 직접 부르면 판정은 보이지만 이 경로(버튼을 거치지 않는 길)를 못 잰다.
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  later.forEach((f) => f());   // 부트가 띄운 첫 요청을 끝내 둔다
+  later.length = 0;
+  await new Promise((r) => setImmediate(r));
+  calls = 0;
+  doc.fire("keydown", { key: "r", target: {} });
+  doc.fire("keydown", { key: "r", target: {} });
+  doc.fire("keydown", { key: "r", target: {} });
+  check("R 3연타에 요청은 한 번만 나간다", calls, 1);
+  check("두 번째부터는 이미 갱신 중이라고 말한다",
+    el("status").textContent.includes("이미 갱신 중"), true);
+  later.forEach((f) => f());
+}
+{
+  const { ctx, el, map, state } = loadApp({ api: {
+    get_settings: async () => ({}), save_settings: () => {},
+    get_launches: async () => ({ launches: [] }),
+    get_archive: async () => new Promise(() => {}),   // 영원히 안 오는 응답
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("겹침 배선 — 아카이브 (P26-1)");
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  state.map = map;
+  let asked = 0;
+  const orig = ctx.window.pywebview.api.get_archive;
+  ctx.window.pywebview.api.get_archive = (y) => { asked++; return orig(y); };
+  ctx.loadArchive(2025);
+  ctx.loadArchive(2025);
+  check("같은 연도를 연달아 불러도 한 번만 나간다 (연도당 최대 5페이지짜리 요청이다)", asked, 1);
+  check("두 번째는 불러오는 중이라고 말한다",
+    el("status").textContent.includes("이미 불러오는 중"), true);
+  // 이미 받아 둔 연도로 빠지는 길이 **가드를 잠근 채 빠져나가면** 그 연도는 영영 막힌다.
+  state.loadedYears = new Set([2024]);
+  ctx.loadArchive(2024);
+  ctx.loadArchive(2024);
+  check("이미 불러온 연도는 가드를 잠그지 않는다(두 번 다 같은 안내)",
+    el("status").textContent.includes("이미 불러왔습니다"), true);
+}
+{
+  // 실패해도 가드가 풀려야 한다 — `finally` 가 빠지면 **그 뒤로 영영 못 부른다**.
+  let calls = 0, fail = true;
+  const { ctx, map, state } = loadApp({ api: {
+    get_settings: async () => ({}), save_settings: () => {},
+    get_launches: async () => { calls++; if (fail) throw new Error("끊김"); return { launches: [] }; },
+    get_archive: async () => ({ launches: [] }),
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("겹침 배선 — 실패해도 잠기지 않는다");
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  state.map = map;
+  await (async () => {
+    await ctx.loadLaunches(true);
+    fail = false;
+    await ctx.loadLaunches(true);
+    check("첫 요청이 실패해도 다음 요청은 나간다", calls, 2);
+  })();
+}
+{
+  // 위성도 같은 경로다 — 체크박스를 켬-끔-켬 하면 두 벌이 나갔다(실측 2회).
+  const pending = [];
+  let calls = 0;
+  const { ctx, el, map, state, win } = loadApp({ api: {
+    get_settings: async () => ({}), save_settings: () => {},
+    get_launches: async () => ({ launches: [] }),
+    get_archive: async () => ({ launches: [] }),
+    get_satellites: async () => { calls++; return new Promise((r) => pending.push(r)); },
+    get_satellite_groups: async () => [],
+  } });
+  group("겹침 배선 — 위성 (P26-1)");
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator", "satellites", "sat-track"])
+    map.stubSource(sname);
+  state.map = map;
+  await (async () => {
+    await win.fire("pywebviewready");
+    await new Promise((r) => setImmediate(r));
+    map.fire("load");
+    await new Promise((r) => setImmediate(r));
+    calls = 0;
+    const t = el("toggle-sat");
+    t.checked = true; t.fire("change", { target: t });
+    t.checked = false; t.fire("change", { target: t });
+    t.checked = true; t.fire("change", { target: t });
+    check("켬-끔-켬 에도 위성 요청은 한 번만 나간다", calls, 1);
+    pending.forEach((r) => r({ satellites: [] }));
+  })();
+}
+{
+  // P26-2 — 늦게 온 옛 응답이 화면을 되돌리면 안 된다. `renderTonightList()` 는 이미
+  // 같은 규칙을 갖고 있었고 발사 로더에만 없었다.
+  const pending = [];
+  const { ctx, map, state, el, sel } = loadApp({ api: {
+    get_settings: async () => ({}), save_settings: () => {},
+    get_launches: async () => new Promise((r) => pending.push(r)),
+    get_archive: async () => ({ launches: [] }),
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("늦게 온 옛 응답 (P26-2)");
+  for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);
+  state.map = map;
+  const mk = (id) => ({ id, name: "L" + id, outcome: "success", lat: 1, lng: 2,
+    net: "2026-01-01T00:00:00Z", rocket: "R" });
+  sel[".flt:checked"] = [{ value: "success" }];
+  await (async () => {
+    const p1 = ctx.loadLaunches(false, true);   // 자동 폴링
+    const p2 = ctx.loadLaunches(true);          // 사용자의 강제 갱신 — 나중 요청
+    pending[1]({ launches: [mk("a"), mk("b")] });   // 새 요청이 먼저 도착
+    await p2;
+    pending[0]({ launches: [mk("z")] });            // 옛 요청이 늦게 도착
+    await p1;
+    check("늦게 온 옛 응답은 버린다(화면이 되돌아가지 않는다)",
+      state.allLaunches.map((d) => d.id), ["a", "b"]);
+    check("사이드바 수도 새 응답 기준이다", el("sidebar-count").textContent, "2건");
+    done();
+  })();
+}
+
 })();

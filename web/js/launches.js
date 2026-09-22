@@ -3,10 +3,17 @@
 // ── 발사 데이터 로드 ──────────────────────────────────────────────────────────
 async function loadLaunches(force = false, silent = false) {
   const btn = document.getElementById("refresh");
+  // 겹침 방어(P26). 버튼은 `disabled` 로 막히지만 **단축키 `R` 은 버튼을 거치지 않는다** —
+  // 3연타하면 강제 갱신이 3번 나갔다(시간당 15회 예산).
+  const key = "launches" + (force ? ":force" : "");
+  if (!beginLoad(key)) { if (!silent) showStatus("이미 갱신 중입니다."); return; }
+  const token = nextSeq("launches");
   if (!silent) btn.disabled = true;
   try {
     const prev = launches;  // 변화 감지용 직전 스냅샷
     const res = await window.pywebview.api.get_launches(force);
+    // 늦게 온 옛 응답은 버린다 — 안 버리면 폴링(느림)이 방금 받은 강제 갱신(빠름)을 덮는다.
+    if (!isLatest("launches", token)) return;
     launches = res.launches || [];
     rebuildAll();
     if (res.age != null) { lastLaunchLoad = Date.now() - res.age * 1000; updateFreshness(); }
@@ -23,6 +30,7 @@ async function loadLaunches(force = false, silent = false) {
     if (!silent) showStatus("데이터를 불러오지 못했습니다.");
     console.error(e);
   } finally {
+    endLoad(key);
     if (!silent) btn.disabled = false;
   }
 }
@@ -393,6 +401,14 @@ async function loadArchive(year) {
     setTimeout(() => showStatus(null), 3000);
     return;
   }
+  // 단축키 `A` 는 버튼 `disabled` 를 거치지 않는다 — 2연타면 **연도당 최대 5페이지짜리
+  // 요청이 두 벌** 나간다(P26-1). 아직 `loadedYears` 에 안 들어간 사이라 위 가드는 못 막는다.
+  // **위 가드보다 뒤에 온다** — 앞에 두면 "이미 불러왔다"로 빠지는 길이 `endLoad` 를
+  // 안 거쳐 그 연도가 영영 막힌다.
+  if (!beginLoad("archive:" + year)) {
+    showStatus(`${year}년을 이미 불러오는 중입니다.`);
+    return;
+  }
   const btn = document.getElementById("arch-load");
   btn.disabled = true;
   showStatus(`${year}년 발사 아카이브 불러오는 중… (최초 1회, 수 초 소요)`);
@@ -419,6 +435,7 @@ async function loadArchive(year) {
     showStatus("아카이브를 불러오지 못했습니다.");
     console.error(e);
   } finally {
+    endLoad("archive:" + year);
     btn.disabled = false;
   }
 }
