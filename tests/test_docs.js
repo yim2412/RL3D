@@ -60,10 +60,14 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   }
   // 표에 적은 파일이 실제로 있어야 한다(이름이 바뀌면 여기서 걸린다).
   const rows = CLAUDE.split("\n").filter((l) => /^\| `?[\w./]+\.(py|js|css|html|bat|spec|md)`? *\|/.test(l));
+  // **생성물은 빼고 본다.** `RL3D.spec` 은 빌드가 만들고 커밋하지 않는다 — 문서가 그 줄에
+  // *"생성물"* 이라고 적어 뒀다. 로컬에는 있고 **CI 체크아웃에는 없어서**, 이 검사를 처음
+  // 올린 날 CI 가 바로 빨개졌다(로컬만 보고 만든 검사였다).
   const missing = rows
+    .filter((r) => !r.includes("생성물"))
     .map((r) => r.match(/^\| `?([\w./]+)`?/)[1])
     .filter((f) => !f.includes("*") && !fs.existsSync(path.join(ROOT, f)));
-  check("표에 적힌 파일이 전부 실재한다", missing, []);
+  check("표에 적힌 파일이 전부 실재한다(생성물 제외)", missing, []);
   check("표를 실제로 찾았다", rows.length > 5, true);
 }
 
