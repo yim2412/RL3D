@@ -417,7 +417,9 @@ async function loadArchive(year) {
     const list = res.launches || [];
     const have = new Set(archiveLaunches.map((d) => d.id));
     for (const d of list) if (!have.has(d.id)) archiveLaunches.push(d);
-    loadedYears.add(year);
+    // 파이썬이 **연도를 거절한 경우**(P38-1)는 불러온 것으로 치지 않는다 — 치면
+    // 그 연도가 "이미 불러왔습니다"로 막혀 다시 시도할 길이 없어진다.
+    if (res.year != null) loadedYears.add(year);
     if (res.truncated) truncatedYears.add(year); else truncatedYears.delete(year);
     rebuildAll();
     recomputeTimeline();

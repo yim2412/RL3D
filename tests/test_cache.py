@@ -419,6 +419,78 @@ def _release(tag="v1.14.0", url="https://example.invalid/r/v1.14.0", name="RL3D 
     return json.dumps({"tag_name": tag, "html_url": url, "name": name})
 
 
+class TestBridgeInputs(CacheTestBase):
+    """브릿지 너머에서 온 값 (P38-1).
+
+    `window.pywebview.api.*` 인자는 **JS 가 주는 값**이다. `main.py` 의 `log()` 는
+    *"브릿지 입력이라 신뢰하지 않는다"* 고 적어 두고 화이트리스트로 받는데, 같은 파일의
+    다른 메서드들은 그 원칙을 안 지키고 있었다 — 실측(2026-09-23):
+
+      * `get_archive(None)`·`('abc')`·`({})` 가 **그대로 던졌다**(TypeError/ValueError).
+      * `get_archive(0)`·`(1800)`·`(99999)` 는 **실제로 LL2 를 때리고**, 빈 결과를
+        `archive_0.json` 으로 **영구 캐시**에 남겼다(지난 연도는 TTL 이 없다).
+        시간당 15회 한도가 이 앱의 상수인데 그걸 아무 값에나 태운다.
+      * `get_satellites(groups=123)` 이 `TypeError` 로 던졌다.
+      * `get_satcat(groups=[])` 이 **기본 그룹으로 바뀌어** 요청을 냈다 — 같은 인자가
+        TLE 쪽(빈 선택을 존중)과 **다른 뜻**이었다.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.serve(json.dumps({"results": [], "next": None}))
+
+    def test_bad_year_makes_no_request(self):
+        for bad in (None, "abc", {}, [], 0, -5, 1800, 99999, True, 3.7e9):
+            with self.subTest(bad=bad):
+                self.calls.clear()
+                res = api_client.get_archive(bad)
+                self.assertEqual(self.calls, [], "요청이 나갔다: %r" % (bad,))
+                self.assertIsNone(res["year"])
+                self.assertIn("1957", res["error"])
+                self.assertEqual(res["launches"], [])
+
+    def test_bad_year_leaves_no_cache_file(self):
+        api_client.get_archive(99999)
+        api_client.get_archive("abc")
+        self.assertEqual(sorted(os.listdir(api_client.CACHE_DIR))
+                         if os.path.isdir(api_client.CACHE_DIR) else [], [])
+
+    def test_good_year_still_works(self):
+        this_year = time.gmtime().tm_year
+        for good in (1957, 2025, str(this_year), this_year + 1):
+            with self.subTest(good=good):
+                res = api_client.get_archive(good)
+                self.assertEqual(res["year"], int(good))
+                self.assertIsNone(res["error"])
+
+    def test_year_after_next_is_refused(self):
+        """내년까지만 받는다 — 그 뒤는 빈 결과를 영구 캐시로 남길 뿐이다."""
+        res = api_client.get_archive(time.gmtime().tm_year + 2)
+        self.assertIsNone(res["year"])
+        self.assertEqual(self.calls, [])
+
+    def test_groups_string_is_one_group_not_letters(self):
+        """`"stations"` 를 그대로 순회하면 글자 단위가 되어 **조용히 빈 목록**이 된다."""
+        res = api_client.get_satellites(groups="stations")
+        self.assertEqual(res["groups"], ["stations"])
+
+    def test_unusable_groups_do_not_raise(self):
+        for bad in (123, 4.5, object()):
+            with self.subTest(bad=bad):
+                res = api_client.get_satellites(groups=bad)
+                self.assertEqual(res["groups"], [])
+
+    def test_empty_selection_means_empty_for_satcat_too(self):
+        """TLE 는 빈 선택을 존중했는데 SATCAT 만 기본 그룹으로 바꿔 요청했다."""
+        self.calls.clear()
+        api_client.get_satcat(groups=[])
+        self.assertEqual(self.calls, [])
+
+    def test_none_still_means_default_groups(self):
+        res = api_client.get_satellites(groups=None)
+        self.assertEqual(res["groups"], list(api_client.DEFAULT_SATELLITE_GROUPS))
+
+
 class TestVersionCompare(unittest.TestCase):
     """버전 비교는 **틀려도 예외가 안 난다** — 없는 업데이트를 알리거나 있는 것을 놓칠 뿐이다."""
 

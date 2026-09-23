@@ -1134,6 +1134,22 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     check("그 해는 완전으로 센다", [...ctx.completeYears()], [2018]);
     check("평범한 안내만 한다", el("status").textContent.includes("일부만"), false);
   }
+  {
+    // 파이썬이 연도를 **거절**한 경우(P38-1). 거절을 "불러왔다"로 치면 그 해가
+    // "이미 불러왔습니다"로 막혀 **다시 시도할 길이 없어진다.**
+    const refused = {
+      get_archive: async () => ({
+        launches: [], year: null, stale: false, truncated: false,
+        error: "1957년부터 내년까지만 불러올 수 있습니다.",
+      }),
+    };
+    const { ctx, state, map, el } = loadApp({ api: refused });
+    state.map = map; map.stubSource("launches");
+    await ctx.loadArchive(3000);
+    check("거절된 해는 불러온 것으로 치지 않는다", [...state.loadedYears], []);
+    check("파이썬이 준 말을 그대로 보여준다",
+      el("status").textContent.includes("1957년부터"), true);
+  }
 
   // ── 업데이트 확인 배지 (P12-12) ─────────────────────────────────────────────
   // 순수 판정(shouldShowUpdate·updateBadgeText)과 **배선**을 따로 잰다 — 판정이 다 맞아도

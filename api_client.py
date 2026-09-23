@@ -85,6 +85,11 @@ TTL_SATCAT = 24 * 60 * 60   # 위성 메타데이터 24시간
 TTL_ARCHIVE_CURRENT = 6 * 60 * 60   # 올해 아카이브 6시간(연중 새 발사 추가)
 TTL_UPDATE = 24 * 60 * 60           # 업데이트 확인 하루 1회(P12-12)
 ARCHIVE_MAX_PAGES = 5               # 연도당 최대 페이지(요청 폭주 방지)
+# 아카이브로 물어볼 수 있는 가장 이른 해 — 스푸트니크 1호(1957-10-04) 이전에는 궤도
+# 발사가 없다. 이보다 이르거나 내년보다 먼 해는 **요청하지 않는다**(P38-1):
+# 예전에는 `get_archive(0)`·`get_archive(99999)` 가 그대로 LL2 를 때리고, 빈 결과를
+# `archive_0.json` 으로 **영구 캐시**까지 남겼다(지난 연도는 TTL 이 없다).
+ARCHIVE_MIN_YEAR = 1957
 ARCHIVE_PAGE_DELAY = 2              # 페이지 사이 딜레이(초) — 레이트리밋 보호
 
 
@@ -447,13 +452,58 @@ def _fetch_launch_pages(url, max_pages):
     return launches, bool(url)   # 아직 next 가 남았는데 멈췄으면 잘린 것
 
 
+def _clean_groups(value, default):
+    """브릿지에서 온 그룹 선택을 목록으로 바꾼다 (P38-1).
+
+    `None`(미지정)이면 기본 그룹, **빈 목록이면 빈 채로**(위성을 끈 상태는 뜻이 있다).
+    문자열 하나(`"stations"`)는 한 개짜리 목록으로 받아 준다 — 안 그러면 **글자 단위로
+    순회**해 `s`·`t`·`a`… 가 되고, 카탈로그에 없어 조용히 빈 목록이 된다.
+    순회할 수 없는 값(숫자·dict)은 예전에 `TypeError` 로 **브릿지 너머까지 던졌다.**
+    """
+    if value is None:
+        return list(default)
+    if isinstance(value, str):
+        value = [value]
+    try:
+        items = list(value)
+    except TypeError:
+        log.warning("그룹 선택을 다룰 수 없어 무시했다: %r", value)
+        return []
+    return [g for g in items if g in SATELLITE_GROUP_CATALOG]
+
+
+def _archive_year(value):
+    """브릿지에서 온 값을 연도로 바꾼다. 다룰 수 없으면 None(요청하지 않는다).
+
+    받아 주는 것: 정수 · 정수 문자열(`"2025"`). 그 밖(None·`"abc"`·dict·불리언)은 거절.
+    범위는 `ARCHIVE_MIN_YEAR` ~ **내년**까지다 — 내년을 넣은 것은 연말에 다음 해 발사가
+    이미 등록되기 때문이고, 그보다 먼 해는 받아도 빈 결과만 영구 캐시로 남는다.
+    """
+    if isinstance(value, bool):      # bool 은 int 의 하위형이다 — 먼저 걸러낸다
+        return None
+    try:
+        year = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not (ARCHIVE_MIN_YEAR <= year <= time.gmtime().tm_year + 1):
+        return None
+    return year
+
+
 def get_archive(year, force=False):
+    year_raw = year
     """한 연도의 발사를 정규화해 반환.
 
     반환: {"launches": [...], "year": int, "stale": bool, "error": str|None}
     지난 연도는 영구 캐시(만료 없음), 올해는 6시간 TTL. 실패 시 캐시 폴백.
     """
-    year = int(year)
+    year = _archive_year(year)
+    if year is None:
+        # **던지지 않는다.** 브릿지 너머에서 온 값이라 무엇이든 올 수 있고, 예외는
+        # 프론트에서 잡아도 화면에 할 말이 없다. 요청도 캐시도 없이 사람 말로 돌려준다.
+        log.warning("아카이브 요청을 막았다 — 다룰 수 없는 연도: %r", year_raw)
+        return {"launches": [], "year": None, "stale": False, "truncated": False,
+                "error": "{}년부터 내년까지만 불러올 수 있습니다.".format(ARCHIVE_MIN_YEAR)}
     name = "archive_{}.json".format(year)
     cached, age = _cache_read(name)
     # 캐시는 예전 형식(리스트)일 수도 있다 — 그때는 잘림 여부를 모르니 False 로 본다.
@@ -534,10 +584,7 @@ def get_satellites(force=False, groups=None):
     groups=None(미지정)이면 기본 그룹, groups=[](명시적 빈 선택)이면 위성 없음.
     카탈로그에 없는 키는 무시.
     """
-    if groups is None:
-        groups = list(DEFAULT_SATELLITE_GROUPS)
-    else:
-        groups = [g for g in groups if g in SATELLITE_GROUP_CATALOG]
+    groups = _clean_groups(groups, DEFAULT_SATELLITE_GROUPS)
 
     t0 = time.time()
     combined, seen = [], set()
@@ -592,8 +639,9 @@ def get_satcat(groups=None, force=False):
     **메타가 없어도 위성은 그대로 보여야 한다** — 실패해도 빈 dict 로 돌려주고,
     화면은 있는 값만 채운다(전역 규칙 7번: 1건 실패가 나머지를 날리지 않는다).
     """
-    groups = [g for g in (groups or DEFAULT_SATELLITE_GROUPS)
-              if g in SATELLITE_GROUP_CATALOG]
+    # `groups or DEFAULT` 였다 — **빈 선택이 기본 그룹으로 바뀌어**, 위성을 끈 상태인데도
+    # SATCAT 을 받아 왔다(TLE 쪽은 빈 선택을 존중했다: 같은 인자가 두 뜻이었다).
+    groups = _clean_groups(groups, DEFAULT_SATELLITE_GROUPS)
     t0 = time.time()
     merged, stale, error = {}, False, None
     for g in groups:
