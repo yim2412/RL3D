@@ -3085,6 +3085,228 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 조건을 뒤집어도 아무도 못 잡던 자리 (P43) ────────────────────────────────
+// JS `if` 조건 166개를 하나씩 뒤집어 봤더니 **25개가 전부 초록**이었다(2026-09-23).
+// 아래는 그중 **뒤집히면 화면이 실제로 틀려지는** 것들이다 — 나머지는 동치 변이이거나
+// (포매터 실패 시 빈 문자열) 가드(`if (timer) clearInterval(timer)`)라 잡을 것이 없다.
+(async () => {
+  const mkLaunch = (over) => Object.assign({
+    id: "L1", name: "테스트 발사", net: "2026-09-25T00:00:00Z", outcome: "upcoming",
+    lat: 28.5, lng: -80.5, location_name: "Cape Canaveral", provider: "SpaceX",
+    rocket: "Falcon 9", net_precision: "Second",
+  }, over || {});
+
+  // ── 시간대를 바꾸면 **열려 있는 화면**이 따라온다 (utils.js `refreshTimeViews`) ──
+  // 다섯 줄이 전부 비어 있었다: 타임라인 라벨 · 상세 패널 · 통과 예측표 · "오늘 밤" 탭.
+  // 시간대 버튼을 눌러도 **이미 떠 있는 화면은 옛 시간대로 굳는다** — 숫자만 안 맞을 뿐
+  // 아무 오류도 안 난다(P13-5 가 겨눈 자리인데 배선만 있고 후속 갱신이 안 덮여 있었다).
+  {
+    const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+    group("시간대를 바꾸면 열린 화면이 따라온다 (P43)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track", "sats", "sat-track"]) map.stubSource(s);
+    const d = mkLaunch();
+    state.allLaunches = [d];
+    state.launches = [d];
+
+    // 상세 패널을 연 상태에서 시간대를 바꾼다
+    ctx.openPanel(d);
+    const beforePanel = el("panel-body").innerHTML;
+    check("패널이 열렸고 그 발사를 기억한다", state.panelLaunchId, "L1");
+    ctx.toggleTimeZone();
+    check("시간대가 UTC 로 바뀌었다", state.timeZoneMode, "utc");
+    check("열려 있던 상세 패널을 다시 그린다",
+      el("panel-body").innerHTML !== beforePanel, true);
+
+    // 타임라인 라벨도 같이 간다
+    let timelineRan = false;
+    ctx.onTimeline = () => { timelineRan = true; };
+    ctx.refreshTimeViews();
+    check("타임라인 라벨도 다시 계산한다", timelineRan, true);
+
+    // "오늘 밤" 탭이 열려 있으면 그것도
+    state.sidebarTab = "tonight";
+    state.observer = null;
+    el("sidebar-list").innerHTML = "";
+    ctx.refreshTimeViews();
+    check("오늘 밤 탭도 다시 그린다", el("sidebar-list").innerHTML.length > 0, true);
+  }
+
+  // ── 위성 필터가 바뀐 뒤의 뒷정리 (satfilter.js `applySatFilter`) ────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("위성 필터를 바꾼 뒤 화면을 맞춘다 (P43)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+      "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+    // `visibleSats()` 는 **미리 계산해 둔 `s.band`** 를 본다(매번 궤도를 풀지 않는다).
+    const iss = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo", satcat: {} };
+    state.satrecs = [iss];
+    ctx.selectSatellite(iss);
+    check("위성이 선택됐다", state.selectedSat && state.selectedSat.norad, "25544");
+
+    // 그 위성을 숨기는 필터를 켠다 → 선택이 풀려야 한다
+    // (지도에 점이 없는데 패널만 떠 있으면 혼란스럽다 — 그게 이 조건의 이유다)
+    state.satBands = { leo: false, meo: true, geo: true };
+    ctx.applySatFilter();
+    check("안 보이게 된 위성은 선택이 풀린다", state.selectedSat, null);
+
+    // 보이는 위성이면 선택을 유지한다 — 반대 방향도 잰다
+    state.satBands = { leo: true, meo: true, geo: true };
+    ctx.selectSatellite(iss);
+    ctx.applySatFilter();
+    check("보이는 위성은 선택을 지킨다", state.selectedSat && state.selectedSat.norad, "25544");
+
+    // 위성 탭이 열려 있으면 목록도 다시 그린다
+    state.sidebarTab = "sats";
+    el("sidebar-list").innerHTML = "";
+    ctx.applySatFilter();
+    check("위성 탭이면 목록을 다시 그린다", el("sidebar-list").innerHTML.length > 0, true);
+  }
+
+  // ── 그룹을 바꾸면 **다시 받는다** (satfilter.js `onSatGroupChange`) ─────────
+  {
+    const { ctx, state, el, map, api, sel } = loadApp();
+    group("그룹을 바꾸면 위성을 다시 받는다 (P43)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    let asked = 0;
+    api.get_satellites = async () => { asked++; return { satellites: [], groups: [] }; };
+    const grp = el("satg-x"); grp.value = "visual"; grp.checked = true;
+    sel[".satg:checked"] = [grp];
+    state.satrecs = [{ norad: "1", name: "옛 위성" }];
+
+    // 위성이 꺼져 있으면 받지 않는다 — 켤 때 받으면 된다
+    el("toggle-sat").checked = false;
+    ctx.onSatGroupChange();
+    check("위성이 꺼져 있으면 다시 받지 않는다", asked, 0);
+    check("꺼져 있으면 기존 목록도 그대로", state.satrecs.length, 1);
+
+    // 켜져 있으면 목록을 비우고 다시 받는다
+    el("toggle-sat").checked = true;
+    ctx.onSatGroupChange();
+    check("켜져 있으면 다시 받는다", asked, 1);
+  }
+
+  // ── 자동 갱신은 조용히, 사용자 갱신은 말한다 (launches.js `loadLaunches`) ──
+  // `silent` 분기 넷이 비어 있었다. 자동 갱신(5분마다)이 **버튼을 비활성화하고
+  // 오류 문구를 띄우면**, 앱이 제멋대로 깜빡이는 것처럼 보인다.
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("자동 갱신은 조용히 (P43)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track"]) map.stubSource(s);
+    api.get_launches = async () => { throw new Error("끊김"); };
+
+    el("status").textContent = "";
+    await ctx.loadLaunches(false, true);        // silent = 자동 갱신
+    check("자동 갱신 실패는 화면에 말하지 않는다", el("status").textContent, "");
+    check("자동 갱신은 갱신 버튼을 건드리지 않는다", el("refresh").disabled, false);
+
+    await ctx.loadLaunches(false, false);       // 사용자가 누른 갱신
+    check("사용자 갱신 실패는 말한다",
+      el("status").textContent.includes("불러오지 못했습니다"), true);
+    check("사용자 갱신이 끝나면 버튼이 돌아온다", el("refresh").disabled, false);
+  }
+
+  // ── 받아 온 결과에 경고가 실려 오면 그대로 말한다 (launches.js) ────────────
+  // 파이썬이 `error` 를 주는 경우는 **성공 경로**다(오래된 캐시로 채운 화면 등).
+  // 예외 경로만 재면 이쪽이 통째로 빈다 — 실제로 비어 있었다.
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("결과에 실려 온 경고 (P43)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track"]) map.stubSource(s);
+
+    api.get_launches = async () => ({
+      launches: [mkLaunch()], error: "요청이 많아 잠시 뒤 다시 시도해 주세요.",
+      stale: true, age: 0,
+    });
+    await ctx.loadLaunches();
+    check("경고를 화면에 그대로 옮긴다",
+      el("status").textContent.includes("요청이 많아"), true);
+    check("오래된 캐시로 채웠다는 사실도 말한다",
+      el("status").textContent.includes("저장된 데이터"), true);
+
+    // stale 이 아니면 그 꼬리말은 붙지 않는다
+    api.get_launches = async () => ({
+      launches: [mkLaunch()], error: "무언가 잘못됐습니다.", stale: false, age: 0,
+    });
+    await ctx.loadLaunches();
+    check("stale 이 아니면 꼬리말이 없다",
+      el("status").textContent.includes("저장된 데이터"), false);
+
+    // 경고가 없으면 상태줄을 비운다(앞선 경고가 남아 있으면 안 된다)
+    api.get_launches = async () => ({ launches: [mkLaunch()], error: null, stale: false, age: 0 });
+    await ctx.loadLaunches();
+    // `showStatus(null)` 은 **텍스트를 지우지 않고 숨긴다** — 그래서 남은 글자가 아니라
+    // 숨었는지로 재야 한다(글자로 재면 직전 경고가 남아 있어 영원히 실패한다).
+    check("경고가 없으면 상태줄을 숨긴다", el("status").classList.contains("hidden"), true);
+  }
+
+  // ── 자동 갱신만 "무엇이 달라졌는지" 알린다 (launches.js `announceChanges`) ──
+  // 사용자가 직접 누른 갱신은 **자기가 누른 것**이라 알릴 이유가 없다.
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("자동 갱신만 변화를 알린다 (P43)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track"]) map.stubSource(s);
+    const before = mkLaunch({ id: "A", name: "먼저 있던 발사" });
+    const after = mkLaunch({ id: "B", name: "새로 들어온 발사",
+      net: new Date(Date.now() + 3600000).toISOString() });
+
+    api.get_launches = async () => ({ launches: [before], error: null, age: 0 });
+    await ctx.loadLaunches();
+    el("status").textContent = "";
+
+    api.get_launches = async () => ({ launches: [before, after], error: null, age: 0 });
+    // **상태줄을 비우고 잰다** — 앞 단계의 문구가 남아 있으면 "길이가 0보다 크다"는
+    // 단언이 언제나 참이 되어, 조건을 뒤집어도 안 잡힌다(실제로 그렇게 한 번 놓쳤다).
+    el("status").textContent = "";
+    await ctx.loadLaunches(false, false);      // 사용자 갱신 — 조용해야 한다
+    check("사용자 갱신은 변화를 떠들지 않는다",
+      el("status").textContent.includes("새 발사"), false);
+
+    state.launches = [before];
+    el("status").textContent = "";
+    await ctx.loadLaunches(false, true);       // 자동 갱신 — 알려야 한다
+    check("자동 갱신은 무엇이 늘었는지 알린다",
+      el("status").textContent.includes("새 발사 1건"), true);
+  }
+
+  // ── 속보 띠: 끝난 예정 항목은 건너뛴다 (launches.js) ────────────────────────
+  {
+    const { ctx, state, el, map, timers } = loadApp();
+    group("속보 띠는 끝난 예정 항목을 건너뛴다 (P43)");
+    state.map = map; map.stubSource("launches");
+    const past = mkLaunch({ id: "P1", name: "이미 지난 예정",
+      net: new Date(Date.now() - 60000).toISOString() });
+    const soon = mkLaunch({ id: "N1", name: "아직 안 온 예정",
+      net: new Date(Date.now() + 600000).toISOString() });
+    state.allLaunches = [past, soon];
+    state.launches = [past, soon];
+    ctx.startTicker();
+    check("띠는 지나간 예정을 건너뛴다",
+      el("ticker-text").innerHTML.includes("이미 지난 예정"), false);
+    check("아직 안 온 예정을 보여준다",
+      el("ticker-text").innerHTML.includes("아직 안 온 예정"), true);
+  }
+
+  // ── 다국적 코드 (utils.js) ─────────────────────────────────────────────────
+  {
+    const { ctx } = loadApp();
+    group("소유국 표기 (P43)");
+    // SATCAT 의 나라 코드는 **세 글자**다(`USA`·`CIS`) — 두 글자로 쓰면 표에 없어
+    // 코드가 그대로 나온다. 이 테스트가 그 사실도 같이 붙잡는다.
+    check("쉼표가 있으면 다국적", ctx.countryKo("USA,FR,JPN"), "다국적");
+    check("하나면 그 나라 이름", ctx.countryKo("USA"), "미국");
+    check("모르는 코드는 코드 그대로", ctx.countryKo("ZZZ"), "ZZZ");
+    check("빈 값은 빈 문자열", ctx.countryKo(""), "");
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
