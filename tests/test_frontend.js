@@ -2840,6 +2840,129 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 지도 배선을 실제로 발생시켜 본다 (P40) ───────────────────────────────────
+// P39 에서 동적 배선(`addEventListener`)을 전수화하면서 **`map.on(...)` 은 일부러 뺐다.**
+// 재 보니 17개 중 **9개가 지워도 전부 초록**이었다(2026-09-23): 위성을 눌러 고르는 것 ·
+// 지도를 옮긴 뒤 위치를 저장하는 것 · 끌면 추적이 풀리는 것 · 커서 모양 넷.
+// 커서는 사소해 보이지만 **"여기를 누를 수 있다"는 유일한 신호**다.
+(async () => {
+  const mkSat = (norad, name) => ({ norad, name, rec: null, lat: 1, lng: 2, alt: 400 });
+
+  // ── 위성을 눌러 고른다 (sats.js `click:sat-hit`) ────────────────────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("지도 배선: 위성 선택 (P40)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+      "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+    state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", rec }];
+    ctx.setupSatelliteLayer();
+
+    check("sat-hit 에 클릭 배선이 붙는다", map.has("click:sat-hit"), true);
+    map.fire("click:sat-hit", { features: [{ properties: { norad: "25544" } }] });
+    check("누른 위성이 선택된다", state.selectedSat && state.selectedSat.norad, "25544");
+    check("상세 패널이 열린다", el("panel").classList.contains("hidden"), false);
+
+    // 관측 위치를 찍는 중에는 위성을 고르지 않는다 — 그 클릭은 관측지용이다
+    state.selectedSat = null;
+    state.settingObserver = true;
+    map.fire("click:sat-hit", { features: [{ properties: { norad: "25544" } }] });
+    check("관측지를 찍는 중에는 위성을 고르지 않는다", state.selectedSat, null);
+    state.settingObserver = false;
+
+    // 없는 위성을 눌러도 죽지 않는다(목록이 갈린 순간에 실제로 일어난다)
+    let threw = null;
+    try { map.fire("click:sat-hit", { features: [{ properties: { norad: "99999" } }] }); }
+    catch (e) { threw = String(e); }
+    check("모르는 위성이면 조용히 지나간다", threw, null);
+  }
+
+  // ── 커서 모양 (sats.js · launches.js) ───────────────────────────────────────
+  {
+    const { ctx, state, map } = loadApp({ realSatellite: true });
+    group("지도 배선: 커서 모양 (P40)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "launches", "launch-heat", "launch-track"]) map.stubSource(s);
+    ctx.setupSatelliteLayer();
+    ctx.setupLaunchLayers();
+
+    map.fire("mouseenter:sat-hit", {});
+    check("위성 위에서는 십자 커서", map.cursor(), "crosshair");
+    map.fire("mouseleave:sat-hit", {});
+    check("벗어나면 되돌아온다", map.cursor(), "");
+
+    map.fire("mouseenter:launch-point", {
+      features: [{ properties: { id: "L1" }, geometry: { coordinates: [0, 0] } }],
+      lngLat: { lng: 0, lat: 0 },
+      originalEvent: { clientX: 100, clientY: 200 },
+    });
+    check("발사 점 위에서는 손 모양", map.cursor(), "pointer");
+    map.fire("mouseleave:launch-point", {});
+    check("벗어나면 되돌아온다(발사 점)", map.cursor(), "");
+
+    map.fire("mouseenter:clusters", {
+      features: [{ properties: { point_count: 3, cluster_id: 1 },
+                   geometry: { coordinates: [0, 0] } }],
+      lngLat: { lng: 0, lat: 0 },
+      originalEvent: { clientX: 100, clientY: 200 },
+    });
+    check("클러스터 위에서도 손 모양", map.cursor(), "pointer");
+    map.fire("mouseleave:clusters", {});
+    check("벗어나면 되돌아온다(클러스터)", map.cursor(), "");
+  }
+
+  // ── 지도를 끌면 추적이 풀린다 (sats.js `dragstart`) ─────────────────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("지도 배선: 끌면 추적 해제 (P40)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track"]) map.stubSource(s);
+    ctx.setupSatelliteLayer();
+    state.tracking = true;
+    check("추적 중 상태를 만들었다", state.tracking, true);
+    map.fire("dragstart", {});
+    check("지도를 끌면 추적이 풀린다", state.tracking, false);
+    // `easeTo` 는 dragstart 를 내지 않는다 — 추적이 스스로를 끄면 안 된다(주석의 전제)
+    state.tracking = true;
+    map.easeTo({ center: [1, 2] });
+    check("추적이 스스로 지도를 옮긴 것은 해제하지 않는다", state.tracking, true);
+  }
+
+  // ── 지도를 옮기면 그 위치를 저장한다 (map.js `moveend` · P11-4) ─────────────
+  {
+    const { ctx, state, map, api } = loadApp();
+    group("지도 배선: 카메라 위치 저장 (P40)");
+    state.map = map;
+    let saved = null;
+    api.save_settings = (patch) => { saved = patch; return {}; };
+    // `scheduleCameraSave` 는 1초 뒤에 저장한다 — 스텁 setTimeout 은 즉시 부르지 않으므로
+    // 타이머를 직접 붙잡아 호출한다.
+    const timers = [];
+    ctx.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+    ctx.clearTimeout = () => {};
+    map.setCamera(127.5, 37.5, 6);
+
+    // **`initMap()` 이 배선을 건다.** 처음에는 `scheduleCameraSave()` 를 직접 불렀는데,
+    // 그러면 `map.on("moveend", …)` 한 줄이 죽어도 안 잡힌다 — P39 에서 똑같이 당한 자리다.
+    ctx.initMap();
+    check("moveend 에 배선이 붙는다", map.has("moveend"), true);
+    map.fire("moveend", {});
+    check("지도를 옮기면 저장을 예약한다", timers.length, 1);
+    timers.pop()();
+    check("예약이 지나면 지금 보던 자리를 저장한다",
+      saved && Math.round(saved.camera.lng), 128);
+    check("줌도 같이 저장한다", saved && saved.camera.zoom, 6);
+
+    // 추적 중에는 저장하지 않는다 — 매 초 지도를 옮기므로 그 위치를 남길 이유가 없다
+    saved = null;
+    state.tracking = true;
+    map.fire("moveend", {});
+    check("추적 중에는 예약조차 하지 않는다", timers.length, 0);
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도

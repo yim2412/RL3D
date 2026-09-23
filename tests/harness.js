@@ -259,6 +259,8 @@ function loadApp(options = {}) {
     { filename: "web/js/*.js" },
   );
 
+  const canvas = { style: {} };
+  let camera = { center: { lng: 0, lat: 0 }, zoom: 2 };
   const map = {
     // 실제 MapLibre 는 `on(ev, fn)` 과 `on(ev, 레이어, fn)` 을 둘 다 받고, **같은 이벤트에
     // 여러 핸들러**를 단다(클러스터 클릭·마커 클릭·관측지 지정이 전부 "click" 이다).
@@ -289,7 +291,16 @@ function loadApp(options = {}) {
     setPaintProperty(id, prop, v) { paints[`${id}.${prop}`] = v; },
     layout: (id, prop) => layouts[`${id}.${prop}`],
     paint: (id, prop) => paints[`${id}.${prop}`],
-    getCanvas: () => ({ style: {} }),
+    // **같은 객체를 돌려준다** — 매번 새로 만들면 `style.cursor = "pointer"` 를 써도
+    // 테스트가 그걸 읽을 수 없어, 커서를 바꾸는 배선(마우스 올림/내림)을 못 잰다.
+    getCanvas: () => canvas,
+    /** 지금 커서 모양. 배선이 죽으면 바뀌지 않는다. */
+    cursor: () => canvas.style.cursor,
+    // 카메라 위치 저장(P11-4)을 재려면 지도가 "지금 어디를 보고 있는지" 말해야 한다.
+    getCenter: () => camera.center,
+    getZoom: () => camera.zoom,
+    /** 테스트가 카메라를 옮겨 둔다. */
+    setCamera: (lng, lat, zoom) => { camera = { center: { lng, lat }, zoom }; },
     // 카메라 이동은 **남겨 둔다** — "확대해도 안 갈라지는 클러스터"(P23-2)는
     // *움직이지 않았다*를 단언해야 잴 수 있고, 빈 함수로는 그걸 못 잰다.
     flyTo(o) { cameraMoves.push(["flyTo", o]); },
