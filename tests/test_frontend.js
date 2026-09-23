@@ -2614,6 +2614,22 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     el("fav-btn").fire("click", {});
     check("위성 버튼은 위성 관심으로 간다", ctx.isFavSat("25544"), true);
     check("발사 관심은 건드리지 않는다", ctx.isFavLaunch("25544"), false);
+
+    // **관심 탭이 열려 있으면 그 자리에서 바뀐다** — 안 그리면 방금 별을 뗀 위성이
+    // 목록에 그대로 남아 "안 지워졌다"로 보인다.
+    state.sidebarTab = "favs";
+    el("sidebar-list").innerHTML = "";
+    ctx.toggleFavSat("25544");                  // 뗀다
+    check("관심 탭이면 그 자리에서 다시 그린다",
+      el("sidebar-list").innerHTML.length > 0, true);
+    check("실제로 관심에서 빠졌다", ctx.isFavSat("25544"), false);
+
+    // 다른 탭이면 건드리지 않는다 — 안 보이는 것을 그리지 않는다
+    state.sidebarTab = "launches";
+    el("sidebar-list").innerHTML = "손대지 않아야 한다";
+    ctx.toggleFavSat("25544");
+    check("다른 탭이면 관심 목록을 그리지 않는다",
+      el("sidebar-list").innerHTML, "손대지 않아야 한다");
   }
 
   // ── 관측 위치 팝오버 (observer.js) — 검색 · 결과 행 · 좌표 · 지도 · 해제 ────
