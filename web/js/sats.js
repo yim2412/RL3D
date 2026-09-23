@@ -255,7 +255,7 @@ function startSatelliteLoop() {
 }
 
 function setSatelliteVisible(on) {
-  if (!(!map.getLayer("sat-layer"))) return;
+  if (!map.getLayer("sat-layer")) return;
   const vis = on ? "visible" : "none";
   map.setLayoutProperty("sat-layer", "visibility", vis);
   map.setLayoutProperty("sat-hit", "visibility", vis);  // 클릭 영역도 함께 토글
