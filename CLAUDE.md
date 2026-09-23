@@ -25,7 +25,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `web/js/*.js` | UI 로직 23개 파일: `errors` → `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
-| `tools/mutate_wiring.js` | **동적 배선 변이 점검**(P39). 화면을 그리며 붙는 `addEventListener` 를 하나씩 무력화해 테스트가 잡는지 전수로 잰다. 정기 점검용 — CI 에는 안 넣는다(파일을 잠시 고친다) |
+| `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
 | `PLAN.md` | 개발 계획·마일스톤 |
@@ -163,7 +163,8 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **파일을 쪼갰으면 `index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고
   `index.html` 에 빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
   두 목록이 같은 파일을 같은 순서로 읽는지는 이제 `test_frontend.js` 가 잰다(P12-23).
-- **화면을 그리면서 붙는 배선도 전수로 잰다 — `node tools/mutate_wiring.js`** (P39).
+- **화면을 그리면서 붙는 배선도 전수로 잰다 — `node ~/.claude/tools/mutate.js`** (P39 · P44 에서
+  전역 공용 도구로 옮겼다. `.mutate.json` 이 설정이고, 프리셋을 바꾸려면 `--preset if-js`).
   `bindUI()` 의 정적 배선은 2026-09-14 에 전수화했는데(아래), **`innerHTML` 로 만든 버튼에
   그 자리에서 거는 배선**은 그대로 비어 있었다. 2026-09-23 실측: **25개 중 22개를 지워도
   1,232건이 전부 초록**이었다 — 관심(⭐) 버튼 · 임박 발사 카드의 버튼 셋 · 관측 위치

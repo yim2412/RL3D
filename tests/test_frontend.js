@@ -3124,6 +3124,28 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ctx.refreshTimeViews();
     check("타임라인 라벨도 다시 계산한다", timelineRan, true);
 
+    // 통과 예측표도 시각이 찍혀 있다 — 열려 있으면 그것도 다시 그린다.
+    // **이 줄은 P43 에서 못 채운 자리다**(공용 변이 도구가 `utils.js:132` 로 잡아냈다).
+    // 재려면 `showPasses()` 가 **실제로 도는 상태**를 만들어야 한다 — 위성과 관측지가
+    // 둘 다 있어야 하고, 없으면 함수가 맨 앞에서 그냥 돌아가 이 분기를 못 탄다(P12-23).
+    const rec = ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+      "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+    state.selectedSat = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" };
+    state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+    ctx.openRightPanel("pass-panel");
+    el("pass-body").innerHTML = "";
+    ctx.refreshTimeViews();
+    check("열려 있는 통과 예측표도 다시 그린다",
+      el("pass-body").innerHTML.length > 0, true);
+
+    // 닫혀 있으면 건드리지 않는다 — 닫힌 패널을 다시 그리는 것은 낭비이고,
+    // 그 계산은 위성 하나당 수십 ms 다(P19 에서 잰 값).
+    ctx.openRightPanel("panel");          // 통과 패널을 닫는다
+    el("pass-body").innerHTML = "";
+    ctx.refreshTimeViews();
+    check("닫혀 있는 통과 예측표는 건드리지 않는다", el("pass-body").innerHTML, "");
+
     // "오늘 밤" 탭이 열려 있으면 그것도
     state.sidebarTab = "tonight";
     state.observer = null;
