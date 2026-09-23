@@ -3329,6 +3329,120 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 관측지를 정하고 해제할 때의 뒷정리 (P45) ────────────────────────────────
+// 공용 변이 도구가 `observer.js` 에서 네 줄을 집어냈다 — 전부 **정하거나 해제한 뒤에
+// 화면을 맞추는** 줄이다. 죽으면 *"오늘 밤 목록이 안 바뀐다"* · *"지도가 안 움직인다"* ·
+// *"관측지를 지웠는데 표시가 남는다"* 로 보이는데, 오류는 하나도 안 난다.
+(async () => {
+  const ISS = [
+    "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000",
+  ];
+
+  // ── 관측지를 정하면: 오늘 밤 목록이 채워지고 지도가 그리로 간다 ─────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("관측지를 정한 뒤의 뒷정리 (P45)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+
+    // "오늘 밤" 탭이 열려 있고 **관측지가 없어 막혀 있는** 상태가 출발점이다.
+    state.sidebarTab = "tonight";
+    state.observer = null;
+    ctx.renderTonightList();
+    const blocked = el("sidebar-list").innerHTML;
+    check("관측지가 없으면 막힌 안내가 떠 있다", blocked.includes("tonight-obs-btn"), true);
+
+    const moves = map.moves().length;
+    const ok = ctx.setObserver(37.5665, 126.978, "서울");
+    check("관측지가 정해졌다", ok, true);
+    check("막혀 있던 목록이 그 자리에서 바뀐다",
+      el("sidebar-list").innerHTML !== blocked, true);
+    check("지도가 그 자리로 움직인다", map.moves().length > moves, true);
+
+    // 다른 탭이 열려 있으면 목록을 건드리지 않는다 — 안 보이는 것을 계산하지 않는다
+    state.sidebarTab = "launches";
+    el("sidebar-list").innerHTML = "손대지 않아야 한다";
+    ctx.setObserver(35.1, 129.0, "부산");
+    check("다른 탭이면 목록을 건드리지 않는다",
+      el("sidebar-list").innerHTML, "손대지 않아야 한다");
+  }
+
+  // ── 관측지를 해제하면: 마커가 사라지고 목록이 되돌아간다 ────────────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("관측지를 해제한 뒤의 뒷정리 (P45)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+
+    let removed = false;
+    state.observerMarker = { remove: () => { removed = true; } };
+    state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+    state.sidebarTab = "tonight";
+    el("sidebar-list").innerHTML = "";
+
+    ctx.clearObserver();
+    check("관측지가 지워졌다", state.observer, null);
+    check("지도의 관측지 표시도 지운다", removed, true);
+    check("오늘 밤 목록이 막힌 안내로 되돌아간다",
+      el("sidebar-list").innerHTML.includes("tonight-obs-btn"), true);
+    check("통과 예측표도 같이 닫는다",
+      el("pass-panel").classList.contains("hidden"), true);
+  }
+
+  // ── 위성을 놓으면: 궤적이 지워지고 그 위성의 상세도 닫힌다 ──────────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("위성 선택을 놓은 뒤의 뒷정리 (P45)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    const iss = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" };
+
+    ctx.selectSatellite(iss);
+    ctx.openSatPanel(iss);
+    check("위성 상세가 열렸고 그 위성을 기억한다", String(state.satPanelId), "25544");
+    check("지상궤적이 그려져 있다", map.data("sat-track") != null, true);
+
+    ctx.deselectSatellite();
+    check("선택이 풀렸다", state.selectedSat, null);
+    // **지도에 궤적선이 남으면 "왜 안 지워지지"가 된다** — 빈 것으로 덮는다.
+    const track = map.data("sat-track");
+    check("지상궤적을 빈 것으로 덮는다",
+      !!(track && Array.isArray(track.features) && track.features.length === 0), true);
+    check("그 위성의 상세 패널도 닫는다", el("panel").classList.contains("hidden"), true);
+    check("상세가 누구 것이었는지도 잊는다", state.satPanelId, null);
+  }
+
+  // ── 위성 목록 탭은 값이 바뀔 때마다 다시 그린다 (sats.js 세 곳) ─────────────
+  {
+    const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+    group("위성 목록 탭 재렌더 (P45)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    api.get_satellites = async () => ({
+      satellites: [{ norad_id: 25544, name: "ISS (ZARYA)", tle1: ISS[0], tle2: ISS[1] }],
+      groups: ["stations"], stale: false, error: null,
+    });
+    api.get_satcat = async () => ({ satcat: {}, stale: false, error: null });
+
+    state.sidebarTab = "sats";
+    el("sidebar-list").innerHTML = "";
+    el("toggle-sat").checked = true;
+    await ctx.loadSatellites();
+    check("위성을 받으면 목록 탭이 즉시 채워진다",
+      el("sidebar-list").innerHTML.length > 0, true);
+    check("토글이 켜져 있으면 계산 루프가 선다", state.satTimer != null, true);
+
+    // 다른 탭이면 건드리지 않는다
+    state.sidebarTab = "launches";
+    el("sidebar-list").innerHTML = "손대지 않아야 한다";
+    await ctx.loadSatellites();
+    check("다른 탭이면 위성 목록을 그리지 않는다",
+      el("sidebar-list").innerHTML, "손대지 않아야 한다");
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도

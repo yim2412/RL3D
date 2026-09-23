@@ -68,6 +68,9 @@ const STATE_KEYS = [
   "satcat", "satTypesOff", "satOwnersOff", "focusDismissed", "focusShownId", "focusTimer",
   "trackAheadMin", "futureMarker", "firstRun", "satLoadError", "lastLaunchLoad", "tonightToken", "tonightRows", "updateTimer",
   "latestUpdateInfo", "settingsDismissedUpdate", "heatOn", "timeZoneMode", "panelLaunchId", "settingObserver", "observerMarker",
+  // **여기 없는 전역은 테스트가 볼 수 없다** — `satPanelId` 가 그래서 오래 비어 있었고,
+  // "위성 상세를 열어 둔 채 선택을 놓으면 그 패널도 닫는다"를 아무도 재지 않았다(P45).
+  "satPanelId", "trackTimer", "tickerTimer", "autoTimer", "terminatorTimer",
   // 읽기 전용 표도 여기로 꺼낸다 — 최상위 const 는 컨텍스트 객체에 안 보인다
   "CITIES", "SIDEBAR_CAP",
 ];
