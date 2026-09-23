@@ -3584,6 +3584,91 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 껐다 켜면 그대로 돌아오는가 (P46) ───────────────────────────────────────
+// 설정 **저장**은 P22 에서 쟀다(동시 저장의 lost update 까지). 그런데 **복원**은
+// `satellites` 몇 줄 말고는 비어 있었다 — 공용 변이 도구가 `settings.js` 에서
+// **아홉 줄**을 집어냈다. 죽어도 오류는 없다: 그냥 **어제 켜 둔 것이 오늘 꺼져 있다.**
+//
+// 여기서 재는 것은 두 방향이다 — **저장된 값이 반영되는가** 와
+// **없는 값은 건드리지 않는가**(한쪽만 재면 "늘 켠다"도 통과한다).
+{
+  const { ctx, state, el } = loadApp();
+  group("설정 복원 — 저장된 값이 반영된다 (P46)");
+
+  // **기본값과 다른 값으로 잰다.** 처음에는 `visibleOnly: false` 로 쟀는데 스텁의
+  // 기본값도 `false` 라, 복원이 끊겨도 단언이 참이었다(변이로 드러났다 — 거짓 통과).
+  check("가시 전용의 기본값은 꺼짐이다", el("toggle-visible-only").checked, false);
+  ctx.applySettings({
+    filters: { upcoming: false, success: true },
+    terminator: false,
+    visibleOnly: true,
+    heatmap: true,
+    satellites: { enabled: true, groups: ["visual"],
+                  typesOff: { "로켓 몸체": true }, ownersOff: { CIS: true } },
+    observer: { lat: 37.5665, lng: 126.978, label: "서울" },
+    basemap: "satellite",
+    timeZone: "utc",
+  });
+
+  check("낮/밤 음영 끔이 복원된다", el("toggle-terminator").checked, false);
+  check("가시 전용 켬이 복원된다", el("toggle-visible-only").checked, true);
+  check("히트맵 켬이 복원된다", state.heatOn, true);
+  check("히트맵 체크박스도 같이 선다", el("toggle-heat").checked, true);
+  check("위성 켬이 복원된다", el("toggle-sat").checked, true);
+  check("위성 그룹이 복원된다", state.satGroups, ["visual"]);
+  check("꺼 둔 종류가 복원된다", state.satTypesOff, { "로켓 몸체": true });
+  check("꺼 둔 소유국이 복원된다", state.satOwnersOff, { CIS: true });
+  check("관측 위치가 복원된다", state.observer && state.observer.label, "서울");
+  check("배경 지도가 복원된다", state.basemap, "satellite");
+  check("시간대가 복원된다", state.timeZoneMode, "utc");
+}
+
+{
+  const { ctx, state, el } = loadApp();
+  group("설정 복원 — 없는 값은 건드리지 않는다 (P46)");
+
+  // 앱 기본값을 일부러 바꿔 두고, **빈 설정**을 먹인다. 아무것도 안 바뀌어야 한다.
+  el("toggle-terminator").checked = true;
+  el("toggle-sat").checked = false;
+  state.basemap = "dark";
+  ctx.applySettings({});
+
+  check("낮/밤 음영은 그대로", el("toggle-terminator").checked, true);
+  check("위성 토글도 그대로", el("toggle-sat").checked, false);
+  check("배경 지도도 그대로", state.basemap, "dark");
+
+  // 타입이 틀린 값은 **무시한다** — 손상된 설정이 앱 상태를 망가뜨리면 안 된다.
+  ctx.applySettings({ terminator: "네", basemap: "우주", observer: { lat: "서울", lng: 1 } });
+  check("불리언이 아닌 값은 무시한다", el("toggle-terminator").checked, true);
+  check("모르는 배경 이름은 무시한다", state.basemap, "dark");
+  check("좌표가 숫자가 아니면 관측지를 세우지 않는다", state.observer, null);
+
+  // 위성을 **끈 채로 저장한 것**은 켜지 않는다(설정에 `enabled: false` 가 있는 경우)
+  ctx.applySettings({ satellites: { enabled: false } });
+  check("꺼 둔 위성은 켜지 않는다", el("toggle-sat").checked, false);
+}
+
+{
+  const { ctx, state, el, sel } = loadApp();
+  group("설정 복원 — 결과 필터 (P46)");
+
+  // 필터는 체크박스 넷이 각각 `value` 를 갖는다 — 스텁에 그 넷을 심어 둔다.
+  const boxes = ["upcoming", "success", "failure", "partial"].map((v) => {
+    const b = el("flt-" + v);
+    b.value = v; b.checked = true;
+    return b;
+  });
+  sel[".flt"] = boxes;
+
+  ctx.applySettings({ filters: { upcoming: false, failure: false } });
+  check("꺼 둔 필터가 복원된다", boxes.map((b) => b.checked), [false, true, false, true]);
+
+  // **설정에 없는 키는 건드리지 않는다** — 새 필터가 생겨도 옛 설정이 그걸 끄면 안 된다.
+  const before = boxes.map((b) => b.checked);
+  ctx.applySettings({ filters: {} });
+  check("설정에 없는 필터는 그대로", boxes.map((b) => b.checked), before);
+}
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
