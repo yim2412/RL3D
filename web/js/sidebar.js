@@ -224,4 +224,14 @@ function toggleSidebar() {
   const show = sb.classList.contains("hidden");
   sb.classList.toggle("hidden", !show);
   document.getElementById("toggle-list").classList.toggle("active", show);
+  // 좌하단 배지 스택을 사이드바 밖으로 민다(P35-1). **위치는 CSS 가 정한다** —
+  // 여기서 px 을 계산해 넣으면 사이드바 폭이 두 곳에 살게 된다.
+  setSidebarOpenClass(show);
+}
+
+/** body 에 `sidebar-open` 을 건다. CSS 의 `--stack-left` 가 이 클래스를 본다. */
+function setSidebarOpenClass(open) {
+  const body = document.body;
+  if (!body || !body.classList) return;
+  body.classList.toggle("sidebar-open", !!open);
 }

@@ -58,7 +58,40 @@ const CASES = [
     open: ["sidebar", "sat-groups"],
     clickable: ["search", "sat-groups-btn", "refresh", "tl-range", "arch-year", "arch-load"],
   },
+  {
+    // 좌하단 배지 셋이 전부 사이드바 뒤로 숨어 있었다(P35-1). 배지는 **눌러야**
+    // 닫히고(오프라인) **눌러야** 받는다(업데이트) — 안 보이면 그 기능이 없는 것과 같다.
+    name: "좌하단 배지가 다 뜬 화면 (사이드바 열림)",
+    open: ["sidebar", "heat-legend", "update-badge", "offline-badge"],
+    clickable: ["update-badge", "offline-badge",
+      "toggle-list", "refresh", "tl-range", "arch-load"],
+    // 범례는 `pointer-events: none` 이다(지도 조작을 막지 않는다) — 클릭으로는 못 잰다.
+    // 그리고 **클릭을 받는 것만으로는 모자라다**: z-index 만 올리면 배지가 사이드바
+    // *위에* 떠서 클릭은 되지만 **목록을 가린다.** 그래서 셋 다 "겹치지도 않는다"를 잰다.
+    visible: ["heat-legend", "update-badge", "offline-badge"],
+  },
+  {
+    // 임박 발사 카드(z-index 28)는 밀어낸 배지 자리와 겹친다 — 배지가 그 위에 온다.
+    name: "배지 + 임박 발사 카드 (사이드바 열림)",
+    open: ["sidebar", "update-badge", "offline-badge", "focus"],
+    clickable: ["update-badge", "offline-badge", "tl-range", "arch-load"],
+  },
 ];
+
+/**
+ * 비어 있으면 부피가 없는 것들에 **앱이 실제로 넣는 문구**를 넣는다.
+ * 문구가 길어져 배지가 두 줄이 되면 겹침도 달라지므로, 여기를 실제와 맞춰 둔다.
+ */
+const FILL = {
+  "heat-legend": '<div class="hl-title">🔥 발사 밀도</div><div class="hl-bar"></div>'
+    + '<div class="hl-ends"><span>1건</span><span>한 발사장 최다 27건</span></div>'
+    + '<p class="st-note">지금 지도에 보이는 2026년 발사 100건을 셉니다.</p>',
+  "update-badge": '<span class="ub-text">⬆ 새 버전 v1.59.0 가 있습니다 (현재 v1.58.2) — 눌러서 받기</span>'
+    + '<span class="ub-close">✕</span>',
+  "offline-badge": "🌐 오프라인 — 배경 지도를 못 받았습니다 (발사·위성은 저장된 데이터)",
+  "focus": '<div class="focus-head">🚀 발사 임박</div><div class="focus-cd">T-00:12:34</div>'
+    + '<div class="focus-name">Falcon 9 Block 5 | Starlink Group 15-27</div>',
+};
 
 /** 앱이 실제로 허용하는 창 크기. 900x600 은 `main.py` 의 `min_size` 다. */
 const SIZES = [[900, 600], [1024, 700], [1280, 800], [1920, 1080]];
@@ -83,6 +116,13 @@ function buildPage(open) {
     '<div id="sat-groups" class="sat-groups">',
     '<div id="sat-groups" class="sat-groups"><label>그룹</label><label>그룹</label><label>그룹</label>',
   );
+  // 배지·카드는 JS 가 문구를 넣어야 부피가 생긴다 — **실제로 넣는 문구**를 쓴다
+  // (빈 배지는 높이 18px 이라 아무 것도 안 겹친다: 그렇게 재면 전부 초록이다).
+  for (const [id, inner] of Object.entries(FILL)) {
+    html = html.replace(new RegExp('(<[a-z]+ id="' + id + '"[^>]*>)'), "$1" + inner);
+  }
+  // 사이드바가 열린 상태는 body 클래스로 온다(P35-1 · `toggleSidebar` 가 건다).
+  if (open.includes("sidebar")) html = html.replace("<body>", '<body class="sidebar-open">');
 
   const probe = [
     "<style>", css, "</style>",
@@ -106,6 +146,23 @@ function buildPage(open) {
     "    while (owner && !owner.id) owner = owner.parentElement;",
     "    out.push({id: id, problem: '가려졌다 → ' + (owner ? '#' + owner.id : '알 수 없음')});",
     "  });",
+    "  var COVERS = ['sidebar', 'panel', 'toolbar', 'sat-groups'];",
+    "  (window.__VISIBLE || []).forEach(function(id){",
+    "    var el = document.getElementById(id);",
+    "    if (!el) { out.push({id: id, problem: '요소가 없다'}); return; }",
+    "    var r = el.getBoundingClientRect();",
+    "    if (r.width === 0 || r.height === 0) { out.push({id: id, problem: '크기가 0 이다'}); return; }",
+    "    COVERS.forEach(function(oid){",
+    "      var other = document.getElementById(oid);",
+    "      if (!other || other === el || other.classList.contains('hidden')) return;",
+    "      var o = other.getBoundingClientRect();",
+    "      if (o.width === 0 || o.height === 0) return;",
+    "      var ow = Math.min(r.right, o.right) - Math.max(r.left, o.left);",
+    "      var oh = Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top);",
+    "      if (ow > 2 && oh > 2) out.push({id: id, problem: '#' + oid + ' 와 ' +",
+    "        Math.round(ow) + 'x' + Math.round(oh) + ' 겹쳐 읽을 수 없다'});",
+    "    });",
+    "  });",
     "  var pre = document.createElement('pre');",
     "  pre.id = 'RESULT';",
     "  pre.textContent = JSON.stringify(out);",
@@ -117,14 +174,15 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-function measure(edge, page, clickable, [w, h]) {
+function measure(edge, page, clickable, visible, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
   const dir = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-layout-"));
   const file = path.join(dir, "page.html");
   const withList = page.replace(
     "(function(){\n  syncUiTop();",
-    "window.__CLICKABLE = " + JSON.stringify(clickable) + ";\n(function(){\n  syncUiTop();",
+    "window.__CLICKABLE = " + JSON.stringify(clickable) + ";\n"
+    + "window.__VISIBLE = " + JSON.stringify(visible || []) + ";\n(function(){\n  syncUiTop();",
   );
   fs.writeFileSync(file, withList, "utf8");
   try {
@@ -158,7 +216,7 @@ for (const c of CASES) {
     const label = size[0] + "x" + size[1];
     let problems;
     try {
-      problems = measure(edge, page, c.clickable, size);
+      problems = measure(edge, page, c.clickable, c.visible, size);
     } catch (e) {
       failures.push(c.name + " " + label + " — 측정 실패: " + e.message);
       console.log("  FAIL " + label + " — 측정 실패: " + e.message);
@@ -166,7 +224,7 @@ for (const c of CASES) {
     }
     if (problems.length === 0) {
       pass++;
-      console.log("  OK   " + label + " — 조작 대상 " + c.clickable.length + "개가 전부 클릭을 받는다");
+      console.log("  OK   " + label + " — 대상 " + (c.clickable.length + (c.visible || []).length) + "개가 전부 제 몫을 한다");
     } else {
       const lines = problems.map((p) => "#" + p.id + ": " + p.problem).join(" · ");
       failures.push(c.name + " " + label + " — " + lines);

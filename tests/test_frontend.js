@@ -2534,6 +2534,26 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("취소된 계산은 화면을 덮지 않는다", el("sidebar-list").innerHTML, before);
 }
 
+// ── 사이드바를 열면 좌하단 배지를 비켜 세운다 (P35-1) ────────────────────────
+// 배지 셋(히트맵 범례·업데이트·오프라인)은 사이드바와 **같은 자리**에 있었고 z-index 도
+// 같아, 사이드바가 열려 있으면 셋 다 그 뒤로 완전히 숨었다 — 오프라인 배지는 눌러야
+// 닫히고 업데이트 배지는 눌러야 받는데, **있는 줄도 모르게 된다.**
+// 여기서는 **클래스가 붙는가**만 잰다. 실제로 안 겹치는지는 `tests/test_layout.js`.
+{
+  const { ctx, el } = loadApp();
+  group("사이드바를 열면 배지를 비켜 세운다 (P35-1)");
+  const body = el("body");
+
+  check("처음에는 sidebar-open 이 없다", body.classList.contains("sidebar-open"), false);
+  ctx.toggleSidebar();
+  check("사이드바를 열면 body 에 sidebar-open 이 붙는다",
+    body.classList.contains("sidebar-open"), true);
+  check("사이드바가 실제로 열렸다", el("sidebar").classList.contains("hidden"), false);
+  ctx.toggleSidebar();
+  check("닫으면 클래스도 같이 떨어진다", body.classList.contains("sidebar-open"), false);
+  check("사이드바도 닫혔다", el("sidebar").classList.contains("hidden"), true);
+}
+
 // ── 오버레이 상단 기준선 (P34-2) ─────────────────────────────────────────────
 // 툴바 높이는 창 폭에 따라 변한다(자연 폭 1,065px — 창이 그보다 좁으면 두 줄).
 // CSS 는 한 줄일 때의 값 92px 을 박아 두고 있었고, 그래서 좁은 창에서 사이드바 탭이
