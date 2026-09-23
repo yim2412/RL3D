@@ -3669,6 +3669,61 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("설정에 없는 필터는 그대로", boxes.map((b) => b.checked), before);
 }
 
+// ── 복원의 나머지 절반 — 지도가 뜰 때 (P46-2) ──────────────────────────────
+// `applySettings` 는 **상태만** 세운다(P46-1). 지도 레이어는 그때 아직 없어서,
+// 실제 반영은 `map.on("load")` 안에서 일어난다 — 배경 지도 · 히트맵 · 관측 위치 · 위성.
+// 그 세 줄이 비어 있었다: 죽으면 **설정에는 켜져 있는데 화면에는 안 켜진다.**
+{
+  const { ctx, state, el, map } = loadApp();
+  group("지도가 뜰 때 저장된 상태를 반영한다 (P46-2)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"]) {
+    map.stubSource(s);
+  }
+
+  // 설정을 먼저 복원한 상태에서 지도를 띄운다 — 실제 부트 순서와 같다.
+  ctx.applySettings({ basemap: "satellite", heatmap: true, satellites: { enabled: true } });
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  check("배경 지도 상태가 먼저 선다", state.basemap, "satellite");
+
+  ctx.initMap();
+  state.map = map;
+  map.fire("load", {});
+
+  // **상태만 재면 절반이다** — 지도 레이어가 실제로 갈렸는지까지 본다.
+  // `applySettings` 는 지도가 없을 때 도니까 상태만 세우고, 반영은 `load` 안에서 한다.
+  check("저장된 배경 지도가 지도에도 반영된다",
+    map.layout("esri", "visibility"), "visible");
+  check("그때 다크 배경은 꺼진다", map.layout("darkbase", "visibility"), "none");
+  check("툴바 버튼 문구도 따라간다",
+    el("basemap-btn").textContent.includes("위성사진"), true);
+
+  // 히트맵: 상태만이 아니라 **레이어가 실제로 보이게** 됐는지
+  check("저장된 히트맵이 지도에도 켜진다", map.layout("launch-heat", "visibility"), "visible");
+  // 관측 위치: 지도에 마커가 선다
+  check("저장된 관측 위치가 지도에 선다", state.observerMarker != null, true);
+  // 위성: 설정에 켜져 있었으면 레이어가 보인다
+  check("설정에 켜 둔 위성이 지도에도 켜진다", map.layout("sat-layer", "visibility"), "visible");
+}
+
+{
+  const { ctx, state, el, map } = loadApp();
+  group("저장된 것이 없으면 켜지 않는다 (P46-2)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"]) {
+    map.stubSource(s);
+  }
+
+  // **아무것도 저장돼 있지 않은 첫 실행**이 출발점이다.
+  ctx.applySettings({});
+  ctx.initMap();
+  state.map = map;
+  map.fire("load", {});
+
+  check("배경 지도는 다크로 둔다", map.layout("esri", "visibility") !== "visible", true);
+  check("히트맵은 꺼진 채로 둔다", map.layout("launch-heat", "visibility") !== "visible", true);
+  check("관측 위치 마커를 세우지 않는다", state.observerMarker, null);
+  check("위성도 켜지 않는다", map.layout("sat-layer", "visibility") !== "visible", true);
+}
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
