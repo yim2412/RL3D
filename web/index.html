@@ -53,18 +53,32 @@
   <!-- 지도 -->
   <div id="map"></div>
 
-  <!-- 발사 밀도 히트맵 범례 (P12-15) — 색이 무슨 뜻인지와 **무엇을 세고 있는지**(모수) -->
-  <div id="heat-legend" class="heat-legend hidden"></div>
-
-  <!-- 배경 타일을 못 받을 때(오프라인) 안내 배지 — 클릭하면 닫힌다 -->
-  <button id="offline-badge" class="offline-badge hidden" title="눌러서 닫기"></button>
-
-  <!-- 첫 실행 안내 카드 (P17-4) — 기본이 얇다는 **사실**과 켜는 길을 같이 말한다.
-       지도 좌하단(오프라인 배지 위)에 둔다: 발사 클러스터가 몰린 가운데를 가리지 않게. -->
-  <div id="firstrun" class="firstrun hidden"></div>
-
-  <!-- 새 버전 안내 배지 (P12-12) — 본문을 누르면 릴리스 페이지, ✕ 는 그 버전만 닫는다 -->
-  <div id="update-badge" class="update-badge hidden"></div>
+  <!-- 좌하단 스택 (P36-2) — 위성 제어줄·오프라인·업데이트·첫 실행 안내·히트맵 범례가
+       **같은 열에 쌓인다.** 예전에는 각자 `bottom` 을 62·74·118·120·162px 로 손으로
+       계산했는데, 하나가 두 줄이 되거나 하나가 숨으면 그 계단이 무너졌다(실제로
+       위성 제어줄의 버튼 셋이 오프라인 배지에 덮였다). 이제 `column-reverse` 가
+       아래부터 쌓고, 숨은 것은 자리도 차지하지 않는다. 순서는 **아래부터 이 순서**다. -->
+  <div id="ui-stack" class="ui-stack">
+  <!-- 선택 위성 컨트롤 (지상궤적/추적/통과예측) -->
+    <div id="sat-ctrl" class="sat-ctrl hidden">
+      <span id="sat-ctrl-name" class="sat-ctrl-name"></span>
+      <button id="sat-track-btn" class="btn sm" title="지도 중심을 위성에 고정">추적</button>
+      <button id="sat-obs-btn" class="btn sm" title="관측 위치 지정 (도시 검색 · 좌표 입력 · 지도 클릭)">📍 관측</button>
+      <button id="sat-pass-btn" class="btn sm" title="관측지 기준 통과 예측" disabled>통과 예측</button>
+      <span class="sat-ahead-wrap" title="궤적을 앞으로 늘려 보고, 그 시각 위치를 표시">
+        <input id="sat-ahead" type="range" min="0" max="360" step="5" value="0" />
+        <span id="sat-ahead-label" class="sat-ahead-label">지금</span>
+      </span>
+      <button id="sat-ctrl-close" class="sat-ctrl-close" title="선택 해제">✕</button>
+    </div>
+    <button id="offline-badge" class="offline-badge hidden" title="눌러서 닫기"></button>
+    <!-- 새 버전 안내 (P12-12) — 본문을 누르면 릴리스 페이지, ✕ 는 그 버전만 닫는다 -->
+    <div id="update-badge" class="update-badge hidden"></div>
+    <!-- 첫 실행 안내 (P17-4) — 기본이 얇다는 **사실**과 켜는 길을 같이 말한다 -->
+    <div id="firstrun" class="firstrun hidden"></div>
+    <!-- 발사 밀도 범례 (P12-15) — 색의 뜻과 **무엇을 세고 있는지**(모수) -->
+    <div id="heat-legend" class="heat-legend hidden"></div>
+  </div>
 
   <!-- 발사 임박 집중 화면 (P12-3) — T-60분 안쪽 발사가 있을 때만 보인다 -->
   <div id="focus" class="focus hidden"></div>
@@ -100,19 +114,6 @@
     <span class="tl-cap">과거</span>
     <select id="arch-year" class="arch-select" title="불러올 과거 연도"></select>
     <button id="arch-load" class="btn sm" title="선택 연도의 발사를 불러옴(최초 1회 API 요청)">불러오기</button>
-  </div>
-
-  <!-- 선택 위성 컨트롤 (지상궤적/추적/통과예측) -->
-  <div id="sat-ctrl" class="sat-ctrl hidden">
-    <span id="sat-ctrl-name" class="sat-ctrl-name"></span>
-    <button id="sat-track-btn" class="btn sm" title="지도 중심을 위성에 고정">추적</button>
-    <button id="sat-obs-btn" class="btn sm" title="관측 위치 지정 (도시 검색 · 좌표 입력 · 지도 클릭)">📍 관측</button>
-    <button id="sat-pass-btn" class="btn sm" title="관측지 기준 통과 예측" disabled>통과 예측</button>
-    <span class="sat-ahead-wrap" title="궤적을 앞으로 늘려 보고, 그 시각 위치를 표시">
-      <input id="sat-ahead" type="range" min="0" max="360" step="5" value="0" />
-      <span id="sat-ahead-label" class="sat-ahead-label">지금</span>
-    </span>
-    <button id="sat-ctrl-close" class="sat-ctrl-close" title="선택 해제">✕</button>
   </div>
 
   <!-- 관측 위치 지정 팝오버 (P13-6) — 도시·발사장 검색 / 좌표 입력 / 지도 클릭 -->

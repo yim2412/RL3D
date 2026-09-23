@@ -420,7 +420,7 @@ function openPanel(d) {
   bindFavBtn(body);
   satPanelId = null;  // 발사 상세를 열면 위성 상세 라이브 갱신은 중지
   panelLaunchId = String(d.id);  // 시간대를 바꾸면 이 패널을 다시 그린다(P13-5)
-  panel.classList.remove("hidden");
+  openRightPanel("panel");
   updatePanelScope(currentFilteredLaunches());  // 앞서 연 발사의 안내가 남지 않게(P25-1)
   // 좌표 없는 발사(목록에서 열 수 있음)는 flyTo가 NaN이 되므로 좌표가 있을 때만 이동
   if (typeof d.lng === "number" && typeof d.lat === "number")

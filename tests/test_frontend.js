@@ -2534,6 +2534,46 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("취소된 계산은 화면을 덮지 않는다", el("sidebar-list").innerHTML, before);
 }
 
+// ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
+// 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
+// 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
+// 통계가 그 위에 덮여 **아무 일도 안 일어난 것처럼 보였다.** 화면으로는 "클릭이
+// 안 먹는다"로만 보이고, 패널 각각의 테스트는 전부 통과한다.
+{
+  const { ctx, el, state, map } = loadApp({ realSatellite: true });
+  group("오른쪽 패널은 한 번에 하나 (P36-1)");
+  state.map = map;
+  const open = () => ["panel", "pass-panel", "stats-panel"]
+    .filter((id) => !el(id).classList.contains("hidden"));
+
+  const d = {
+    id: "1", name: "테스트 발사", net: "2026-09-25T00:00:00Z", outcome: "upcoming",
+    pad: { lat: 28, lng: -80, name: "LC-39A" }, provider: "SpaceX", rocket: "Falcon 9",
+  };
+  state.allLaunches = [d];
+
+  check("처음에는 셋 다 닫혀 있다", open(), []);
+  ctx.showStats();
+  check("통계를 열면 통계만", open(), ["stats-panel"]);
+  ctx.openPanel(d);
+  check("그 상태에서 발사를 열면 상세만 — 통계는 닫힌다", open(), ["panel"]);
+  ctx.showStats();
+  check("다시 통계를 열면 상세가 닫힌다", open(), ["stats-panel"]);
+
+  // 위성 상세도 같은 `panel` 을 쓴다(satpanel.js) — 통계가 위에 남아 있으면 안 보인다.
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+  ctx.openSatPanel({ name: "ISS (ZARYA)", norad: "25544", rec: rec });
+  check("위성 상세를 열어도 통계는 닫힌다", open(), ["panel"]);
+
+  // 직접 부르는 경로도 같은 규칙을 지킨다(순수하게 토글만 하는 함수다).
+  ctx.openRightPanel("pass-panel");
+  check("통과 예측을 열면 나머지가 닫힌다", open(), ["pass-panel"]);
+  ctx.openRightPanel("없는-패널");
+  check("이름이 틀리면 전부 닫힌다(둘이 남지 않는다)", open(), []);
+}
+
 // ── 사이드바를 열면 좌하단 배지를 비켜 세운다 (P35-1) ────────────────────────
 // 배지 셋(히트맵 범례·업데이트·오프라인)은 사이드바와 **같은 자리**에 있었고 z-index 도
 // 같아, 사이드바가 열려 있으면 셋 다 그 뒤로 완전히 숨었다 — 오프라인 배지는 눌러야

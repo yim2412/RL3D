@@ -24,6 +24,31 @@
    JS 가 322px 을 계산해 넣으면 사이드바 폭이 바뀔 때 두 곳을 고쳐야 한다. */
 body.sidebar-open { --stack-left: calc(10px + var(--sidebar-w) + 12px); }
 
+/* 좌하단 스택 (P36-2) — 위성 제어줄·오프라인·업데이트·첫 실행·히트맵 범례.
+   **예전에는 각자 `bottom` 을 62·74·118·120·162px 로 손으로 계산했다.** 그래서
+   ① 하나가 두 줄이 되면 위와 겹치고 ② 하나가 숨어도 그 자리가 비어 있고
+   ③ 새로 하나 더하면 또 계산해야 했다. 실제로 위성 제어줄의 버튼 셋(추적·관측·통과
+   예측)이 오프라인 배지에 **완전히 덮여 안 눌렸다**(2026-09-23 실측).
+   이제 자리는 여기서만 정한다 — 자식은 `position: static` 이고 높이는 제 내용대로다. */
+.ui-stack {
+  position: absolute;
+  left: var(--stack-left); bottom: 62px;
+  z-index: 29;   /* 집중 화면(28)보다 위 — 밀어낸 자리에서 그 카드와 겹친다(P35-1) */
+  display: flex; flex-direction: column-reverse; align-items: flex-start; gap: 8px;
+  /* 스택 자체는 클릭을 받지 않는다 — 자식 사이의 빈 곳으로 지도를 계속 끌 수 있어야 한다. */
+  pointer-events: none;
+  max-width: calc(100% - var(--stack-left) - 14px);
+  /* 세로도 묶는다 — 다섯이 다 뜨면 900×600 에서 **툴바 밑으로 파고든다**(실측 13px).
+     겹치면 두 글자가 포개져 **둘 다** 못 읽으므로, 넘치면 차라리 자른다. 자르는 쪽은
+     스택의 **맨 위**이고 거기 있는 것이 히트맵 범례다 — 읽기 전용이라 손실이 가장 작다.
+     `overflow-y: auto` 로 두지 않은 것은 컨테이너가 `pointer-events: none` 이라
+     스크롤을 받지 못하기 때문이다(스크롤바만 생기고 움직이지 않는다). */
+  max-height: calc(100vh - var(--ui-top, 92px) - 74px);
+  overflow: hidden;
+}
+.ui-stack > * { pointer-events: auto; }
+.ui-stack > .heat-legend { pointer-events: none; }   /* 범례는 읽기 전용(P12-15) */
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -389,9 +414,6 @@ html, body {
    배지(bottom 74px)보다 높은 자리에 둔다. 가운데를 피하는 것은 발사 클러스터가 그쪽에
    몰려 있어서다 — 첫 화면을 가리는 안내는 그 자체로 첫인상을 깎는다. */
 .firstrun {
-  position: absolute;
-  left: var(--stack-left); bottom: 120px;
-  z-index: 29;
   width: 420px; max-width: calc(100% - 28px);
   display: flex; flex-direction: column; gap: 8px;
   font-size: 12px; line-height: 1.5;
@@ -419,9 +441,6 @@ html, body {
 
 /* 오프라인 안내 배지 (P11-7) — 타임라인 위, 지도 좌하단 */
 .offline-badge {
-  position: absolute;
-  left: var(--stack-left); bottom: 74px;
-  z-index: 29;
   max-width: 520px;
   text-align: left;
   white-space: nowrap;
@@ -510,9 +529,6 @@ html, body {
 
 /* 발사 밀도 히트맵 범례 (P12-15) — 좌하단. 오프라인·업데이트 배지 위로 쌓는다. */
 .heat-legend {
-  position: absolute;
-  left: var(--stack-left); bottom: 162px;
-  z-index: 29;   /* 집중 화면(28)보다 위 — 밀어낸 자리에서 그 카드와 겹친다(P35-1) */
   width: 260px;
   font-size: 11px; line-height: 1.45;
   color: var(--text);
@@ -540,9 +556,6 @@ html, body {
 /* 새 버전 안내 배지 (P12-12) — 오프라인 배지와 같은 좌하단이라 위로 비켜 둔다.
    둘이 동시에 뜨는 상황(오프라인인데 캐시된 업데이트 정보가 있다)이 실제로 가능하다. */
 .update-badge {
-  position: absolute;
-  left: var(--stack-left); bottom: 118px;
-  z-index: 29;
   max-width: 520px;
   display: flex; align-items: center; gap: 10px;
   font-size: 12px; line-height: 1.4;
@@ -633,9 +646,6 @@ html, body {
 
 /* 선택 위성 컨트롤 (지상궤적/추적) */
 .sat-ctrl {
-  position: absolute;
-  left: 12px; bottom: 62px;
-  z-index: 27;
   display: flex; align-items: center; gap: 8px;
   background: rgba(19, 26, 43, .92);
   backdrop-filter: blur(6px);

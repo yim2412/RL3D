@@ -205,7 +205,7 @@ function openSatPanel(s) {
     `<div class="st-note">아래 값은 실시간으로 갱신됩니다.</div>` +
     `<div id="sat-rows">${satRowsHtml(s)}</div>`;
   bindFavBtn(body);
-  document.getElementById("panel").classList.remove("hidden");
+  openRightPanel("panel");
 }
 
 /** 매 초 호출 — 값만 갈아끼운다. 패널 전체를 다시 그리면 ⭐ 버튼 클릭이 씹힌다. */

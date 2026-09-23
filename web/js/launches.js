@@ -685,7 +685,7 @@ function openPadList(lat, lng) {
   const body = document.getElementById("panel-body");
   if (!panel || !body) return 0;
   body.innerHTML = padListHtml(rows);
-  panel.classList.remove("hidden");
+  openRightPanel("panel");
   panelLaunchId = null;   // 상세가 아니라 목록이다 — 카운트다운 갱신이 엉뚱한 걸 집지 않게
   body.querySelectorAll(".pad-row").forEach((b) =>
     b.addEventListener("click", () => {

@@ -197,7 +197,7 @@ function showPasses() {
   } else {
     body.innerHTML = head + passes.map((p) => passRow(p, null)).join("");
   }
-  panel.classList.remove("hidden");
+  openRightPanel("pass-panel");
 }
 
 // ── 오늘 밤 볼 만한 통과 (P12-2) ──────────────────────────────────────────────

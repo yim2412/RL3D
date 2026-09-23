@@ -318,7 +318,7 @@ function showEntityStats(kind, value) {
   // 계열로 올라가는 줄(P15-4). 같은 패널을 다시 그리는 것이라 닫지 않는다.
   panel.querySelectorAll(".site-link").forEach((b) =>
     b.addEventListener("click", () => showEntityStats(b.dataset.kind, b.dataset.val)));
-  panel.classList.remove("hidden");
+  openRightPanel("stats-panel");
 }
 
 /**
@@ -400,7 +400,7 @@ function showStats() {
   // 0건에서는 숫자판 대신 이유를 말한다(P18-4)
   if (!allLaunches.length) {
     document.getElementById("stats-body").innerHTML = statsEmptyHtml();
-    document.getElementById("stats-panel").classList.remove("hidden");
+    openRightPanel("stats-panel");
     return;
   }
   const s = computeStats(allLaunches);
@@ -430,5 +430,5 @@ function showStats() {
     (years.length ? `<div class="st-sec">연도별</div>` + statBars(yearEntries(years, scope), "#7dd3fc") : "") +
     (providers.length ? `<div class="st-sec">기관 (상위 8)</div>` + statBars(providers, "#a78bfa") : "") +
     (countries.length ? `<div class="st-sec">국가 (상위 8)</div>` + statBars(countries, "#34d399") : "");
-  document.getElementById("stats-panel").classList.remove("hidden");
+  openRightPanel("stats-panel");
 }

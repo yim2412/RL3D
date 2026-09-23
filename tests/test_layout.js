@@ -76,6 +76,37 @@ const CASES = [
     open: ["sidebar", "update-badge", "offline-badge", "focus"],
     clickable: ["update-badge", "offline-badge", "tl-range", "arch-load"],
   },
+  {
+    // 위성을 고르면 뜨는 제어줄은 **좌하단 스택과 같은 열**이다(left 12 · bottom 62).
+    name: "위성 제어줄 + 오프라인 배지",
+    open: ["sat-ctrl", "offline-badge"],
+    clickable: ["sat-track-btn", "sat-obs-btn", "sat-pass-btn", "sat-ctrl-close",
+      "offline-badge", "tl-range"],
+  },
+  {
+    name: "위성 제어줄 + 오프라인 배지 (사이드바 열림)",
+    open: ["sidebar", "sat-ctrl", "offline-badge"],
+    clickable: ["sat-track-btn", "sat-obs-btn", "sat-pass-btn", "sat-ctrl-close",
+      "offline-badge", "toggle-list", "tl-range"],
+  },
+  {
+    // 스택에 들어갈 수 있는 것이 **전부** 뜬 상태. 계단을 손으로 계산하던 때에는
+    // 이 조합이 성립하지 않았다(겹쳐서 아래 것이 안 보였다).
+    name: "좌하단 스택 전원 (사이드바 열림)",
+    open: ["sidebar", "sat-ctrl", "offline-badge", "update-badge", "firstrun", "heat-legend"],
+    clickable: ["sat-track-btn", "sat-ctrl-close", "offline-badge", "update-badge",
+      "toggle-list", "tl-range", "arch-load"],
+    // **범례는 빠져 있다.** 다섯이 다 뜨면 900×600 에서는 세로가 모자라 스택이
+    // 툴바 밑으로 넘치는데, 그때 희생되는 것이 **스택 맨 위**인 범례다(읽기 전용이라
+    // 손실이 가장 작다 — 그게 순서를 이렇게 정한 이유다). 나머지 넷은 **조작 대상이라
+    // 절대 안 잘린다**: 그걸 여기서 잰다.
+    visible: ["firstrun", "update-badge", "offline-badge", "sat-ctrl",
+      // 스택 **컨테이너**가 툴바 밑으로 파고들지 않는다 = 세로 상한이 살아 있다.
+      "ui-stack"],
+    // 스택은 자식 사이의 빈 곳으로 **지도를 계속 끌 수 있어야 한다**(P36-2).
+    // `pointer-events: none` 을 빠뜨리면 투명한 사각형이 지도를 통째로 막는다.
+    mapThrough: true,
+  },
 ];
 
 /**
@@ -89,6 +120,9 @@ const FILL = {
   "update-badge": '<span class="ub-text">⬆ 새 버전 v1.59.0 가 있습니다 (현재 v1.58.2) — 눌러서 받기</span>'
     + '<span class="ub-close">✕</span>',
   "offline-badge": "🌐 오프라인 — 배경 지도를 못 받았습니다 (발사·위성은 저장된 데이터)",
+  "sat-ctrl-name": "ISS (ZARYA)",
+  "firstrun": '<div class="fr-title">지금 지도에 2026년 발사 100건이 있습니다</div>'
+    + '<div class="fr-row">위성을 켜면 실시간 위치가 함께 움직입니다</div>',
   "focus": '<div class="focus-head">🚀 발사 임박</div><div class="focus-cd">T-00:12:34</div>'
     + '<div class="focus-name">Falcon 9 Block 5 | Starlink Group 15-27</div>',
 };
@@ -163,6 +197,21 @@ function buildPage(open) {
     "        Math.round(ow) + 'x' + Math.round(oh) + ' 겹쳐 읽을 수 없다'});",
     "    });",
     "  });",
+    "  if (window.__MAP_THROUGH) {",
+    "    var stack = document.getElementById('ui-stack');",
+    "    var kids = stack ? Array.prototype.filter.call(stack.children, function(c){",
+    "      var b = c.getBoundingClientRect(); return b.width > 0 && b.height > 0; }) : [];",
+    "    if (kids.length < 2) { out.push({id: 'ui-stack', problem: '자식이 둘 미만이라 못 쟀다'}); }",
+    "    else {",
+    "      var a = kids[0].getBoundingClientRect(), b = kids[1].getBoundingClientRect();",
+    "      var gx = a.left + 4, gy = (a.top + b.bottom) / 2;",
+    "      var hit = document.elementFromPoint(gx, gy);",
+    "      var oid = hit ? (hit.id || (hit.parentElement && hit.parentElement.id) || hit.tagName) : 'null';",
+    "      if (hit && hit.id !== 'map' && !(hit.closest && hit.closest('#map'))) {",
+    "        out.push({id: 'ui-stack', problem: '자식 사이 빈 곳이 지도를 막는다 → #' + oid});",
+    "      }",
+    "    }",
+    "  }",
     "  var pre = document.createElement('pre');",
     "  pre.id = 'RESULT';",
     "  pre.textContent = JSON.stringify(out);",
@@ -174,7 +223,7 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-function measure(edge, page, clickable, visible, [w, h]) {
+function measure(edge, page, clickable, visible, mapThrough, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
   const dir = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-layout-"));
@@ -182,7 +231,8 @@ function measure(edge, page, clickable, visible, [w, h]) {
   const withList = page.replace(
     "(function(){\n  syncUiTop();",
     "window.__CLICKABLE = " + JSON.stringify(clickable) + ";\n"
-    + "window.__VISIBLE = " + JSON.stringify(visible || []) + ";\n(function(){\n  syncUiTop();",
+    + "window.__VISIBLE = " + JSON.stringify(visible || []) + ";\n"
+    + "window.__MAP_THROUGH = " + (mapThrough ? "true" : "false") + ";\n(function(){\n  syncUiTop();",
   );
   fs.writeFileSync(file, withList, "utf8");
   try {
@@ -216,7 +266,7 @@ for (const c of CASES) {
     const label = size[0] + "x" + size[1];
     let problems;
     try {
-      problems = measure(edge, page, c.clickable, c.visible, size);
+      problems = measure(edge, page, c.clickable, c.visible, c.mapThrough, size);
     } catch (e) {
       failures.push(c.name + " " + label + " — 측정 실패: " + e.message);
       console.log("  FAIL " + label + " — 측정 실패: " + e.message);

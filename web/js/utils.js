@@ -441,3 +441,21 @@ function syncUiTop() {
   if (!root || !root.style || typeof root.style.setProperty !== "function") return;
   root.style.setProperty("--ui-top", uiTopFromToolbar(r.bottom) + "px");
 }
+
+// ── 오른쪽 패널은 한 번에 하나 (P36-1) ──────────────────────────────────────
+/**
+ * 상세(`panel`) · 통과 예측(`pass-panel`) · 통계(`stats-panel`)는 **같은 클래스·같은
+ * 자리**다(`.panel` — 오른쪽 320px). 여는 쪽이 나머지를 안 닫아서, 둘이 뜨면 **완전히
+ * 포개졌다**(2026-09-23 실측: 겹침 320×394 = 패널 전체).
+ *
+ * 그래서 이런 일이 난다: **통계를 연 채 지도에서 발사를 클릭하면** 상세 패널이 열리지만
+ * 통계가 그 위에 정확히 덮여 있어 **아무 일도 안 일어난 것처럼 보인다.** 닫기 버튼도
+ * 셋이 같은 점에 포개져, 한 번 닫으면 뒤에 있던 다른 패널이 나타난다.
+ */
+const RIGHT_PANELS = ["panel", "pass-panel", "stats-panel"];
+function openRightPanel(id) {
+  for (const pid of RIGHT_PANELS) {
+    const node = document.getElementById(pid);
+    if (node) node.classList.toggle("hidden", pid !== id);
+  }
+}
