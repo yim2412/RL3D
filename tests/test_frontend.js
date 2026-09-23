@@ -3443,6 +3443,147 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 추적 모드와 좌표 유효성 (P45-4) ─────────────────────────────────────────
+// 공용 변이 도구가 남긴 일곱 줄 중 **가드가 아닌 것**들이다.
+// 특히 좌표 유효성 둘은 **NaN 이 지도로 가는 길**을 막는다 — 막히지 않으면 위성이
+// 화면에서 사라지거나 지도가 엉뚱한 곳으로 간다(P12-1 에서 실제로 NaN 좌표에 당했다).
+(async () => {
+  const ISS = [
+    "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000",
+  ];
+
+  // ── 추적을 켜면 그 자리에서 지도가 따라간다 (sattrack.js) ───────────────────
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("추적 모드 (P45-4)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    const iss = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" };
+    ctx.selectSatellite(iss);
+
+    const before = map.moves().length;
+    ctx.toggleTracking();
+    check("추적이 켜졌다", state.tracking, true);
+    // **켠 순간 한 번 움직여야 한다** — 다음 초를 기다리면 "눌렀는데 아무 일도 안 난다".
+    check("켜는 즉시 그 위성으로 지도를 옮긴다", map.moves().length > before, true);
+
+    const afterOn = map.moves().length;
+    ctx.toggleTracking();
+    check("다시 누르면 꺼진다", state.tracking, false);
+    check("끄는 것만으로는 지도를 옮기지 않는다", map.moves().length, afterOn);
+
+    // 고른 위성이 없으면 토글 자체가 안 된다(켜 봤자 따라갈 대상이 없다)
+    ctx.deselectSatellite();
+    ctx.toggleTracking();
+    check("고른 위성이 없으면 추적이 켜지지 않는다", state.tracking, false);
+  }
+
+  // ── 매 초 갱신에서도 추적 중이면 따라간다 (sats.js) ─────────────────────────
+  {
+    const { ctx, state, map, timers } = loadApp({ realSatellite: true });
+    group("추적 중에는 매 초 따라간다 (P45-4)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    const iss = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" };
+    state.satrecs = [iss];
+    state.selectedSat = iss;
+
+    state.tracking = false;
+    let n = map.moves().length;
+    ctx.updateSatellitePositions();
+    check("추적이 꺼져 있으면 지도를 건드리지 않는다", map.moves().length, n);
+
+    state.tracking = true;
+    n = map.moves().length;
+    ctx.updateSatellitePositions();
+    check("추적 중이면 매 초 중심을 옮긴다", map.moves().length > n, true);
+  }
+
+  // ── 좌표가 이상하면 지도를 옮기지 않는다 (sattrack.js) ──────────────────────
+  // **예외가 아니라 값이 틀어지는 길**이다. `satellite.js` 는 궤도가 붕괴한 물체에
+  // NaN 을 돌려준다 — 그걸 그대로 `easeTo` 에 넘기면 지도가 엉뚱해진다.
+  {
+    const { ctx, state, map } = loadApp();
+    group("좌표가 이상하면 옮기지 않는다 (P45-4)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+
+    // satellite.js 를 **거짓 값으로 갈아끼운다** — 실제로 NaN 을 내는 TLE 를 찾는 것보다
+    // 확실하고, 무엇이 판정에 쓰이는지도 드러난다.
+    const fake = (position) => ({
+      propagate: () => ({ position, velocity: { x: 0, y: 0, z: 0 } }),
+      gstime: () => 0,
+      eciToGeodetic: () => ({ longitude: NaN, latitude: NaN, height: NaN }),
+      degreesLong: (v) => v,
+      degreesLat: (v) => v,
+      twoline2satrec: () => ({}),
+    });
+
+    state.selectedSat = { norad: "1", name: "붕괴한 물체", rec: {} };
+
+    ctx.satellite = fake({ x: 1, y: 2, z: 3 });
+    let n = map.moves().length;
+    ctx.centerOnSelected();
+    check("좌표가 NaN 이면 지도를 옮기지 않는다", map.moves().length, n);
+
+    // 위치 자체가 없을 때(propagate 실패)도 마찬가지다
+    ctx.satellite = Object.assign({}, fake(null), { propagate: () => ({ position: null }) });
+    n = map.moves().length;
+    ctx.centerOnSelected();
+    check("위치를 못 구하면 지도를 옮기지 않는다", map.moves().length, n);
+
+    // 정상 좌표면 옮긴다 — **막는 것만 재면 "늘 안 옮긴다"도 통과한다**
+    ctx.satellite = Object.assign({}, fake({ x: 1, y: 2, z: 3 }), {
+      eciToGeodetic: () => ({ longitude: 0.5, latitude: 0.6, height: 400 }),
+      degreesLong: () => 28.6,
+      degreesLat: () => 34.4,
+    });
+    n = map.moves().length;
+    ctx.centerOnSelected();
+    check("정상 좌표면 그리로 옮긴다", map.moves().length > n, true);
+  }
+
+  // ── 위성 레이어를 껐다 켜면 목록 안내도 따라간다 (sats.js) ─────────────────
+  {
+    const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+    group("위성 표시 토글과 목록 (P45-4)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    map.setLayerExists && map.setLayerExists(true);
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" }];
+    state.sidebarTab = "sats";
+
+    el("sidebar-list").innerHTML = "";
+    ctx.setSatelliteVisible(false);
+    check("끄면 목록의 안내도 다시 그린다", el("sidebar-list").innerHTML.length > 0, true);
+
+    // **실패 경로의 목록 재렌더.** 위성 계산이 예외로 죽어도 목록 탭은 "왜 비었는지"를
+    // 말해야 한다 — 안 그리면 앞서 그린 목록이 그대로 남아 **있지도 않은 위성이 떠 있다.**
+    {
+      // **엉터리 TLE 는 예외가 아니라 0건으로 끝난다** — 그 길로는 `catch` 를 못 탄다.
+      // 실제로 이 블록을 타는 것은 **브릿지가 던지는** 경우다(파이썬 쪽 예외).
+      const bad = loadApp({ api: {
+        get_satellites: async () => { throw new Error("브릿지가 끊겼다"); },
+      } });
+      bad.state.map = bad.map;
+      for (const s of ["satellites", "sat-track", "sats"]) bad.map.stubSource(s);
+      bad.state.sidebarTab = "sats";
+      bad.el("sidebar-list").innerHTML = "이전 목록이 남아 있으면 안 된다";
+      await bad.ctx.loadSatellites();
+      check("위성 계산이 실패해도 목록 탭을 다시 그린다",
+        bad.el("sidebar-list").innerHTML !== "이전 목록이 남아 있으면 안 된다", true);
+      check("왜 비었는지도 말한다", bad.state.satLoadError != null, true);
+    }
+
+    // 끄면 계산 루프도 멈춘다 — 안 보이는 것을 매 초 계산하지 않는다
+    check("끄면 계산 루프가 멈춘다", state.satTimer, null);
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
