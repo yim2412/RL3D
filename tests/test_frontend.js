@@ -2963,6 +2963,128 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   }
 })();
 
+// ── 주기 타이머가 실제로 걸리는가 (P41) ──────────────────────────────────────
+// 이 앱은 **켜 두는 앱**이라 화면의 절반이 타이머로 돈다: 위성 위치(1초) · 임박 카드
+// 카운트다운(1초) · 지상궤적(30초) · "N분 전 갱신"(30초) · 터미네이터(60초) · 속보 띠.
+// 2026-09-23 실측에서 **`setInterval` 여섯 줄이 죽어도 1,296건이 전부 초록**이었다 —
+// 화면은 **멈춘 채로 아무 말도 하지 않는다**(위성이 그 자리에 굳고, 카운트다운이 선다).
+// 등록됐는지만이 아니라 **주기**까지 잰다: 1초를 60초로 바꿔도 "등록됨"은 참이다.
+(async () => {
+  // ── 위성 위치 1초 (sats.js) ────────────────────────────────────────────────
+  {
+    const { ctx, state, map, timers } = loadApp({ realSatellite: true });
+    group("타이머: 위성 위치 갱신 (P41)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+      "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+    state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", rec }];
+
+    check("시작 전에는 1초 타이머가 없다", timers.every(1000).length, 0);
+    ctx.startSatelliteLoop();
+    check("위성 위치는 1초마다 돈다", timers.every(1000).length >= 1, true);
+    map.stubSource("satellites");
+    timers.run(1000);
+    const data = map.data("satellites");
+    check("타이머가 돌면 위성 위치가 지도로 간다",
+      !!(data && data.features && data.features.length), true);
+  }
+
+  // ── 지상궤적 30초 (sattrack.js) ────────────────────────────────────────────
+  {
+    const { ctx, state, map, timers } = loadApp({ realSatellite: true });
+    group("타이머: 지상궤적 갱신 (P41)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+      "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000");
+    ctx.selectSatellite({ norad: "25544", name: "ISS (ZARYA)", rec });
+    check("위성을 고르면 30초 타이머가 선다", timers.every(30000).length >= 1, true);
+    map.stubSource("sat-track");
+    timers.run(30000);
+    check("돌면 궤적이 다시 그려진다", map.data("sat-track") != null, true);
+  }
+
+  // ── 터미네이터 60초 (map.js) ───────────────────────────────────────────────
+  {
+    const { ctx, state, map, timers } = loadApp();
+    group("타이머: 낮/밤 경계 갱신 (P41)");
+    state.map = map;
+    map.stubSource("terminator");
+    ctx.setupTerminator();
+    check("낮/밤 경계는 60초마다 돈다", timers.every(60000).length >= 1, true);
+    map.stubSource("terminator");
+    timers.run(60000);
+    check("돌면 경계가 다시 그려진다", map.data("terminator") != null, true);
+  }
+
+  // ── "N분 전 갱신" 30초 (boot.js) ───────────────────────────────────────────
+  {
+    const { ctx, state, el, map, api, win, timers } = loadApp({
+      api: { get_launches: async () => ({ launches: [], age: 0 }) },
+    });
+    group("타이머: 갱신 시각 표시 (P41)");
+    state.map = map;
+    await win.fire("pywebviewready");   // 부트 경로 전체가 이 타이머를 건다
+    check("부트가 30초 타이머를 건다", timers.every(30000).length >= 1, true);
+    // 돌려도 죽지 않는다(데이터가 아직 없을 때가 실제로 있다)
+    let threw = null;
+    try { timers.run(30000); } catch (e) { threw = String(e); }
+    check("데이터가 없어도 예외 없이 돈다", threw, null);
+  }
+
+  // ── 임박 카드 1초 · 속보 띠 (focus.js · launches.js) ───────────────────────
+  {
+    const { ctx, state, el, map, timers } = loadApp();
+    group("타이머: 임박 카드와 속보 띠 (P41)");
+    state.map = map; map.stubSource("launches");
+    const near = {
+      id: "L1", name: "곧 발사", net: new Date(Date.now() + 5 * 60000).toISOString(),
+      outcome: "upcoming", lat: 28, lng: -80, net_precision: "Second",
+      location_name: "Cape Canaveral", rocket: "Falcon 9",
+    };
+    state.allLaunches = [near];
+
+    ctx.startFocusTimer();
+    check("임박 카드는 1초마다 돈다", timers.every(1000).length >= 1, true);
+    timers.run(1000);
+    check("돌면 카드가 그려진다", el("focus").classList.contains("hidden"), false);
+    check("카운트다운이 채워진다", el("focus-cd").textContent.length > 0, true);
+
+  }
+
+  // ── 속보 띠 1초 (launches.js) ──────────────────────────────────────────────
+  {
+    const { ctx, state, el, map, timers } = loadApp();
+    group("타이머: 속보 띠 (P41)");
+    state.map = map; map.stubSource("launches");
+    const list = [
+      { id: "L1", name: "곧 발사", net: new Date(Date.now() + 5 * 60000).toISOString(),
+        outcome: "upcoming", lat: 28, lng: -80, net_precision: "Second",
+        location_name: "Cape Canaveral", rocket: "Falcon 9" },
+      { id: "L2", name: "다음 발사", net: new Date(Date.now() + 9 * 60000).toISOString(),
+        outcome: "upcoming", lat: 5, lng: 6, net_precision: "Second",
+        location_name: "Kourou", rocket: "Ariane 6" },
+      { id: "L3", name: "지난 발사", net: new Date(Date.now() - 86400000).toISOString(),
+        outcome: "success", lat: 1, lng: 2, net_precision: "Second",
+        location_name: "Baikonur", rocket: "Soyuz" },
+    ];
+    state.allLaunches = list;
+    // 띠가 보는 것은 `allLaunches` 가 아니라 **화면에 남은 것**(`launches`)이다 —
+    // 필터가 좁히면 띠도 같이 좁아진다.
+    state.launches = list;
+    ctx.startTicker();
+    check("속보 띠는 1초마다 돈다", timers.every(1000).length >= 1, true);
+    const first = el("ticker-text").innerHTML;
+    check("시작하자마자 한 번 그린다", first.length > 0, true);
+    // 5초가 지나야 다음 항목으로 넘어간다 — 그 규칙까지 잰다
+    for (let i = 0; i < 5; i++) timers.run(1000);
+    check("5초 뒤에는 다음 항목으로 넘어간다", el("ticker-text").innerHTML !== first, true);
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도

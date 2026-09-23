@@ -218,7 +218,13 @@ function loadApp(options = {}) {
 
   const ctx = {
     console,
-    setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {},
+    // 타이머는 **기록한다**(P41). 예전에는 `() => 0` 이라 "무엇을 몇 초마다 도는지"를
+    // 테스트가 볼 수 없었고, 그래서 `setInterval` 여섯 줄이 죽어도 전부 초록이었다 —
+    // 위성 위치·지상궤적·터미네이터·속보 띠·임박 카드·갱신 표시가 **멈춘 채로**.
+    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; },
+    clearInterval(id) { if (id && intervals[id - 1]) intervals[id - 1].cleared = true; },
+    setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; },
+    clearTimeout(id) { if (id && timeouts[id - 1]) timeouts[id - 1].cleared = true; },
     navigator: { language: "ko", onLine: options.onLine !== false },
     location: { hash: "" },
     document: {
@@ -259,6 +265,8 @@ function loadApp(options = {}) {
     { filename: "web/js/*.js" },
   );
 
+  const intervals = [];   // setInterval 등록 기록(P41)
+  const timeouts = [];    // setTimeout 등록 기록
   const canvas = { style: {} };
   let camera = { center: { lng: 0, lat: 0 }, zoom: 2 };
   const map = {
@@ -341,6 +349,17 @@ function loadApp(options = {}) {
     ctx, state: ctx.__state, el, map, api, sel: selectors,
     /** `document.documentElement.style.setProperty` 로 쓰인 CSS 변수 */
     cssVars,
+    /**
+     * 등록된 타이머. `every(ms)` 로 그 주기의 것들을, `run(ms)` 으로 그것들을 실제로 돌린다.
+     * **주기까지 재는 이유**: 1초짜리를 60초로 바꿔도 "등록됐다"만 보면 안 잡힌다.
+     */
+    timers: {
+      all: () => intervals.filter((t) => !t.cleared),
+      every: (ms) => intervals.filter((t) => !t.cleared && t.ms === ms),
+      run: (ms) => intervals.filter((t) => !t.cleared && t.ms === ms).forEach((t) => t.fn()),
+      timeouts: () => timeouts.filter((t) => !t.cleared),
+      runTimeouts: () => timeouts.filter((t) => !t.cleared).forEach((t) => t.fn()),
+    },
     /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
     date: (ms) => new RealmDate(ms),
     win: {
