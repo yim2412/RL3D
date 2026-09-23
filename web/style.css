@@ -102,9 +102,13 @@ html, body {
   border-radius: 9px;
   font-size: 12px;
 }
-.tk-success { color: var(--success); background: color-mix(in srgb, var(--success) 18%, transparent); }
-.tk-failure { color: var(--failure); background: color-mix(in srgb, var(--failure) 18%, transparent); }
-.tk-partial { color: var(--partial); background: color-mix(in srgb, var(--partial) 18%, transparent); }
+/* 글자색은 **상세 패널의 `.badge.m-*` 와 같은 파생색**을 쓴다(P37-2).
+   예전에는 여기만 원색(`--failure` 등)이었고, 18% 알파 배경 위에서 실측 대비가
+   **4.28** 이었다(12px 에 필요한 값은 4.5). 같은 뜻을 가리키는 두 표기가 색까지
+   달랐던 자리이기도 하다 — 뱃지는 이미 밝은 파생색을 쓰고 있었다. */
+.tk-success { color: #86efac; background: color-mix(in srgb, var(--success) 18%, transparent); }
+.tk-failure { color: #fca5a5; background: color-mix(in srgb, var(--failure) 18%, transparent); }
+.tk-partial { color: #fcd34d; background: color-mix(in srgb, var(--partial) 18%, transparent); }
 
 /* 툴바 */
 .toolbar {
@@ -200,7 +204,12 @@ html, body {
   border-radius: 6px; padding: 6px 8px; margin: 0 28px 10px 0;
 }
 .panel img { width: 100%; border-radius: 8px; margin: 6px 0 12px; }
-.panel h2 { font-size: 16px; margin: 4px 40px 10px 0; line-height: 1.35; }
+/* 공백 없는 긴 토큰(식별자·URL·합성어)이 오면 **상자 밖으로 삐져나간다**(P37-1).
+   실측: 72자짜리 공백 없는 발사명에서 제목이 패널 밖으로 365px 나갔다. 실제 LL2
+   데이터의 최장 발사명 68자는 공백이 있어 괜찮았지만, 방어는 한 줄이면 된다.
+   `anywhere` 를 쓰는 것은 `break-word` 와 달리 **flex 안에서도 min-content 를 줄여
+   주기** 때문이다 — 아래 `.row .v` 가 바로 그 경우다. */
+.panel h2 { font-size: 16px; margin: 4px 40px 10px 0; line-height: 1.35; overflow-wrap: anywhere; }
 .panel .badge {
   display: inline-block; font-size: 11px; font-weight: 700;
   padding: 2px 8px; border-radius: 20px; margin-bottom: 12px;
@@ -211,7 +220,9 @@ html, body {
 .badge.m-partial { background: rgba(245,158,11,.18); color: #fcd34d; }
 .panel .row { display: flex; gap: 8px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
 .panel .row .k { color: var(--muted); flex: 0 0 78px; }
-.panel .row .v { color: var(--text); flex: 1; }
+/* `min-width: 0` 이 없으면 flex 자식은 **내용보다 작아지지 않는다** — 긴 토큰 하나가
+   행 전체를 밀어내 패널 밖으로 180px 나갔다(P37-1 실측). */
+.panel .row .v { color: var(--text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .panel .cd { font-size: 13px; color: var(--accent); margin-top: 4px; }
 
 /* 실패/지연 사유 블록 */
@@ -242,6 +253,7 @@ html, body {
 .site-link {
   background: none; border: none; padding: 0; font: inherit;
   color: var(--accent); cursor: pointer; text-align: left;
+  max-width: 100%; overflow-wrap: anywhere;   /* 버튼 안의 긴 토큰도 끊는다(P37-1) */
 }
 .site-link:hover { text-decoration: underline; }
 
@@ -414,7 +426,10 @@ html, body {
    배지(bottom 74px)보다 높은 자리에 둔다. 가운데를 피하는 것은 발사 클러스터가 그쪽에
    몰려 있어서다 — 첫 화면을 가리는 안내는 그 자체로 첫인상을 깎는다. */
 .firstrun {
-  width: 420px; max-width: calc(100% - 28px);
+  /* `max-width` 는 예전에 **화면 폭** 기준이었다(`position: absolute` 였을 때).
+     스택 안으로 들어온 뒤로는 부모가 이미 화면 여백을 빼 주므로, 여기서 28px 을 또
+     빼면 카드가 그만큼 좁아진다 — 실제로 문장 하나가 두 줄로 밀렸다(P37, 캡처로 발견). */
+  width: 420px; max-width: 100%;
   display: flex; flex-direction: column; gap: 8px;
   font-size: 12px; line-height: 1.5;
   color: var(--text);

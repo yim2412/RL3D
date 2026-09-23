@@ -112,6 +112,26 @@ const CASES = [
     noOverlap: [["ui-stack", "toolbar"]],
   },
   {
+    // 내용이 길어지면 상자가 감당하는가(P37-1). 실측에서 72자짜리 공백 없는 발사명이
+    // 패널 밖으로 **365px** 나갔다 — 글자가 지도 위로 흘러나온다.
+    // 실제 LL2 데이터의 최장 발사명(68자)은 공백이 있어 안 났다: **방어를 재는 것**이다.
+    name: "공백 없는 긴 토큰 (상세 패널)",
+    open: ["panel"],
+    clickable: ["panel-close"],
+    noOverflow: ["panel"],
+  },
+  {
+    // 글자가 배경에서 읽히는가(P37-2). **다크 테마는 한 번도 재지 않았다.**
+    // 재는 법은 CSS 를 읽는 게 아니라 **실제로 렌더된 색**(`getComputedStyle`)을 쓰는 것이다 —
+    // `color-mix` · 알파 배경 · 상속은 CSS 를 눈으로 봐서는 안 나온다.
+    name: "글자 대비 (WCAG AA)",
+    open: ["ticker", "panel"],
+    clickable: [],
+    contrast: [".tk-success", ".tk-failure", ".tk-partial", ".tk-ago",
+      ".badge.m-success", ".badge.m-failure", ".badge.m-upcoming",
+      ".panel .row .k", ".panel .row .v", ".site-link", ".panel h2"],
+  },
+  {
     // 관측 위치 팝오버(P13-6)는 화면 중앙 하단 — 타임라인·집중 화면과 같은 구역이다.
     name: "관측 위치 팝오버 (위성 제어줄·집중 화면과 함께)",
     open: ["obs-popover", "sat-ctrl", "focus"],
@@ -148,6 +168,19 @@ const FILL = {
   "sat-ctrl-name": "ISS (ZARYA)",
   "firstrun": '<div class="fr-title">지금 지도에 2026년 발사 100건이 있습니다</div>'
     + '<div class="fr-row">위성을 켜면 실시간 위치가 함께 움직입니다</div>',
+  // 공백 없는 긴 토큰(식별자·URL·합성어). **구조는 실제 렌더가 만드는 것과 같고
+  // 내용만 극단값**이다 — `openPanel` 이 만드는 `h2` + `.row .k/.v` + `.site-link`.
+  "panel-body": '<span class="badge m-success">발사 성공</span>'
+    + '<span class="badge m-failure">발사 실패</span><span class="badge m-upcoming">예정</span>'
+    + '<h2>Falcon9Block5BandwagonDedicatedMidInclinationRideshareMissionForCustomer</h2>'
+    + '<div class="row"><div class="k">기관</div><div class="v">'
+    + '<button class="site-link">ChinaAerospaceScienceAndTechnologyCorporationSubsidiaryDivision</button>'
+    + '</div></div>'
+    + '<div class="row"><div class="k">발사장</div><div class="v">'
+    + 'https://www.example-space-agency.org/missions/2026/very-long-identifier/details</div></div>',
+  "ticker": '<span class="tk-res tk-success">발사 성공</span> · 어떤 발사 · '
+    + '<span class="tk-ago">3일 전</span> <span class="tk-res tk-failure">발사 실패</span> '
+    + '<span class="tk-res tk-partial">부분 실패</span>',
   "obs-popover": '<div class="obs-head">📍 관측 위치</div><div class="obs-cur">아직 정하지 않았습니다</div>'
     + '<input id="obs-search" class="obs-input" type="text" placeholder="도시 · 발사장 이름 (예: 서울)" />'
     + '<div id="obs-results" class="obs-results"></div>'
@@ -238,6 +271,66 @@ function buildPage(open) {
     "        Math.round(ow) + 'x' + Math.round(oh) + ' 겹쳐 읽을 수 없다'});",
     "    });",
     "  });",
+    "  function lum(c){ var f = function(v){ v /= 255;",
+    "    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };",
+    "    return 0.2126*f(c[0]) + 0.7152*f(c[1]) + 0.0722*f(c[2]); }",
+    // **`color-mix` 를 쓴 배경은 `rgba(...)` 가 아니라 `color(srgb r g b / a)` 로 나온다.**
+    // 처음에 그걸 못 읽어 배경을 통째로 무시했고, 그러자 대비가 **더 좋게** 나왔다
+    // (4.33 → 5.09). 측정 도구가 관대해지는 방향으로 틀리면 결함이 통과한다.
+    "  function rgb(str){",
+    "    str = str || '';",
+    // 백슬래시는 **두 번** 써야 한다 — 이 줄들은 JS 문자열이라 `\\s` 가 아니면 정규식에
+    // `s` 글자가 들어간다. 한 번 틀렸고, 그때는 페이지가 통째로 안 떠서 바로 드러났다.
+    "    var c = /color\\(srgb\\s+([\\d.]+)\\s+([\\d.]+)\\s+([\\d.]+)(?:\\s*\\/\\s*([\\d.]+))?\\)/.exec(str);",
+    "    if (c) return [c[1]*255, c[2]*255, c[3]*255, c[4] === undefined ? 1 : +c[4]];",
+    "    var m = /rgba?\\(([^)]+)\\)/.exec(str); if (!m) return null;",
+    "    var p = m[1].split(',').map(parseFloat); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; }",
+    // 배경은 **부모로 거슬러 올라가며 알파를 합성**한다 — 배지 배경이 18% 알파라
+    // 그 아래 패널, 그 아래 페이지 바탕까지 봐야 실제로 보이는 색이 나온다.
+    "  function bgOf(el){",
+    "    var acc = null, node = el;",
+    "    while (node && node !== document.documentElement) {",
+    "      var c = rgb(getComputedStyle(node).backgroundColor);",
+    "      if (c && c[3] > 0) {",
+    "        acc = acc === null ? c : [0,1,2].map(function(i){ return acc[i]*acc[3] + c[i]*(1-acc[3]); })",
+    "          .concat([Math.min(1, acc[3] + c[3]*(1-acc[3]))]);",
+    "        if (acc[3] >= 0.999) break;",
+    "      }",
+    "      node = node.parentElement;",
+    "    }",
+    "    if (!acc) return [11, 15, 26];",
+    "    return [0,1,2].map(function(i){ return acc[i]*acc[3] + 11*(1-acc[3]); });",
+    "  }",
+    "  (window.__CONTRAST || []).forEach(function(sel){",
+    "    var el = document.querySelector(sel);",
+    "    if (!el) { out.push({id: sel, problem: '요소를 못 찾아 대비를 못 쟀다'}); return; }",
+    "    var cs = getComputedStyle(el), fg = rgb(cs.color);",
+    "    if (!fg) { out.push({id: sel, problem: '색을 못 읽었다'}); return; }",
+    "    var bg = bgOf(el.parentElement || el);",
+    "    var own = rgb(cs.backgroundColor);",
+    "    if (own && own[3] > 0) bg = [0,1,2].map(function(i){ return own[i]*own[3] + bg[i]*(1-own[3]); });",
+    "    var a = lum([fg[0], fg[1], fg[2]]) + 0.05, b = lum(bg) + 0.05;",
+    "    var ratio = Math.max(a, b) / Math.min(a, b);",
+    "    var size = parseFloat(cs.fontSize) || 13;",
+    "    var bold = (parseInt(cs.fontWeight, 10) || 400) >= 700;",
+    "    var need = (size >= 24 || (size >= 18.66 && bold)) ? 3 : 4.5;",
+    "    if (ratio + 0.005 < need) out.push({id: sel, problem: '대비 ' + ratio.toFixed(2) +",
+    "      ' — ' + size + 'px 에 필요한 ' + need + ' 에 못 미친다'});",
+    "  });",
+    "  (window.__NO_OVERFLOW || []).forEach(function(rootId){",
+    "    var root = document.getElementById(rootId);",
+    "    if (!root) { out.push({id: rootId, problem: '요소가 없다'}); return; }",
+    "    var rr = root.getBoundingClientRect();",
+    "    var all = root.querySelectorAll('*');",
+    "    for (var i = 0; i < all.length; i++) {",
+    "      var e = all[i], r = e.getBoundingClientRect();",
+    "      if (r.width === 0) continue;",
+    "      var over = Math.max(r.right - rr.right, rr.left - r.left);",
+    "      if (over > 1) { out.push({id: rootId, problem: '안의 <' + e.tagName.toLowerCase() +",
+    "        (e.className ? ' class=\"' + e.className + '\"' : '') + '> 가 상자 밖으로 ' +",
+    "        Math.round(over) + 'px 나갔다'}); break; }",
+    "    }",
+    "  });",
     "  (window.__NO_OVERLAP || []).forEach(function(pair){",
     "    var a = document.getElementById(pair[0]), b = document.getElementById(pair[1]);",
     "    if (!a || !b) { out.push({id: pair.join('+'), problem: '요소가 없다'}); return; }",
@@ -274,18 +367,31 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-function measure(edge, page, clickable, visible, mapThrough, noOverlap, [w, h]) {
+function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverflow,
+  contrast, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
   const dir = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-layout-"));
   const file = path.join(dir, "page.html");
-  const withList = page.replace(
-    "(function(){\n  syncUiTop();",
-    "window.__CLICKABLE = " + JSON.stringify(clickable) + ";\n"
-    + "window.__VISIBLE = " + JSON.stringify(visible || []) + ";\n"
-    + "window.__MAP_THROUGH = " + (mapThrough ? "true" : "false") + ";\n"
-    + "window.__NO_OVERLAP = " + JSON.stringify(noOverlap || []) + ";\n(function(){\n  syncUiTop();",
-  );
+  // **한 줄씩 이어 붙이지 않는다.** 검사를 하나 더할 때마다 여기에 `+ "window.__X = …"`
+  // 를 손으로 덧붙이던 동안 **세 번 빠뜨렸고**(`__VISIBLE` · `__MAP_THROUGH` · `__CONTRAST`),
+  // 세 번 다 **초록을 받았다** — 재는 목록이 비면 문제도 0건이라 테스트는 실패하지 않는다.
+  // 이제 한 객체를 돌며 만든다: 키를 빠뜨리려면 이 객체에서 빠뜨려야 하고, 그러면
+  // 아래 검사 목록이 통째로 비어 **변이 한 번에 드러난다.**
+  const globals = {
+    __CLICKABLE: clickable || [],
+    __VISIBLE: visible || [],
+    __MAP_THROUGH: !!mapThrough,
+    __NO_OVERLAP: noOverlap || [],
+    __NO_OVERFLOW: noOverflow || [],
+    __CONTRAST: contrast || [],
+  };
+  const decls = Object.entries(globals)
+    .map(([k, v]) => "window." + k + " = " + JSON.stringify(v) + ";")
+    .join("\n");
+  const withList = page.replace("(function(){\n  syncUiTop();",
+    decls + "\n(function(){\n  syncUiTop();");
+  if (!withList.includes("window.__CONTRAST")) throw new Error("검사 목록 주입에 실패했다");
   fs.writeFileSync(file, withList, "utf8");
   try {
     const dom = execFileSync(edge, [
@@ -319,7 +425,7 @@ for (const c of CASES) {
     let problems;
     try {
       problems = measure(edge, page, c.clickable, c.visible, c.mapThrough,
-        c.noOverlap, size);
+        c.noOverlap, c.noOverflow, c.contrast, size);
     } catch (e) {
       failures.push(c.name + " " + label + " — 측정 실패: " + e.message);
       console.log("  FAIL " + label + " — 측정 실패: " + e.message);
@@ -327,7 +433,10 @@ for (const c of CASES) {
     }
     if (problems.length === 0) {
       pass++;
-      console.log("  OK   " + label + " — 대상 " + (c.clickable.length + (c.visible || []).length) + "개가 전부 제 몫을 한다");
+      const n = (c.clickable || []).length + (c.visible || []).length
+        + (c.contrast || []).length + (c.noOverflow || []).length
+        + (c.noOverlap || []).length + (c.mapThrough ? 1 : 0);
+      console.log("  OK   " + label + " — 검사 " + n + "건이 전부 통과");
     } else {
       const lines = problems.map((p) => "#" + p.id + ": " + p.problem).join(" · ");
       failures.push(c.name + " " + label + " — " + lines);
