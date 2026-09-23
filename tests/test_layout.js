@@ -95,7 +95,8 @@ const CASES = [
     name: "좌하단 스택 전원 (사이드바 열림)",
     open: ["sidebar", "sat-ctrl", "offline-badge", "update-badge", "firstrun", "heat-legend"],
     clickable: ["sat-track-btn", "sat-ctrl-close", "offline-badge", "update-badge",
-      "toggle-list", "tl-range", "arch-load"],
+      // 스택은 위로 자란다 — 세로 상한이 없으면 **툴바를 덮는다**. 검색창이 그 첫 희생자다.
+      "search", "toggle-list", "tl-range", "arch-load"],
     // **범례는 빠져 있다.** 다섯이 다 뜨면 900×600 에서는 세로가 모자라 스택이
     // 툴바 밑으로 넘치는데, 그때 희생되는 것이 **스택 맨 위**인 범례다(읽기 전용이라
     // 손실이 가장 작다 — 그게 순서를 이렇게 정한 이유다). 나머지 넷은 **조작 대상이라
@@ -106,6 +107,30 @@ const CASES = [
     // 스택은 자식 사이의 빈 곳으로 **지도를 계속 끌 수 있어야 한다**(P36-2).
     // `pointer-events: none` 을 빠뜨리면 투명한 사각형이 지도를 통째로 막는다.
     mapThrough: true,
+    // 스택은 위로 자란다 — **세로 상한이 없으면 툴바 구역으로 파고든다**(실측 507×13).
+    // 누가 위에 그려지든 둘이 겹치면 한쪽은 읽히지 않으므로, 방향을 따지지 않고 금지한다.
+    noOverlap: [["ui-stack", "toolbar"]],
+  },
+  {
+    // 관측 위치 팝오버(P13-6)는 화면 중앙 하단 — 타임라인·집중 화면과 같은 구역이다.
+    name: "관측 위치 팝오버 (위성 제어줄·집중 화면과 함께)",
+    open: ["obs-popover", "sat-ctrl", "focus"],
+    clickable: ["obs-search", "obs-coord", "obs-map-btn", "sat-ctrl-close", "tl-range", "arch-load"],
+  },
+  {
+    // 툴바 오버플로(P17-1)는 툴바 아래로 펼쳐진다 — 사이드바 탭과 같은 자리다.
+    name: "툴바 오버플로 팝오버 (사이드바 열림)",
+    open: ["sidebar", "toolbar-more"],
+    clickable: ["basemap-btn", "stats-btn", "more-btn", "refresh",
+      "tab-launches", "tab-tonight", "tl-range"],
+  },
+  {
+    // 단축키 도움말(P12-14)은 화면 한가운데 — 무엇 위에든 떠야 한다.
+    name: "단축키 도움말 (패널·사이드바와 함께)",
+    open: ["sidebar", "panel", "keyhelp"],
+    // 도움말은 닫기 버튼이 없다(아무 키나 누르면 닫힌다) — **가려지지만 않으면 된다.**
+    clickable: [],
+    visible: ["keyhelp"],
   },
 ];
 
@@ -123,6 +148,15 @@ const FILL = {
   "sat-ctrl-name": "ISS (ZARYA)",
   "firstrun": '<div class="fr-title">지금 지도에 2026년 발사 100건이 있습니다</div>'
     + '<div class="fr-row">위성을 켜면 실시간 위치가 함께 움직입니다</div>',
+  "obs-popover": '<div class="obs-head">📍 관측 위치</div><div class="obs-cur">아직 정하지 않았습니다</div>'
+    + '<input id="obs-search" class="obs-input" type="text" placeholder="도시 · 발사장 이름 (예: 서울)" />'
+    + '<div id="obs-results" class="obs-results"></div>'
+    + '<input id="obs-coord" class="obs-input" type="text" placeholder="좌표 직접 입력" />'
+    + '<div class="obs-btns"><button id="obs-map-btn" class="btn sm">지도에서 클릭</button></div>',
+  "keyhelp": '<div class="kh-head">⌨ 단축키</div>'
+    + '<div class="kh-row"><kbd>/</kbd><span>검색</span></div>'
+    + '<div class="kh-row"><kbd>Esc</kbd><span>열린 패널 닫기</span></div>'
+    + '<div class="kh-foot">아무 키나 누르면 닫힙니다</div>',
   "focus": '<div class="focus-head">🚀 발사 임박</div><div class="focus-cd">T-00:12:34</div>'
     + '<div class="focus-name">Falcon 9 Block 5 | Starlink Group 15-27</div>',
 };
@@ -193,9 +227,26 @@ function buildPage(open) {
     "      if (o.width === 0 || o.height === 0) return;",
     "      var ow = Math.min(r.right, o.right) - Math.max(r.left, o.left);",
     "      var oh = Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top);",
-    "      if (ow > 2 && oh > 2) out.push({id: id, problem: '#' + oid + ' 와 ' +",
+    "      if (ow <= 2 || oh <= 2) return;",
+    // 겹쳤다고 다 못 읽는 것은 아니다 — **상대가 위에 그려질 때만** 가려진다.
+    // 단축키 도움말(z-index 40)은 일부러 무엇 위에든 뜨므로 겹쳐도 읽힌다.
+    "      var za = +getComputedStyle(el).zIndex || 0, zb = +getComputedStyle(other).zIndex || 0;",
+    "      var overMe = za !== zb ? zb > za",
+    "        : !!(el.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);",
+    "      if (!overMe) return;",
+    "      out.push({id: id, problem: '#' + oid + ' 와 ' +",
     "        Math.round(ow) + 'x' + Math.round(oh) + ' 겹쳐 읽을 수 없다'});",
     "    });",
+    "  });",
+    "  (window.__NO_OVERLAP || []).forEach(function(pair){",
+    "    var a = document.getElementById(pair[0]), b = document.getElementById(pair[1]);",
+    "    if (!a || !b) { out.push({id: pair.join('+'), problem: '요소가 없다'}); return; }",
+    "    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();",
+    "    if (ra.width === 0 || rb.width === 0) return;",
+    "    var ow = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);",
+    "    var oh = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);",
+    "    if (ow > 2 && oh > 2) out.push({id: pair[0], problem: '#' + pair[1] + ' 의 구역을 ' +",
+    "      Math.round(ow) + 'x' + Math.round(oh) + ' 침범했다'});",
     "  });",
     "  if (window.__MAP_THROUGH) {",
     "    var stack = document.getElementById('ui-stack');",
@@ -223,7 +274,7 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-function measure(edge, page, clickable, visible, mapThrough, [w, h]) {
+function measure(edge, page, clickable, visible, mapThrough, noOverlap, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
   const dir = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-layout-"));
@@ -232,7 +283,8 @@ function measure(edge, page, clickable, visible, mapThrough, [w, h]) {
     "(function(){\n  syncUiTop();",
     "window.__CLICKABLE = " + JSON.stringify(clickable) + ";\n"
     + "window.__VISIBLE = " + JSON.stringify(visible || []) + ";\n"
-    + "window.__MAP_THROUGH = " + (mapThrough ? "true" : "false") + ";\n(function(){\n  syncUiTop();",
+    + "window.__MAP_THROUGH = " + (mapThrough ? "true" : "false") + ";\n"
+    + "window.__NO_OVERLAP = " + JSON.stringify(noOverlap || []) + ";\n(function(){\n  syncUiTop();",
   );
   fs.writeFileSync(file, withList, "utf8");
   try {
@@ -266,7 +318,8 @@ for (const c of CASES) {
     const label = size[0] + "x" + size[1];
     let problems;
     try {
-      problems = measure(edge, page, c.clickable, c.visible, c.mapThrough, size);
+      problems = measure(edge, page, c.clickable, c.visible, c.mapThrough,
+        c.noOverlap, size);
     } catch (e) {
       failures.push(c.name + " " + label + " — 측정 실패: " + e.message);
       console.log("  FAIL " + label + " — 측정 실패: " + e.message);
