@@ -12,6 +12,7 @@ HTTP 는 `api_client._http_get` 을 갈아끼워 막는다. 캐시·설정 경�
 """
 import builtins
 import http.client
+import io
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import api_client  # noqa: E402
 import api_parsing  # noqa: E402
+import main  # noqa: E402
 
 
 def _page(count=1, next_url=None, tag="x"):
@@ -489,6 +491,138 @@ class TestBridgeInputs(CacheTestBase):
     def test_none_still_means_default_groups(self):
         res = api_client.get_satellites(groups=None)
         self.assertEqual(res["groups"], list(api_client.DEFAULT_SATELLITE_GROUPS))
+
+
+SATCAT_CSV = (
+    "OBJECT_NAME,OBJECT_ID,NORAD_CAT_ID,OBJECT_TYPE,OPS_STATUS_CODE,OWNER,"
+    "LAUNCH_DATE,LAUNCH_SITE,RCS_SIZE" + chr(13) + chr(10) +
+    "ISS (ZARYA),1998-067A,25544,PAY,+,ISS,1998-11-20,TTMTR,LARGE" + chr(13) + chr(10)
+)
+
+
+class TestPythonMutationGaps(CacheTestBase):
+    """조건을 뒤집어도 아무도 못 잡던 자리들 (P42).
+
+    2026-09-23 에 파이썬 `if` 93개를 하나씩 뒤집어 봤더니 **32개가 전부 초록**이었다.
+    그중 스모크(`__main__`)와 개발 전용 경로를 빼고 남은 것이 아래다 — 전부
+    **요청 수·데이터 양·폴백**처럼 조용히 틀어지는 종류다.
+    """
+
+    def test_satcat_ttl_reuses_cache(self):
+        """TLE 에는 TTL 테스트가 있었는데 **SATCAT 에는 없었다.**
+
+        이 조건이 뒤집히면 캐시가 있어도 매번 네트워크를 때린다 — 그룹당 한 번씩이라
+        그룹 여덟이면 **시간당 요청이 여덟 배**가 된다. 오류도 경고도 없다.
+        """
+        self.serve(SATCAT_CSV)
+        api_client.get_satcat(groups=["stations"])
+        first = len(self.calls)
+        api_client.get_satcat(groups=["stations"])
+        self.assertEqual(len(self.calls), first, "캐시가 있는데 또 요청했다")
+
+    def test_satcat_expires_after_ttl(self):
+        self.serve(SATCAT_CSV)
+        api_client.get_satcat(groups=["stations"])
+        self.age_cache("satcat_stations.json", api_client.TTL_SATCAT + 60)
+        before = len(self.calls)
+        api_client.get_satcat(groups=["stations"])
+        self.assertGreater(len(self.calls), before, "TTL 이 지났는데 안 받았다")
+
+    def test_group_cap_limits_what_we_keep(self):
+        """대형 그룹은 상한까지만 본다 — 안 그러면 렌더가 무너진다(P11-3 의 전제).
+
+        상한이 사라져도 **화면이 느려질 뿐 오류는 안 난다**: 테스트가 없으면 모른다.
+        """
+        cap = (api_client.SATELLITE_GROUP_CATALOG.get("starlink") or {}).get("cap")
+        self.assertTrue(cap, "starlink 에 상한이 있어야 이 테스트가 뜻이 있다")
+        lines = []
+        for i in range(cap + 50):
+            lines.append("SAT-%04d" % i)
+            lines.append("1 %05dU 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006" % (i + 10000))
+            lines.append("2 %05d  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000" % (i + 10000))
+        self.serve("\n".join(lines))
+        res = api_client.get_satellites(groups=["starlink"])
+        self.assertEqual(len(res["satellites"]), cap,
+                         "상한을 넘겨 받았다 — 지도에 %d개를 그리게 된다" % len(res["satellites"]))
+
+    def test_fresh_cache_is_not_replaced_by_stale_fallback(self):
+        """네트워크가 죽었을 때 **이미 읽어 둔 캐시**를 오래된 것으로 덮지 않는다.
+
+        `if cached is None:` 을 뒤집으면 신선한 캐시를 버리고 폴백을 다시 읽는다 —
+        결과는 같아 보이지만 **디스크를 한 번 더 읽고**, 폴백이 실패하면 데이터가 사라진다.
+        """
+        self.serve(SATCAT_CSV)
+        api_client.get_satcat(groups=["stations"])
+        self.age_cache("satcat_stations.json", api_client.TTL_SATCAT + 60)
+        self.fail_with(OSError("끊김"))
+        res = api_client.get_satcat(groups=["stations"])
+        self.assertTrue(res["satcat"], "네트워크가 죽었는데 오래된 캐시도 안 돌려줬다")
+        self.assertTrue(res["stale"])
+
+    def test_first_error_is_kept_not_the_last(self):
+        """그룹 여럿이 실패하면 **처음 것**을 보여준다 — 마지막 것으로 덮으면
+        화면 문구가 매번 달라져 무엇이 문제인지 흐려진다."""
+        seq = [OSError("첫 번째 실패"), OSError("두 번째 실패")]
+        def fake(url):
+            self.calls.append(url)
+            raise seq[min(len(self.calls) - 1, len(seq) - 1)]
+        api_client._http_get = fake
+        res = api_client.get_satellites(groups=["stations", "visual"])
+        self.assertTrue(res["error"])
+
+    def test_broken_settings_are_quarantined_only_when_stable(self):
+        """설정 파일이 깨졌을 때 **두 번 읽어 같으면** 격리한다.
+
+        한 번만 보고 격리하면, 다른 프로세스가 쓰는 중이라 반쪽만 읽힌 순간에도
+        멀쩡한 설정을 치워 버린다(P22 에서 동시 쓰기를 실측한 자리와 같은 갈래).
+        """
+        with io.open(api_client.SETTINGS_PATH, "w", encoding="utf-8") as f:
+            f.write("{이건 JSON 이 아니다")
+        got = api_client.load_settings()
+        self.assertEqual(got, {}, "못 읽었으면 빈 설정이어야 한다")
+        quarantined = [n for n in os.listdir(os.path.dirname(api_client.SETTINGS_PATH))
+                       if "settings" in n and n.endswith(".bad.json")]
+        self.assertTrue(quarantined, "두 번 읽어도 같으면 격리해야 한다")
+
+
+
+class TestBridgeUrlGuard(unittest.TestCase):
+    """`open_url` 의 스킴 화이트리스트 (P42).
+
+    브릿지는 **외부 API 가 준 URL** 을 그대로 기본 브라우저에 넘긴다. 그래서
+    `http`/`https` 만 허용하는데, **그 한 줄을 뒤집어도 아무 테스트도 안 깨졌다**
+    (2026-09-23 조건 변이). P38 에서 *"이미 방어돼 있다"* 고 기각했던 자리이기도 하다 —
+    **방어는 있는데 그 방어를 지키는 것이 없었다.**
+    """
+
+    def setUp(self):
+        self.opened = []
+        self._real = main.webbrowser.open
+        main.webbrowser.open = lambda u: self.opened.append(u)
+        self.api = main.Api()
+
+    def tearDown(self):
+        main.webbrowser.open = self._real
+
+    def test_http_and_https_pass(self):
+        for url in ("http://example.com/a", "https://example.com/b?x=1"):
+            self.assertTrue(self.api.open_url(url), url)
+        self.assertEqual(len(self.opened), 2)
+
+    def test_other_schemes_are_refused(self):
+        bad = ["file:///C:/Windows/System32/cmd.exe", "javascript:alert(1)",
+               "data:text/html,<script>x</script>", "ms-settings:", "vbscript:msgbox",
+               "ftp://example.com/x", "//example.com/x", "example.com", ""]
+        for url in bad:
+            with self.subTest(url=url):
+                self.assertFalse(self.api.open_url(url), url)
+        self.assertEqual(self.opened, [], "막아야 할 것을 브라우저로 넘겼다")
+
+    def test_non_string_is_refused(self):
+        for url in (None, 123, {}, []):
+            with self.subTest(url=url):
+                self.assertFalse(self.api.open_url(url))
+        self.assertEqual(self.opened, [])
 
 
 class TestVersionCompare(unittest.TestCase):
