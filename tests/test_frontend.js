@@ -2534,6 +2534,39 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("취소된 계산은 화면을 덮지 않는다", el("sidebar-list").innerHTML, before);
 }
 
+// ── 오버레이 상단 기준선 (P34-2) ─────────────────────────────────────────────
+// 툴바 높이는 창 폭에 따라 변한다(자연 폭 1,065px — 창이 그보다 좁으면 두 줄).
+// CSS 는 한 줄일 때의 값 92px 을 박아 두고 있었고, 그래서 좁은 창에서 사이드바 탭이
+// 툴바 뒤로 들어갔다. 여기서는 **계산과 배선**을, 실제 기하는 `test_layout.js` 가 잰다.
+{
+  const { ctx, el, win, cssVars } = loadApp();
+  group("오버레이 상단 기준선 (P34-2)");
+
+  check("한 줄 툴바(아래 86px)면 기존 값 92 를 지킨다", ctx.uiTopFromToolbar(86), 92);
+  check("두 줄 툴바(아래 130px)면 그 아래로 민다", ctx.uiTopFromToolbar(130), 136);
+  check("툴바를 못 재면(숫자가 아니면) 92 로 둔다", ctx.uiTopFromToolbar(undefined), 92);
+  check("NaN 도 92 로 둔다", ctx.uiTopFromToolbar(NaN), 92);
+
+  // 배선: 창이 좁아 툴바가 두 줄이 된 상태를 만들고 resize 를 쏜다.
+  ctx.bindUI();
+  el("toolbar").rect = { bottom: 130 };
+  win.fire("resize");
+  check("resize 를 받으면 --ui-top 을 툴바 아래로 옮긴다", cssVars["--ui-top"], "136px");
+
+  el("toolbar").rect = { bottom: 86 };
+  win.fire("resize");
+  check("창을 다시 넓히면 되돌아온다", cssVars["--ui-top"], "92px");
+
+  // 툴바를 잴 수 없는 환경(스텁·아직 없는 요소)에서 죽지 않는다 — 이게 없으면
+  // 부트가 여기서 멈춰 지도까지 안 뜬다(P23-1 이 지키려는 경로다).
+  el("toolbar").rect = null;
+  const before = cssVars["--ui-top"];
+  let threw = null;
+  try { ctx.syncUiTop(); } catch (e) { threw = String(e); }
+  check("툴바를 못 재면 예외 없이 지나간다", threw, null);
+  check("못 쟀을 때 옛 값을 뭉개지 않는다", cssVars["--ui-top"], before);
+}
+
 // ── bindUI 가 거는 배선 전부 (2026-09-14 정기 점검) ───────────────────────────
 // **배선 18개를 지워도 688건이 전부 통과했다.** 검색창·패널 닫기·탭 전환·타임라인
 // 슬라이더·새로고침·아카이브 불러오기가 통째로 죽어도 테스트가 초록이었다는 뜻이다.
@@ -2543,7 +2576,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 // ⚠ 목록을 `boot.js` 에서 긁어 오지 않고 **여기 손으로 적는다.** 긁어 오면 배선을 지울 때
 //   기대 목록에서도 같이 사라져 **검사가 공허하게 통과한다** — 이 파일이 정답지다.
 {
-  const { ctx, el, map, doc, sel, state } = loadApp();
+  const { ctx, el, map, doc, win, sel, state } = loadApp();
   group("bindUI 배선 전수 (정기 점검)");
   state.map = map;
   map.stubSource("launches");
@@ -2583,6 +2616,10 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("bindUI 가 " + WIRING.length + "개 배선을 전부 건다", missing, []);
   check("결과 필터(.flt)에도 change 를 건다", !!flt.handlers.change, true);
   check("document 에 keydown 을 건다", doc.has("keydown"), true);
+  // 창 폭이 바뀌면 툴바가 두 줄이 된다(P34-2). 이 한 줄이 없으면 사이드바 탭이 툴바
+  // 뒤로 들어가는데, **좌표가 없는 스텁에서는 아무 단언도 안 깨진다** — 그래서 여기서는
+  // "붙었는가"만 재고, 실제 기하는 `tests/test_layout.js` 가 Edge 로 잰다.
+  check("window 에 resize 를 건다", win.has("resize"), true);
 }
 
 // ── 배선을 실제로 눌러 본다 (2026-09-14 정기 점검 2단) ────────────────────────

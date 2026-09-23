@@ -412,3 +412,32 @@ function entityRow(k, v, kind, note) {
     `<button class="site-link" data-kind="${kind}" data-val="${escapeHtml(v)}">` +
     `${escapeHtml(v)}${note ? " · " + escapeHtml(note) : ""} ›</button></div></div>`;
 }
+
+// ── 오버레이 상단 기준선 (P34-2) ─────────────────────────────────────────────
+/**
+ * 툴바 아래에 오버레이(사이드바·상세 패널·위성 그룹)를 놓을 y 좌표.
+ *
+ * **툴바 높이는 창 폭에 따라 변한다.** 자연 폭이 1,065px 이라 창이 1,085px 보다 좁으면
+ * 두 줄이 되는데(2026-09-23 헤드리스 Edge 실측), CSS 는 `top: 92px` 로 **한 줄일 때의
+ * 값을 박아 두고 있었다.** 그래서 창을 1,024px 로 줄이면 사이드바 탭 넷(발사·위성·관심·
+ * 오늘 밤)이 통째로 툴바 뒤로 들어가고, **누르면 그 자리의 툴바 버튼이 눌린다** —
+ * 실측에서 탭 자리를 누르면 `↻ 갱신`(강제 API 요청)과 `☰ 목록` 이 잡혔다.
+ * 앱의 최소 창은 900×600 이라 **허용된 크기 안에서 일어난다.**
+ *
+ * 하한 92px 은 한 줄 툴바일 때의 기존 값이다 — 툴바를 못 재면(스텁·아직 없음) 그대로 둔다.
+ */
+function uiTopFromToolbar(bottom) {
+  if (typeof bottom !== "number" || !isFinite(bottom)) return 92;
+  return Math.max(92, Math.round(bottom) + 6);
+}
+
+/** 툴바를 재서 `--ui-top` 에 반영한다. 창 크기가 바뀔 때마다 다시 부른다. */
+function syncUiTop() {
+  const tb = document.getElementById("toolbar");
+  if (!tb || typeof tb.getBoundingClientRect !== "function") return;
+  const r = tb.getBoundingClientRect();
+  if (!r) return;
+  const root = document.documentElement;
+  if (!root || !root.style || typeof root.style.setProperty !== "function") return;
+  root.style.setProperty("--ui-top", uiTopFromToolbar(r.bottom) + "px");
+}

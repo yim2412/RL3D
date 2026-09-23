@@ -131,7 +131,14 @@ html, body {
 /* 상세 패널 */
 .panel {
   position: absolute;
-  top: 90px; right: 12px; bottom: 24px;
+  /* `--ui-top` 은 툴바 실제 높이에서 나온다(P34-2 · utils.js `syncUiTop`).
+     아래 값은 툴바가 한 줄일 때의 값이자, JS 가 아직 안 돌았을 때의 기본이다. */
+  top: var(--ui-top, 92px); right: 12px;
+  /* 타임라인(높이 46 + bottom 12)을 피한다 — 예전 `24px` 은 타임라인 위쪽 34px 을 덮었고,
+     z-index 가 패널(26) > 타임라인(25) 이라 **과거 연도 선택과 `불러오기` 버튼이
+     클릭을 못 받았다**(P34-1 · 창 크기와 무관하게 늘 그랬다). 사이드바는 이미 66px 로
+     피해 있었다 — 한쪽만 고쳐 둔 자리였다. */
+  bottom: 66px;
   width: 320px;
   background: rgba(19, 26, 43, .95);
   border: 1px solid var(--line);
@@ -320,7 +327,7 @@ html, body {
 /* 위성 그룹 선택 팝오버 */
 .sat-groups {
   position: absolute;
-  top: 92px; left: 10px;
+  top: var(--ui-top, 92px); left: 10px;
   z-index: 26;
   display: flex; flex-direction: column; gap: 7px;
   background: rgba(19, 26, 43, .96);
@@ -563,7 +570,7 @@ html, body {
 /* 발사 목록 사이드바 */
 .sidebar {
   position: absolute;
-  top: 92px; left: 10px; bottom: 66px;
+  top: var(--ui-top, 92px); left: 10px; bottom: 66px;
   width: 300px;
   z-index: 24;
   display: flex; flex-direction: column;

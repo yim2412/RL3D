@@ -97,6 +97,9 @@ function bindUI() {
   step("bindUpdateBadge", bindUpdateBadge);   // 새 버전 배지(P12-12)
   // 단축키(P12-14) — 판정은 keys.js 의 순수 함수가 한다
   step("keydown", () => document.addEventListener("keydown", handleKey));
+  // 창 폭이 바뀌면 툴바가 두 줄이 된다 → 오버레이 상단을 다시 잡는다(P34-2)
+  step("resize", () => window.addEventListener("resize", syncUiTop));
+  step("syncUiTop", syncUiTop);   // 첫 화면도 같은 기준으로 놓는다
 }
 
 /** 버튼과 단축키가 같은 경로를 타게 한다(둘이 갈라지면 한쪽만 고치게 된다). */

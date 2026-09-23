@@ -53,6 +53,12 @@ jobs:
       - name: 문서 회귀 테스트 (문서 ↔ 코드 대조)
         run: node tests/test_docs.js
 
+      - name: 레이아웃 회귀 테스트 (헤드리스 Edge 기하)
+        # 스텁 DOM 에는 좌표가 없어, "버튼이 다른 오버레이에 가려 클릭을 못 받는다"는
+        # 부류가 688건 초록 뒤에 숨어 있었다(P34). 실제 Chromium 에 띄워 재는 유일한 자리다.
+        # windows-latest 러너에는 Edge 가 깔려 있다 — 없으면 스크립트가 스스로 건너뛴다.
+        run: node tests/test_layout.js
+
       - name: 로그 스모크 (네트워크 불필요)
         # api_client.py 스모크는 네트워크를 쓰므로 CI 에서 돌리지 않는다.
         # startup.py 스모크도 넣지 않는다 — GitHub 러너에는 WebView2 런타임이 없어

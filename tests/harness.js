@@ -134,6 +134,13 @@ function makeEl(id, lookup) {
      * **배선을 잴 수 없다.** innerHTML 단언은 전부 통과하는데 버튼만 죽어 있는 자리다.
      */
     sel: {},
+    /**
+     * 스텁에는 원래 좌표가 없다(그래서 기하는 `tests/test_layout.js` 가 실제 Edge 로 잰다).
+     * 다만 **"툴바를 재서 그 값을 쓰는가"** 는 배선이라 여기서 재야 한다 — 테스트가
+     * `el("toolbar").rect = { bottom: 130 }` 처럼 정해 둔 값을 그대로 돌려준다.
+     */
+    rect: null,
+    getBoundingClientRect() { return this.rect; },
     querySelectorAll(s) { return this.sel[s] || { forEach() {} }; },
     /**
      * 엘리먼트 단위 `querySelector` — **예전에는 언제나 null 이었다**(P28-2).
@@ -191,6 +198,7 @@ function loadApp(options = {}) {
   const mapHandlers = {};
   const winHandlers = {};
   const docHandlers = {};   // document 에 직접 붙는 핸들러(키보드 P12-14)
+  const cssVars = {};     // documentElement 에 쓰인 CSS 변수(P34-2)
   const selectors = {};   // 테스트가 채우는 querySelectorAll 응답
   const sources = {};     // 지도 소스별 마지막 setData 값
   const cameraMoves = [];  // flyTo/easeTo 호출 기록(P23-2 — 안 움직인 것도 단언한다)
@@ -221,6 +229,14 @@ function loadApp(options = {}) {
       addEventListener: (ev, fn) => { docHandlers[ev] = fn; },
       createElement: () => makeEl("created"),
       body: el("body"),
+      // `--ui-top`(P34-2)을 어디에 쓰는지 재려면 루트 엘리먼트가 있어야 한다.
+      // 쓴 값은 `cssVars` 에 남아 테스트가 읽는다.
+      documentElement: {
+        style: {
+          setProperty: (k, v) => { cssVars[k] = v; },
+          getPropertyValue: (k) => cssVars[k] || "",
+        },
+      },
     },
     addEventListener: (ev, fn) => { winHandlers[ev] = fn; },
     removeEventListener() {},
@@ -312,6 +328,8 @@ function loadApp(options = {}) {
 
   return {
     ctx, state: ctx.__state, el, map, api, sel: selectors,
+    /** `document.documentElement.style.setProperty` 로 쓰인 CSS 변수 */
+    cssVars,
     /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
     date: (ms) => new RealmDate(ms),
     win: {

@@ -77,13 +77,15 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   // 새 테스트를 만들고 README 에 안 적으면, 다음 사람은 **그게 있는 줄도 모른다.**
   const musts = ["python main.py", "build.bat", "python api_client.py",
                  "node tests/test_frontend.js", "python tests/test_parsing.py",
-                 "python tests/test_cache.py", "node tests/test_docs.js"];
+                 "python tests/test_cache.py", "node tests/test_docs.js",
+                 "node tests/test_layout.js"];
   check("README 에 빠진 명령", musts.filter((c) => !README.includes(c)), []);
   check("CLAUDE.md 에 빠진 명령", musts.filter((c) => !CLAUDE.includes(c)), []);
   // CI 가 안 돌리면 초록은 로컬에서만 초록이다(2026-09-12 에 실제로 다섯 커밋 동안 갈렸다).
   const ci = read(".github/workflows/tests.yml");
   const ciMusts = ["python tests/test_parsing.py", "python tests/test_cache.py",
-                   "node tests/test_frontend.js", "node tests/test_docs.js"];
+                   "node tests/test_frontend.js", "node tests/test_docs.js",
+                   "node tests/test_layout.js"];
   check("CI 워크플로에 빠진 테스트", ciMusts.filter((c) => !ci.includes(c)), []);
 }
 
