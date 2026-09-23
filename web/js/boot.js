@@ -74,7 +74,7 @@ function bindUI() {
     if (!rowEl) return;
     if (rowEl.dataset.norad) { pickSatellite(rowEl.dataset.norad); return; }
     const d = findLaunch(rowEl.dataset.id);
-    if (!(d)) openPanel(d);
+    if (d) openPanel(d);
   });
   wire("tab-launches", "click", () => setSidebarTab("launches"));
   wire("tab-sats", "click", () => setSidebarTab("sats"));

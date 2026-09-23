@@ -625,6 +625,57 @@ class TestBridgeUrlGuard(unittest.TestCase):
         self.assertEqual(self.opened, [])
 
 
+
+class TestRequestBudget(unittest.TestCase):
+    """TTL 과 요청 예산 (P47).
+
+    **이 앱의 제약은 하나다: Launch Library 2 는 시간당 약 15회.** 그 예산을 실제로
+    정하는 것이 TTL 상수인데, 2026-09-24 에 재 보니 **`TTL_LAUNCHES` 를 15분에서
+    6시간으로 바꿔도 테스트가 전부 통과했다.** 다른 테스트들이 `TTL_LAUNCHES + 1` 처럼
+    **상수를 참조해** 경계를 잡기 때문이다 — 상수가 무엇이든 따라간다.
+
+    그래서 값이 틀어져도 조용하다:
+      * **늘리면**(15분 → 6시간) 화면이 여섯 시간 낡은 데이터를 보여준다.
+      * **줄이면**(15분 → 1분) 요청이 **15배**가 되어 429 에 걸린다.
+
+    여기서는 **값 자체를 숫자로 못 박는다.** 바꾸려면 이 테스트도 같이 고쳐야 하고,
+    그때 *"왜 바꾸나"* 를 한 번 묻게 된다. 그것이 이 테스트의 전부이자 목적이다.
+    """
+
+    def test_ttl_values_are_what_the_docs_say(self):
+        # `CLAUDE.md` 의 "API 규칙 — 이 앱의 실제 수치" 절과 **같은 값**이어야 한다.
+        self.assertEqual(api_client.TTL_LAUNCHES, 15 * 60, "발사 TTL 은 15분")
+        self.assertEqual(api_client.TTL_TLE, 2 * 60 * 60, "TLE TTL 은 2시간")
+        self.assertEqual(api_client.TTL_SATCAT, 24 * 60 * 60, "SATCAT TTL 은 24시간")
+        self.assertEqual(api_client.TTL_ARCHIVE_CURRENT, 6 * 60 * 60, "올해 아카이브는 6시간")
+        self.assertEqual(api_client.TTL_UPDATE, 24 * 60 * 60, "업데이트 확인은 하루 1회")
+
+    def test_launch_requests_stay_under_the_hourly_cap(self):
+        """발사 폴링이 한도 안에 드는가 — **한 번 받을 때 두 요청**(upcoming + previous)이다."""
+        per_fetch = 2
+        fetches_per_hour = 3600 / api_client.TTL_LAUNCHES
+        self.assertLessEqual(fetches_per_hour * per_fetch, 15,
+                             "발사만으로 시간당 한도를 넘는다")
+        # 실제로는 8회다(4 × 2). 그 여유가 아카이브·업데이트 확인의 몫이다.
+        self.assertEqual(fetches_per_hour * per_fetch, 8)
+
+    def test_archive_walk_is_capped(self):
+        """아카이브는 **연도당** 최대 몇 요청인가 — 이게 없으면 한 번에 예산을 태운다."""
+        self.assertEqual(api_client.ARCHIVE_MAX_PAGES, 5)
+        self.assertGreaterEqual(api_client.ARCHIVE_PAGE_DELAY, 1,
+                                "페이지 사이 간격이 없으면 레이트리밋에 걸린다")
+
+    def test_archive_year_range(self):
+        """스푸트니크 1호(1957) 이전에는 궤도 발사가 없다(P38-1)."""
+        self.assertEqual(api_client.ARCHIVE_MIN_YEAR, 1957)
+
+    def test_file_retry_is_bounded(self):
+        """파일 재시도는 **유한**해야 한다 — 무한이면 앱이 멈춘 것처럼 보인다."""
+        self.assertGreaterEqual(api_client.FILE_RETRIES, 2)
+        self.assertLessEqual(api_client.FILE_RETRIES * api_client.FILE_RETRY_WAIT, 1.0,
+                             "재시도 총 대기가 1초를 넘으면 사람이 느낀다")
+
+
 class TestVersionCompare(unittest.TestCase):
     """버전 비교는 **틀려도 예외가 안 난다** — 없는 업데이트를 알리거나 있는 것을 놓칠 뿐이다."""
 
