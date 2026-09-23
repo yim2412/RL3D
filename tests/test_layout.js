@@ -394,12 +394,29 @@ function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverfl
   if (!withList.includes("window.__CONTRAST")) throw new Error("검사 목록 주입에 실패했다");
   fs.writeFileSync(file, withList, "utf8");
   try {
-    const dom = execFileSync(edge, [
-      "--headless=new", "--disable-gpu", "--hide-scrollbars",
-      "--window-size=" + w + "," + h,
-      "--virtual-time-budget=3000",
-      "--dump-dom", "file:///" + file.replace(/\\/g, "/"),
-    ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 60000 });
+    // **Edge 가 가끔 느리다 — 앱 결함이 아니다.** 2026-09-23 CI 에서 52건 중 1건이
+    // `ETIMEDOUT` 으로 빨갰다(로컬은 초록이었다). 러너가 붐빌 때 브라우저가 늦게 뜬다.
+    //
+    // 그래서 **띄우지 못한 경우에만** 한 번 다시 해 본다. 측정이 실제로 끝나서 나온
+    // 결과(가려짐·넘침)는 **절대 재시도하지 않는다** — 재시도로 진짜 실패를 숨기면
+    // 이 테스트는 있으나 마나가 된다.
+    let dom = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        dom = execFileSync(edge, [
+          "--headless=new", "--disable-gpu", "--hide-scrollbars",
+          "--window-size=" + w + "," + h,
+          "--virtual-time-budget=3000",
+          "--dump-dom", "file:///" + file.replace(/\\/g, "/"),
+        ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 120000 });
+        break;
+      } catch (e) {
+        // 브라우저를 못 띄운 것(타임아웃·스폰 실패)만 다시 해 본다.
+        const retriable = e.code === "ETIMEDOUT" || e.code === "ENOENT" || e.signal != null;
+        if (!retriable || attempt === 1) throw e;
+        console.log("    (Edge 가 응답하지 않아 한 번 다시 시도합니다 — " + (e.code || e.signal) + ")");
+      }
+    }
     const m = /<pre id="RESULT">([\s\S]*?)<\/pre>/.exec(dom);
     if (!m) throw new Error("측정 결과가 없다 (페이지가 안 떴다)");
     return JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
