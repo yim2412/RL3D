@@ -3724,6 +3724,150 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("위성도 켜지 않는다", map.layout("sat-layer", "visibility") !== "visible", true);
 }
 
+// ── 사이드바에서 한 줄을 누르면 (P46-3) ────────────────────────────────────
+// 목록의 한 행은 **발사일 수도 위성일 수도 있다**(탭에 따라). 같은 배선이 `data-norad`
+// 유무로 갈리는데, 그 분기가 비어 있었다 — 뒤집히면 **위성을 눌렀는데 발사를 찾는다.**
+(async () => {
+  const ISS = [
+    "1 25544U 98067A   26265.50000000  .00016717  00000-0  10270-3 0  9006",
+    "2 25544  51.6400 208.9163 0006317  69.9862 290.1591 15.49468300 10000",
+  ];
+
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("사이드바 행 클릭 — 발사와 위성이 갈린다 (P46-3)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track", "satellites", "sat-track", "sats"]) {
+      map.stubSource(s);
+    }
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" }];
+    state.allLaunches = [{
+      id: "L1", name: "테스트 발사", net: "2026-09-25T00:00:00Z", outcome: "upcoming",
+      lat: 28.5, lng: -80.5, net_precision: "Second",
+    }];
+    ctx.bindUI();
+
+    // 행 스텁 — 실제 목록은 `innerHTML` 로 만들어지므로 `closest` 를 흉내 낸다.
+    const row = (data) => ({ dataset: data, closest: () => ({ dataset: data }) });
+
+    // ① 위성 행: `data-norad` 가 있다
+    el("sidebar-list").fire("click", { target: row({ norad: "25544" }) });
+    check("위성 행을 누르면 그 위성이 선택된다",
+      state.selectedSat && String(state.selectedSat.norad), "25544");
+    check("위성 상세가 열린다", el("panel").classList.contains("hidden"), false);
+
+    // ② 발사 행: `data-id` 만 있다 — **위성 쪽으로 새면 안 된다**
+    state.selectedSat = null;
+    el("sidebar-list").fire("click", { target: row({ id: "L1" }) });
+    check("발사 행은 발사 상세를 연다",
+      el("panel-body").innerHTML.includes("테스트 발사"), true);
+    check("발사 행이 위성을 고르지는 않는다", state.selectedSat, null);
+
+    // ③ 행이 아닌 곳(빈 여백)을 눌러도 죽지 않는다
+    let threw = null;
+    try { el("sidebar-list").fire("click", { target: { closest: () => null } }); }
+    catch (e) { threw = String(e); }
+    check("행이 아닌 곳을 눌러도 조용하다", threw, null);
+
+    // ④ 없는 위성 번호면 아무 일도 안 한다(목록이 갈린 순간에 실제로 일어난다)
+    const before = state.selectedSat;
+    ctx.pickSatellite("99999");
+    check("모르는 위성 번호는 무시한다", state.selectedSat, before);
+
+    // ⑤ 고른 위성으로 **지도가 따라간다** — 목록에서 골랐는데 화면이 그대로면
+    //    "눌렀는데 아무 일도 안 난다"가 된다.
+    const moves = map.moves().length;
+    ctx.pickSatellite("25544");
+    check("목록에서 고르면 지도가 그 위성으로 간다", map.moves().length > moves, true);
+  }
+
+  // ── 빈 목록은 **왜 비었는지** 말한다 (sidebar.js · P18 축) ──────────────────
+  // "0건"만 찍으면 고장인지 조건 문제인지 알 수 없다. 두 목록 다 기준을 함께 보여준다.
+  {
+    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    group("빈 목록은 이유를 말한다 (P46-3)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+
+    // "오늘 밤": 관측지는 있는데 조건을 채운 통과가 없는 경우
+    state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+    state.tonightRows = [];
+    ctx.renderTonightRows([]);
+    const tonight = el("sidebar-list").innerHTML;
+    check("오늘 밤이 비면 기준을 함께 말한다", tonight.includes("눈에 보이는 통과가 없습니다"), true);
+    check("무엇을 세는지도 적는다", tonight.includes("태양고도"), true);
+    check("건수는 0건으로 찍는다", el("sidebar-count").textContent, "0건");
+
+    // 위성 목록: 받은 위성이 하나도 없는 경우
+    state.satrecs = [];
+    state.sidebarTab = "sats";
+    ctx.renderSatList();
+    check("위성 목록이 비면 안내가 뜬다", el("sidebar-list").innerHTML.includes("sb-empty"), true);
+    check("위성 수도 0개로 찍는다", el("sidebar-count").textContent, "0개");
+
+    // **빈 경우만 재면 절반이다** — 있을 때 실제로 행이 그려지는지도 본다
+    // (변이가 그것만 못 잡아서 드러났다: 조건을 뒤집어도 "빈 안내"쪽 단언은 통과한다).
+    const rec2 = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", rec: rec2, band: "leo" }];
+    ctx.renderSatList();
+    check("위성이 있으면 목록 행을 그린다",
+      el("sidebar-list").innerHTML.includes("ISS (ZARYA)"), true);
+    check("빈 안내는 사라진다", el("sidebar-list").innerHTML.includes("sb-empty"), false);
+    check("위성 수가 실제 수로 찍힌다", el("sidebar-count").textContent, "1개");
+  }
+
+  // ── 강제 갱신은 위성도 같이 받는다 (boot.js) ───────────────────────────────
+  // 위성을 켜 둔 채 `↻ 갱신` 을 누르면 발사만 새로 받고 **위성은 낡은 채로 남으면**
+  // 화면의 점이 옛 궤도로 그려진다 — 그런데 아무 말도 안 한다.
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("강제 갱신은 위성도 받는다 (P46-3)");
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track", "satellites", "sat-track", "sats"]) {
+      map.stubSource(s);
+    }
+    let sats = 0;
+    api.get_launches = async () => ({ launches: [], error: null, age: 0 });
+    api.get_satellites = async () => { sats++; return { satellites: [], groups: [] }; };
+
+    el("toggle-sat").checked = false;
+    await ctx.forceRefresh();
+    check("위성이 꺼져 있으면 위성은 받지 않는다", sats, 0);
+
+    el("toggle-sat").checked = true;
+    await ctx.forceRefresh();
+    check("켜져 있으면 위성도 같이 받는다", sats, 1);
+  }
+
+  // ── 가시 전용 토글의 후속 (boot.js) ────────────────────────────────────────
+  // 켜고 끌 때 **열려 있는 화면**이 따라와야 한다 — 통과 예측표와 "오늘 밤" 탭.
+  {
+    const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+    group("가시 전용 토글의 후속 (P46-3)");
+    state.map = map;
+    for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
+    const rec = ctx.satellite.twoline2satrec(ISS[0], ISS[1]);
+    state.selectedSat = { norad: "25544", name: "ISS (ZARYA)", rec, band: "leo" };
+    state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+    ctx.bindUI();
+
+    // 통과 예측표를 열어 둔 상태에서 토글한다
+    ctx.openRightPanel("pass-panel");
+    el("pass-body").innerHTML = "";
+    el("toggle-visible-only").checked = true;
+    el("toggle-visible-only").fire("change", { target: { checked: true } });
+    check("열려 있는 통과 예측표를 다시 그린다", el("pass-body").innerHTML.length > 0, true);
+
+    // "오늘 밤" 탭이 열려 있으면 그것도
+    ctx.openRightPanel("");                 // 통과 패널을 닫는다
+    state.sidebarTab = "tonight";
+    el("sidebar-list").innerHTML = "";
+    el("toggle-visible-only").fire("change", { target: { checked: false } });
+    check("오늘 밤 탭도 다시 그린다", el("sidebar-list").innerHTML.length > 0, true);
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
