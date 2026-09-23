@@ -25,6 +25,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `web/js/*.js` | UI 로직 23개 파일: `errors` → `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
+| `tools/mutate_wiring.js` | **동적 배선 변이 점검**(P39). 화면을 그리며 붙는 `addEventListener` 를 하나씩 무력화해 테스트가 잡는지 전수로 잰다. 정기 점검용 — CI 에는 안 넣는다(파일을 잠시 고친다) |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
 | `PLAN.md` | 개발 계획·마일스톤 |
@@ -137,6 +138,19 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **파일을 쪼갰으면 `index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고
   `index.html` 에 빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
   두 목록이 같은 파일을 같은 순서로 읽는지는 이제 `test_frontend.js` 가 잰다(P12-23).
+- **화면을 그리면서 붙는 배선도 전수로 잰다 — `node tools/mutate_wiring.js`** (P39).
+  `bindUI()` 의 정적 배선은 2026-09-14 에 전수화했는데(아래), **`innerHTML` 로 만든 버튼에
+  그 자리에서 거는 배선**은 그대로 비어 있었다. 2026-09-23 실측: **25개 중 22개를 지워도
+  1,232건이 전부 초록**이었다 — 관심(⭐) 버튼 · 임박 발사 카드의 버튼 셋 · 관측 위치
+  팝오버 전부(검색·결과·좌표·지도·해제) · 위성 그룹/대역/종류/소유국 체크박스 ·
+  통계의 발사 행과 계열 링크 · 상세 패널의 중계·관점 링크 · 업데이트 배지 · 오프라인
+  배지 · 오류 배너 닫기 · 발사대 목록 행이 **통째로 죽어도 아무 테스트도 실패하지 않았다.**
+  - **핸들러를 직접 부르는 테스트는 배선을 안 잰다.** `onSatBandChange()` 를 불러도
+    `initSatGroups()` 안의 `addEventListener` 가 죽은 것은 안 잡힌다 — **렌더 함수를
+    부르고 스텁을 `fire()`** 해야 한다.
+  - **엉뚱한 함수를 부르면 거짓 통과가 난다.** 통계 행 배선을 재려고 `showStats()` 를
+    불렀는데 그 배선은 `showEntityStats()` 가 건다 — 클릭이 아무 일도 안 했는데
+    *화면에 이미 그 글자가 있어서* 한 줄이 통과했다.
 - **`bindUI()` 에 배선을 더하면 `test_frontend.js` 의 `WIRING` 목록에도 넣는다.**
   2026-09-14 정기 점검에서 **배선 18개를 지워도 688건이 전부 통과**했다 — 검색창·패널 닫기·
   탭 전환·타임라인 슬라이더·새로고침·아카이브 불러오기가 통째로 죽어도 테스트는 초록이었다.

@@ -2550,6 +2550,296 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("취소된 계산은 화면을 덮지 않는다", el("sidebar-list").innerHTML, before);
 }
 
+// ── 동적 배선을 실제로 눌러 본다 (P39) ───────────────────────────────────────
+// `bindUI()` 의 배선은 P23-1 이후 전수로 잰다(WIRING·PRESSES). 그런데 **화면을 그리면서
+// 붙는 배선**(`innerHTML` 로 만든 버튼에 그 자리에서 `addEventListener`)은 한 번도 전수로
+// 재지 않았다. 2026-09-23 에 25개를 하나씩 무력화해 봤더니 **22개가 전부 초록으로
+// 통과**했다 — 관심 버튼 · 임박 발사 카드의 버튼 셋 · 관측 위치 팝오버 전부 · 위성
+// 그룹/대역/종류/소유국 체크박스 · 통계의 발사 행 · 상세 패널의 링크 · 업데이트 배지 ·
+// 오프라인 배지 · 오류 배너 닫기 · 발사대 목록 행이 **통째로 죽어도 아무 테스트도
+// 실패하지 않았다.**
+//
+// 여기서는 그 배선들을 **실제로 눌러** 효과까지 단언한다. 누르는 것만으로는 모자라다
+// (P12-23) — 무엇이 바뀌었는지를 본다.
+(async () => {
+  const mkLaunch = (over) => Object.assign({
+    id: "L1", name: "테스트 발사", net: "2026-09-25T00:00:00Z", outcome: "upcoming",
+    lat: 28.5, lng: -80.5, location_name: "Cape Canaveral", provider: "SpaceX",
+    rocket: "Falcon 9", net_precision: "Second",
+  }, over || {});
+
+  // ── 임박 발사 카드 (focus.js) — 닫기 · 중계 · 발사장 보기 ───────────────────
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("동적 배선: 임박 발사 카드 (P39)");
+    state.map = map; map.stubSource("launches");
+    const d = mkLaunch({ vid_urls: [{ url: "https://example.com/live", title: "생중계" }] });
+    state.allLaunches = [d];
+    ctx.renderFocus(d);
+
+    check("닫기 전에는 이 발사가 걸러지지 않는다", ctx.pickFocusLaunch([d], Date.parse(d.net) - 60000, state.focusDismissed) != null, true);
+    el("focus-close").fire("click", {});
+    check("✕ 를 누르면 그 발사를 다시 안 띄운다",
+      ctx.pickFocusLaunch([d], Date.parse(d.net) - 60000, state.focusDismissed), null);
+
+    ctx.renderFocus(d);
+    let opened = null;
+    api.open_url = (u) => { opened = u; return true; };
+    const vb = el("focus-live-btn");
+    if (vb.handlers.click) vb.fire("click", {});
+    check("▶ 중계 버튼은 외부 브라우저로 보낸다", opened != null, true);
+
+    el("focus-open").fire("click", {});
+    check("`발사장 보기` 는 상세 패널을 연다", el("panel").classList.contains("hidden"), false);
+  }
+
+  // ── 관심 버튼 (favorites.js) ────────────────────────────────────────────────
+  {
+    const { ctx, state, el, map } = loadApp();
+    group("동적 배선: 관심 버튼 (P39)");
+    state.map = map;
+    for (const src of ["launches", "launch-heat", "launch-track", "sats"]) map.stubSource(src);
+    const host = el("panel-body");
+    host.innerHTML = ctx.favBtnHtml("launch", "L1");
+    ctx.bindFavBtn(host);
+    check("처음에는 관심이 아니다", ctx.isFavLaunch("L1"), false);
+    el("fav-btn").fire("click", {});
+    check("누르면 관심에 들어간다", ctx.isFavLaunch("L1"), true);
+    el("fav-btn").fire("click", {});
+    check("다시 누르면 빠진다", ctx.isFavLaunch("L1"), false);
+
+    // 위성 쪽도 같은 버튼을 쓴다 — 분기가 뒤바뀌면 발사가 위성 목록에 들어간다(P28-2)
+    host.innerHTML = ctx.favBtnHtml("sat", "25544");
+    ctx.bindFavBtn(host);
+    el("fav-btn").fire("click", {});
+    check("위성 버튼은 위성 관심으로 간다", ctx.isFavSat("25544"), true);
+    check("발사 관심은 건드리지 않는다", ctx.isFavLaunch("25544"), false);
+  }
+
+  // ── 관측 위치 팝오버 (observer.js) — 검색 · 결과 행 · 좌표 · 지도 · 해제 ────
+  {
+    const { ctx, state, el, map } = loadApp();
+    group("동적 배선: 관측 위치 팝오버 (P39)");
+    state.map = map;
+    state.allLaunches = [mkLaunch({ location_name: "Cape Canaveral" })];
+    ctx.openObsPopover();
+
+    // 검색창 입력 → 결과 목록이 그려진다
+    const search = el("obs-search");
+    search.value = "Cape";
+    search.fire("input", {});
+    check("검색창에 치면 결과가 그려진다", el("obs-results").innerHTML.includes("obs-row"), true);
+
+    // 결과 행 클릭 → 관측지가 정해진다
+    const rows = ctx.searchPlaces("Cape", state.allLaunches);
+    check("검색이 실제로 한 곳을 찾았다", rows.length > 0, true);
+    const rowStub = el("obs-row-stub");
+    rowStub.dataset.i = "0";
+    el("obs-results").sel[".obs-row"] = [rowStub];
+    ctx.renderObsResults("Cape");            // 다시 그려 배선을 건다
+    rowStub.fire("click", {});
+    check("결과를 누르면 관측지가 정해진다", state.observer != null, true);
+    check("고르면 팝오버가 닫힌다", el("obs-popover").classList.contains("hidden"), true);
+
+    // 좌표 직접 입력
+    ctx.openObsPopover();
+    const coord = el("obs-coord");
+    coord.value = "37.5665, 126.978";
+    coord.fire("change", {});
+    check("좌표를 넣으면 그 자리로 정해진다",
+      state.observer && Math.round(state.observer.lat), 38);
+
+    // 잘못된 좌표는 사람 말로 되돌려준다(설정은 그대로)
+    ctx.openObsPopover();
+    const before = state.observer;
+    el("obs-coord").value = "여기요";
+    el("obs-coord").fire("change", {});
+    check("못 읽는 좌표는 안내만 한다", el("obs-coord-msg").textContent.includes("두 숫자"), true);
+    check("못 읽었으면 관측지를 바꾸지 않는다", state.observer, before);
+
+    // 지도에서 클릭 — 팝오버를 닫고 지도 선택 모드로
+    ctx.openObsPopover();
+    el("obs-map-btn").fire("click", {});
+    check("`지도에서 클릭` 은 팝오버를 닫는다", el("obs-popover").classList.contains("hidden"), true);
+
+    // 해제 — 관측지가 있을 때만 버튼이 그려진다
+    ctx.openObsPopover();
+    check("관측지가 있으면 해제 버튼이 그려진다",
+      el("obs-popover").innerHTML.includes("obs-clear-btn"), true);
+    el("obs-clear-btn").fire("click", {});
+    check("해제를 누르면 관측지가 사라진다", state.observer, null);
+  }
+
+  // ── 위성 필터 체크박스 (satfilter.js) — 그룹 · 대역 · 종류 · 소유국 ─────────
+  await (async () => {
+    const { ctx, state, el, map, api, sel } = loadApp();
+    group("동적 배선: 위성 필터 체크박스 (P39)");
+    state.map = map; map.stubSource("sats");
+
+    // **배선은 `initSatGroups()` 가 건다** — 핸들러를 직접 부르면 그 줄이 죽어도 안 잡힌다.
+    let saved = null;
+    api.save_settings = (patch) => { saved = patch; return {}; };
+    api.get_satellite_groups = async () => ([
+      { key: "stations", label: "우주정거장", cap: 0 },
+      { key: "visual", label: "눈에 띄는 것", cap: 0 },
+    ]);
+    const grp = el("satg-stations");
+    grp.value = "stations"; grp.checked = true;
+    const band = el("satb-leo");
+    band.value = "leo"; band.checked = false;
+    el("sat-groups").sel[".satg"] = [grp];
+    el("sat-groups").sel[".satb"] = [band];
+    el("sat-facets").sel[".satt"] = [];
+    el("sat-facets").sel[".sato"] = [];
+    sel[".satg:checked"] = [grp];   // onSatGroupChange 가 document 에서 찾는다
+    await ctx.initSatGroups();
+    check("그룹 체크박스에 change 가 붙는다", !!grp.handlers.change, true);
+    check("대역 체크박스에도 붙는다", !!band.handlers.change, true);
+
+    grp.fire("change", {});
+    check("그룹을 바꾸면 선택이 상태로 들어간다", state.satGroups, ["stations"]);
+    check("그룹 변경은 설정으로 저장된다", !!(saved && saved.satellites), true);
+
+    band.fire("change", {});
+    check("대역을 끄면 상태에 반영된다", state.satBands.leo, false);
+
+    // 종류(satt)·소유국(sato) — renderFacetFilters 가 배선을 건다
+    const t = el("satt-1");
+    t.value = "PAYLOAD"; t.checked = false; t.dataset.facet = "type";
+    el("sat-facets").sel[".satt"] = [t];
+    const o = el("sato-1");
+    o.value = "US"; o.checked = false; o.dataset.facet = "owner";
+    el("sat-facets").sel[".sato"] = [o];
+    ctx.renderFacetFilters();
+    check("종류 체크박스에 change 가 붙는다", !!t.handlers.change, true);
+    check("소유국 체크박스에도 붙는다", !!o.handlers.change, true);
+    let threw = null;
+    try { t.fire("change", {}); o.fire("change", {}); } catch (e) { threw = String(e); }
+    check("눌러도 예외가 나지 않는다", threw, null);
+  })();
+
+  // ── 통계 패널의 링크 (stats.js) · 상세 패널의 링크 (panels.js) ──────────────
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("동적 배선: 패널 안의 링크 (P39)");
+    state.map = map; map.stubSource("launches");
+    const d = mkLaunch({ vid_urls: [{ url: "https://example.com/v", title: "생중계" }] });
+    state.allLaunches = [d];
+
+    // **배선을 거는 것은 `showStats()` 가 아니라 `showEntityStats()`** 다(관점 화면).
+    // 처음에는 `showStats()` 를 불러 놓고 단언했는데, 배선이 안 붙으니 클릭이 아무 일도
+    // 안 하고 — 그런데도 한 줄은 **통과했다**(이미 화면에 그 글자가 있었다). 거짓 통과다.
+    const row = el("site-row-1");
+    row.dataset.id = "L1";
+    el("stats-panel").sel[".site-row"] = [row];
+    el("stats-panel").sel[".site-link"] = [];
+    ctx.showEntityStats("provider", "SpaceX");
+    check("관점 화면이 배선을 건다", !!row.handlers.click, true);
+    row.fire("click", {});
+    check("관점 화면의 발사 행은 상세를 연다", el("panel").classList.contains("hidden"), false);
+    check("그 패널은 닫힌다(한 번에 하나 · P36-1)",
+      el("stats-panel").classList.contains("hidden"), true);
+
+    // 계열로 올라가는 링크 — 같은 패널을 다시 그린다(닫지 않는다)
+    const link = el("site-link-1");
+    link.dataset.kind = "rocket"; link.dataset.val = "Falcon 9";
+    el("stats-panel").sel[".site-row"] = [];
+    el("stats-panel").sel[".site-link"] = [link];
+    ctx.showEntityStats("provider", "SpaceX");
+    check("계열 링크에도 배선이 붙는다", !!link.handlers.click, true);
+    el("stats-body").innerHTML = "";
+    link.fire("click", {});
+    check("누르면 그 계열의 관점 화면을 다시 그린다",
+      el("stats-body").innerHTML.includes("Falcon 9"), true);
+
+    // 상세 패널 → 중계 링크는 외부 브라우저로
+    let opened = null;
+    api.open_url = (u) => { opened = u; return true; };
+    const vid = el("vid-btn-1");
+    vid.dataset.url = "https://example.com/v";
+    el("panel-body").sel[".vid-btn, .up-link"] = [vid];
+    el("panel-body").sel[".site-link"] = [];
+    ctx.openPanel(d);
+    vid.fire("click", {});
+    check("상세의 중계 버튼은 외부 브라우저로 보낸다", opened, "https://example.com/v");
+
+    // 상세 패널 → 관점 진입 링크
+    const plink = el("panel-site-link");
+    plink.dataset.kind = "provider"; plink.dataset.val = "SpaceX";
+    el("panel-body").sel[".vid-btn, .up-link"] = [];
+    el("panel-body").sel[".site-link"] = [plink];
+    ctx.openPanel(d);
+    plink.fire("click", {});
+    check("상세의 기관 링크는 관점 화면을 연다",
+      el("stats-body").innerHTML.includes("SpaceX"), true);
+  }
+
+  // ── 발사대 목록 행 (launches.js) ────────────────────────────────────────────
+  {
+    const { ctx, state, el, map } = loadApp();
+    group("동적 배선: 발사대 목록 행 (P39)");
+    state.map = map; map.stubSource("launches");
+    state.allLaunches = [mkLaunch(), mkLaunch({ id: "L2", name: "두 번째" })];
+    const row = el("pad-row-1");
+    row.dataset.id = "L2";
+    el("panel-body").sel[".pad-row"] = [row];
+    const n = ctx.openPadList(28.5, -80.5);
+    check("같은 발사장의 발사를 모은다", n >= 2, true);
+    row.fire("click", {});
+    check("행을 누르면 그 발사의 상세로 간다",
+      el("panel-body").innerHTML.includes("두 번째"), true);
+  }
+
+  // ── 배지·배너 닫기 (map.js · update.js · errors.js) ─────────────────────────
+  {
+    const { ctx, state, el, map, api } = loadApp();
+    group("동적 배선: 배지·배너 (P39)");
+    state.map = map;
+    ctx.setupOfflineBadge();
+    ctx.setOfflineBadge(true);
+    check("오프라인 배지가 떴다", el("offline-badge").classList.contains("hidden"), false);
+    el("offline-badge").fire("click", {});
+    check("누르면 닫힌다", el("offline-badge").classList.contains("hidden"), true);
+    ctx.setOfflineBadge(true);
+    check("닫은 뒤에는 다시 안 뜬다", el("offline-badge").classList.contains("hidden"), true);
+
+    // 업데이트 배지 — 본문을 누르면 릴리스 페이지, ✕ 는 그 버전만 접는다
+    let opened = null;
+    api.open_url = (u) => { opened = u; return true; };
+    ctx.bindUpdateBadge();
+    const info = { latest: "v9.9.9", current: "1.0.0", update_available: true,
+                   url: "https://example.com/release" };
+    // 클릭 핸들러가 읽는 것은 **배지에 넘긴 값이 아니라 전역** `latestUpdateInfo` 다
+    // (평소에는 `initUpdateCheck` 가 세운다) — 그걸 안 세우면 눌러도 아무 일이 없다.
+    state.latestUpdateInfo = info;
+    ctx.setUpdateBadge(info);
+    el("update-badge").fire("click", { target: { classList: { contains: () => false } } });
+    check("배지 본문을 누르면 릴리스 페이지를 연다", opened, "https://example.com/release");
+    el("update-badge").fire("click", { target: { classList: { contains: (c) => c === "ub-close" } } });
+    check("✕ 는 배지를 접는다", el("update-badge").classList.contains("hidden"), true);
+
+    // 오류 배너 닫기
+    ctx.reportError("테스트", "무언가 잘못됐습니다");
+    check("오류 배너가 떴다", el("app-error").classList.contains("hidden"), false);
+    el("app-error-close").fire("click", {});
+    check("배너 닫기가 듣는다", el("app-error").classList.contains("hidden"), true);
+  }
+
+  // ── "오늘 밤" 탭의 관측지 지정 버튼 (sidebar.js) ────────────────────────────
+  {
+    const { ctx, state, el, map } = loadApp();
+    group("동적 배선: 오늘 밤 탭의 관측지 버튼 (P39)");
+    state.map = map;
+    state.observer = null;                 // 관측지가 없어야 안내와 버튼이 그려진다
+    ctx.renderTonightList();
+    check("관측지가 없으면 지정 버튼을 그린다",
+      el("sidebar-list").innerHTML.includes("tonight-obs-btn"), true);
+    el("tonight-obs-btn").fire("click", {});
+    check("그 버튼은 관측 위치 팝오버를 연다",
+      el("obs-popover").classList.contains("hidden"), false);
+  }
+})();
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ───────────────────────────────────────
 // 상세·통과 예측·통계는 같은 클래스(`.panel`)라 **자리가 완전히 같다**(겹침 320x394).
 // 여는 쪽이 나머지를 안 닫아서, **통계를 연 채 발사를 클릭하면** 상세가 열리는데도
