@@ -6220,7 +6220,44 @@ function fresh2(ctx, key, t) {
     check("늦게 온 옛 응답은 버린다(화면이 되돌아가지 않는다)",
       state.allLaunches.map((d) => d.id), ["a", "b"]);
     check("사이드바 수도 새 응답 기준이다", el("sidebar-count").textContent, "2건");
-    done(1427);   // 건수 하한 — 2026-09-24 실측
+
+    // ── 타이머를 다시 걸 때 이전 것을 지우는가 (전면 감사 F-018) ──────────────
+    // `if (timer) clearInterval(timer)` 여덟 줄을 뒤집어도 1,427건이 전부 초록이었다.
+    // 지워지지 않으면 같은 타이머가 겹쳐 돈다 — 카운트다운 2배속·위성 계산 2배, 오래 켜 둘수록 무겁다.
+    // 첫 호출이 **정말 타이머를 만들었는지**도 잰다 — 안 만들었으면 "안 늘었다"가 공허하다.
+    group("타이머 재무장 — 이전 것을 지운다 (F-018)");
+    const rearm = (label, prep, call, kind = "all") => {
+      const app = loadApp();
+      app.state.map = app.map;
+      prep(app);
+      const live = () => (kind === "timeouts" ? app.timers.timeouts() : app.timers.all()).length;
+      const before = live();
+      call(app);
+      const once = live();
+      call(app);
+      check(`${label}: 첫 호출이 타이머를 만든다`, once > before, true);
+      check(`${label}: 두 번 불러도 살아 있는 타이머가 늘지 않는다`, live(), once);
+    };
+    const upcoming = { id: "u", name: "곧", outcome: "upcoming", lat: 0, lng: 0,
+      net: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
+    rearm("집중 화면", () => {}, (a) => a.ctx.startFocusTimer());
+    rearm("자동 갱신", () => {}, (a) => a.ctx.startAutoRefresh());
+    rearm("티커", (a) => { a.state.launches = [upcoming]; a.state.allLaunches = [upcoming]; },
+      (a) => a.ctx.startTicker());
+    rearm("위성 위치 루프", () => {}, (a) => a.ctx.startSatelliteLoop());
+    rearm("업데이트 재확인", () => {}, (a) => a.ctx.startUpdateRecheck());
+    rearm("위성 궤적", () => {}, (a) => a.ctx.selectSatellite({ norad: "1", name: "x" }));
+    rearm("지도 위치 저장(디바운스)", () => {}, (a) => a.ctx.scheduleCameraSave(), "timeouts");
+    {
+      const app = loadApp();
+      app.state.map = app.map;
+      app.ctx.selectSatellite({ norad: "1", name: "x" });
+      const withTrack = app.timers.every(30000).length;
+      app.ctx.deselectSatellite();
+      check("위성 선택 해제: 궤적 타이머가 있었다", withTrack, 1);
+      check("위성 선택 해제: 궤적 타이머를 지운다", app.timers.every(30000).length, 0);
+    }
+    done(1443);   // 건수 하한 — 2026-09-24 실측(1427 + F-018 의 16)
   })();
 }
 

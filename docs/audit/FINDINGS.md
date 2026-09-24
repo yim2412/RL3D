@@ -211,7 +211,7 @@
 - 대상: build.bat, README.md, CLAUDE.md
 - 요약: 단일 파일 배포의 편의와 onedir 의 시작 속도·프로세스 단순함의 교환. 바꾸려면 시작 시간을 먼저 잰다.
 
-### F-018 · 영역: 회귀 · 상태: 미처리
+### F-018 · 영역: 회귀 · 상태: 완료
 - 위치: `web/js/focus.js:100` — `if (focusTimer) clearInterval(focusTimer);`
 - 근거: 실측 — if-js 변이(격리 사본, 536개 중 생존 26): 타이머 재무장 가드 8줄을 뒤집어도 test_frontend 1,427건 전부 초록. focus.js:100 · launches.js:479 · launches.js:555 · sats.js:252 · sattrack.js:144 · sattrack.js:153 · update.js:52 · map.js:11(clearTimeout).
 - 이력: [신규] — P41 은 타이머 **등록과 주기**를 쟀고 **재무장 시 이전 것 해제**는 안 쟀다
@@ -221,6 +221,7 @@
 - 수정비용: 소
 - 대상: tests/test_frontend.js
 - 요약: 리소스 누수 영역을 PASS 로 본 근거가 이 가드들인데, **가드가 사라져도 아무 테스트도 실패하지 않는다**. 사라지면 같은 타이머가 겹쳐 돌아(카운트다운 2배속·위성 위치 계산 2배) 오래 켜 둘수록 무거워진다. 하네스 `timers.every(ms)` 로 잴 수 있다.
+- 결과: test_frontend 에 16건(시작 함수 7종 × {첫 호출이 타이머를 만든다 · 두 번 불러도 안 는다} + 선택 해제 2). 가드 8줄을 하나씩 뒤집어 8/8 FAIL 확인. 하한 1427 → 1443.
 
 ### F-019 · 영역: 회귀 · 상태: 미처리
 - 위치: `web/js/panels.js:249` — `if (!vids.length) return "";`
