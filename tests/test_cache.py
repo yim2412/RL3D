@@ -1282,6 +1282,19 @@ class TestRequestGate(CacheTestBase):
         self.assertEqual(len(res["launches"]), 2)
         self.assertIsNone(res["error"])
 
+    def test_force_right_after_fetch_with_skewed_mtime_uses_cache(self):
+        # CI(windows-latest)에서만 나던 실패의 재현(2026-09-24, 8893d9d 빨강). 쓰자마자 읽은
+        # 수정 시각이 ms 단위로 미래면 나이가 음수인데, 강제 갱신 문턱은 `0 <= age` 로 비교해
+        # 캐시를 안 쓰고 다시 요청했다. F-012 후속에서 "음수를 0 으로" 줄을 동치라며 뺀 탓이다 —
+        # TTL 비교에서는 동치였지만 이 비교에서는 아니었다.
+        self.serve(_page(2), _page(0))
+        api_client.get_launches()
+        skewed = time.time() + 0.05
+        os.utime(api_client._cache_path("launches.json"), (skewed, skewed))
+        n = len(self.calls)
+        api_client.get_launches(force=True)
+        self.assertEqual(len(self.calls), n, "수정 시각이 ms 미래인 방금 받은 캐시를 강제 갱신이 무시했다")
+
     def test_force_during_backoff_is_once_per_interval(self):
         self.fail_with(self.E429)
         api_client.get_launches()

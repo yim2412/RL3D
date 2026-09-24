@@ -190,6 +190,11 @@ def _cache_read(name, any_schema=False):
             # 수정 시각이 미래(시계를 되돌렸거나 다른 PC 에서 복사) — 음수 나이는 모든 TTL 보다
             # 작아 그 차이만큼 '영원히 신선'했다(F-012). 나이를 모르는 것으로 본다.
             age = None
+        elif age < 0:
+            # 허용 폭 안의 음수(시계 정밀도 차이)는 '방금 쓴 것'이다. 음수로 두면 TTL 비교는
+            # 통과하지만 강제 갱신 문턱(`0 <= age`)에서 빠져 다시 요청한다 — 한때 이 줄을
+            # "동치"라며 뺐다가 CI 가 빨갰다(2026-09-24).
+            age = 0
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except (OSError, ValueError) as e:
