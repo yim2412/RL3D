@@ -306,6 +306,24 @@ class TestArchive(CacheTestBase):
         api_client.get_archive(year)
         self.assertGreater(len(self.calls), n, "올해 아카이브가 갱신되지 않았다")
 
+    def test_current_year_fresh_cache_makes_no_request(self):
+        # 경계 변이(2026-09-24): `year >= 올해` 를 `>` 로 바꾸면 올해가 '지난 연도'로 분류되고,
+        # 올해 받은 캐시는 '해가 끝난 뒤 받은 것'일 수 없어 **부를 때마다 다시 요청**한다.
+        # 만료만 재던 테스트(위)로는 안 잡혔다 — 신선한 쪽을 따로 잰다.
+        year = time.gmtime().tm_year
+        self.serve(_page(2))
+        api_client.get_archive(year)
+        n = len(self.calls)
+        api_client.get_archive(year)
+        self.assertEqual(len(self.calls), n, "받은 지 얼마 안 된 올해 아카이브를 다시 받았다")
+
+    def test_capped_walk_waits_only_between_pages(self):
+        # 경계 변이: `pages < max_pages` 를 `<=` 로 바꾸면 **마지막 페이지 뒤에** 한 번 더 잔다.
+        # 요청 수는 같아 캡 테스트로는 안 보인다 — 대기 횟수로 잰다.
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
+        api_client.get_archive(2018)
+        self.assertEqual(self.sleep_mock.call_count, api_client.ARCHIVE_MAX_PAGES - 1)
+
     def test_page_cap_stops_the_walk(self):
         # next 가 끝없이 이어지는 응답 — 캡이 없으면 여기서 무한 요청이 된다.
         self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
@@ -1122,6 +1140,18 @@ class TestAuditMutationGaps(CacheTestBase):
         bad = [n for n in os.listdir(os.path.dirname(api_client.SETTINGS_PATH)) if n.endswith(".bad.json")]
         self.assertEqual(bad, [], "쓰는 중 한 번 반쪽을 읽었다고 멀쩡한 설정을 치웠다")
         self.assertEqual(got.get("observer"), {"lat": 1.0})
+
+    def test_settings_read_waits_only_between_attempts(self):
+        # 경계 변이: `attempt < FILE_RETRIES - 1` 을 `<=` 로 바꾸면 마지막 시도 뒤에도 잔다 —
+        # 시작 때 설정 읽기가 그만큼 늦어질 뿐 결과는 같아 다른 테스트로는 안 보였다.
+        api_client.save_settings({"a": 1})
+        def locked(*a, **k):
+            raise PermissionError("잠김")
+        with mock.patch.object(builtins, "open", locked), \
+             mock.patch.object(api_client.time, "sleep") as sl:
+            data, ok = api_client._read_settings()
+        self.assertEqual((data, ok), ({}, False))
+        self.assertEqual(sl.call_count, api_client.FILE_RETRIES - 1)
 
     def test_delay_between_every_page_pair(self):
         """2페이지로는 '사이에만'과 '끝에 한 번'이 같은 1회라 못 가른다 — 3페이지로 잰다."""

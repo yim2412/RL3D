@@ -6330,6 +6330,45 @@ function fresh2(ctx, key, t) {
   }
 }
 {
+  // ── 경계 — `<` 와 `<=` 한 칸 차이 (2026-09-24, 공용 도구의 boundary 프리셋) ──────
+  // 121줄 중 77줄이 한 칸 옮겨도 초록이었다. 대부분은 실수(시각·고도·각도) 비교라 정확히
+  // 같은 값에서만 갈리는 **동치**다. 여기 잰 것은 **정수이고 경계값이 실제로 나오는** 자리다 —
+  // 연도 선택지 개수, 슬라이더 끝(100), 정확히 60분짜리 윈도우, 목록이 정확히 상한만큼일 때.
+  group("경계 — 한 칸 차이로 바뀌는 값 (boundary 변이)");
+  const { ctx, state, el } = loadApp();
+  const agoMin = (m) => new Date(Date.now() - m * 60000 - 1000).toISOString();
+
+  ctx.populateArchiveYears();
+  check("아카이브 연도는 올해 포함 5년", el("arch-year").children.length, 5);
+
+  state.tlMin = Date.UTC(2026, 0, 1);
+  state.tlMax = Date.UTC(2026, 0, 1) + 40 * 86400000;
+  el("tl-range").value = "100";
+  ctx.applyFilters = () => {};   // 여기선 기준(timelineMax)만 잰다 — 지도 반영은 위 P12-16 이 잰다
+  ctx.onTimeline(true);
+  check("슬라이더 끝(100)은 '전체 기간' — 먼 미래 발사를 자르지 않는다",
+    [state.timelineMax, el("tl-label").textContent], [null, "전체 기간"]);
+
+  check("딱 60분·24시간 전은 한 단위 위로",
+    [ctx.agoText(agoMin(60)), ctx.agoText(agoMin(24 * 60))], ["1시간 전", "1일 전"]);
+  check("정확히 1,000 은 t·MN 으로", [ctx.fmtQty(1000, "kg"), ctx.fmtQty(1000, "kN")], ["1 t", "1 MN"]);
+  check("정확히 60분짜리 윈도우는 '1시간'",
+    /\(1시간\)$/.test(ctx.windowText({ window_start: "2026-05-01T10:00:00Z", window_end: "2026-05-01T11:00:00Z" })), true);
+  check("하루가 안 남은 카운트다운에는 '0일' 이 붙지 않는다",
+    /^T-\d\d:\d\d:\d\d$/.test(ctx.countdown(new Date(Date.now() + 3600 * 1000).toISOString())), true);
+  check("극점·날짜변경선 좌표는 유효하다",
+    [ctx.validLatLng(-90, 180), ctx.validLatLng(90, -180)], [true, true]);
+
+  const cap = state.SIDEBAR_CAP;
+  state.satrecs = Array.from({ length: cap }, (_, i) => ({ norad: String(i + 1), name: "S" + i, band: "leo" }));
+  el("sat-search").value = "";
+  ctx.renderSatList();
+  check("목록이 정확히 상한만큼이면 '…외 N개' 를 내지 않는다", el("sidebar-list").innerHTML.includes("…외"), false);
+  state.satrecs = state.satrecs.concat([{ norad: "99999", name: "넘침", band: "leo" }]);
+  ctx.renderSatList();
+  check("상한을 넘으면 '…외 1개'", el("sidebar-list").innerHTML.includes("…외 1개"), true);
+}
+{
   // P26-2 — 늦게 온 옛 응답이 화면을 되돌리면 안 된다. `renderTonightList()` 는 이미
   // 같은 규칙을 갖고 있었고 발사 로더에만 없었다.
   const pending = [];
@@ -6392,7 +6431,7 @@ function fresh2(ctx, key, t) {
       check("위성 선택 해제: 궤적 타이머가 있었다", withTrack, 1);
       check("위성 선택 해제: 궤적 타이머를 지운다", app.timers.every(30000).length, 0);
     }
-    done(1469);   // 건수 하한 — 2026-09-24 실측(1427 + F-018 의 16 + F-019 의 26)
+    done(1478);   // 건수 하한 — 2026-09-24 실측(1427 + F-018 의 16 + F-019 의 26 + 경계 9)
   })();
 }
 
