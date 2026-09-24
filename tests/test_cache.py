@@ -1339,6 +1339,19 @@ class TestAuditLowFixes(CacheTestBase):
         api_client.get_launches()
         self.assertGreater(len(self.calls), n, "미래 시각 캐시를 신선하다고 봤다")
 
+    def test_just_written_cache_with_skewed_mtime_is_fresh(self):
+        # CI(windows-latest)에서 **쓰자마자 읽은 수정 시각이 몇 ms 미래**로 나와 F-012 의
+        # 방어에 걸렸다 — 신선한 캐시를 버리고 다시 요청해 ca1a834·5bcec63 CI 가 빨갰다
+        # (로컬은 2,000회 중 0회로 재현 안 됨). 파일 시각은 거친 시스템 틱, time.time() 은
+        # 정밀 시계라 생기는 차이다. 작은 차이는 '방금 쓴 것'으로 본다.
+        self.serve(_page(2), _page(0))
+        api_client.get_launches()
+        skewed = time.time() + 0.05
+        os.utime(api_client._cache_path("launches.json"), (skewed, skewed))
+        n = len(self.calls)
+        api_client.get_launches()
+        self.assertEqual(len(self.calls), n, "방금 쓴 캐시를 수정 시각의 ms 차이로 버렸다")
+
     def test_foreign_next_url_is_not_followed(self):
         with mock.patch("time.sleep"):
             self.serve(_page(1, next_url="file:///C:/Windows/win.ini"))
