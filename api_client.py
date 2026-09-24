@@ -181,6 +181,10 @@ def _cache_read(name, any_schema=False):
     path = _cache_path(name)
     try:
         age = time.time() - os.path.getmtime(path)
+        if age < 0:
+            # 수정 시각이 미래(시계를 되돌렸거나 다른 PC 에서 복사) — 음수 나이는 모든 TTL 보다
+            # 작아 그 차이만큼 '영원히 신선'했다(F-012). 나이를 모르는 것으로 본다.
+            age = None
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except (OSError, ValueError) as e:
@@ -521,6 +525,12 @@ def _fetch_launch_pages(url, max_pages):
         payload = _ll2_payload(url)
         launches.extend(api_parsing._parse_launches(payload))
         url = payload.get("next")
+        if url and not str(url).startswith(LL2_BASE + "/"):
+            # 원격이 준 URL 을 그대로 따라가지 않는다 — urllib 은 file:// 도 연다(F-013).
+            # 잘린 것으로 표시해 화면이 '이게 전부'라고 말하지 않게 한다.
+            log.warning("아카이브 next 가 LL2 밖을 가리킨다 — 따라가지 않는다: %.80s", url)
+            pages += 1
+            break
         pages += 1
         if url and pages < max_pages:
             time.sleep(ARCHIVE_PAGE_DELAY)
@@ -544,7 +554,8 @@ def _clean_groups(value, default):
     except TypeError:
         log.warning("그룹 선택을 다룰 수 없어 무시했다: %r", value)
         return []
-    return [g for g in items if g in SATELLITE_GROUP_CATALOG]
+    # 문자열만 — `{}`·`[]` 같은 원소는 `in` 에서 unhashable TypeError 로 위성 로드를 죽였다(F-010)
+    return [g for g in items if isinstance(g, str) and g in SATELLITE_GROUP_CATALOG]
 
 
 def _archive_year(value):
@@ -566,12 +577,12 @@ def _archive_year(value):
 
 
 def get_archive(year, force=False):
-    year_raw = year
     """한 연도의 발사를 정규화해 반환.
 
     반환: {"launches": [...], "year": int, "stale": bool, "error": str|None}
-    지난 연도는 영구 캐시(만료 없음), 올해는 6시간 TTL. 실패 시 캐시 폴백.
+    지난 연도는 영구 캐시(해가 끝난 뒤 받은 것만 — F-003), 올해는 6시간 TTL. 실패 시 캐시 폴백.
     """
+    year_raw = year
     year = _archive_year(year)
     if year is None:
         # **던지지 않는다.** 브릿지 너머에서 온 값이라 무엇이든 올 수 있고, 예외는
@@ -866,7 +877,9 @@ if __name__ == "__main__":
 
     # 업데이트 확인(P12-12): **소스 도달 여부만** 잰다. 현재 버전은 앱(main.py)이 넘기는
     # 것이라 여기서 읽지 않는다 — main 을 import 하면 스모크가 webview(GUI)에 딸려간다.
-    r = check_update("0.0.0")
+    # 캐시(TTL 하루)를 우회한다 — 이 줄로 "릴리스가 밀렸나"를 판정하는데, 캐시를 읽으면
+    # 릴리스 직후 하루 동안 밀리지 않았는데 밀렸다고 말한다(전면 감사 F-007). GitHub 1회.
+    r = check_update("0.0.0", force=True)
     if r["error"] and not r["latest"]:
         print(f"[FAIL] update - {r['error']}")
     else:

@@ -405,6 +405,43 @@ class TestLegacyCacheCleanup(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestRestoredGeometry(unittest.TestCase):
+    """저장된 창 상태 복원 판정 (전면 감사 F-011·F-021).
+
+    `_run()` 안에 있을 때는 조건을 뒤집어도 아무 테스트도 실패하지 않았고, `window` 가
+    dict 가 아니면 매 실행 크래시 안내가 떴다. 순수 함수로 떼어 창 없이 잰다.
+    """
+    PRIMARY = [(0, 0, 1920, 1040)]
+    f = staticmethod(lambda *a: main_mod.restored_geometry(*a))
+
+    def test_size_and_position_are_restored(self):
+        self.assertEqual(self.f({"width": 1000, "height": 700, "x": 50, "y": 60}, 1280, 800, None, None,
+                                lambda: self.PRIMARY), (1000, 700, 50, 60))
+
+    def test_wrong_shapes_fall_back_to_defaults_without_raising(self):
+        for bad in ("창", ["x"], 3, None, {"width": "1000", "height": 700}, {"width": True, "height": 700}):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.f(bad, 1280, 800, None, None, lambda: self.PRIMARY)[:2], (1280, 800))
+
+    def test_offscreen_position_is_ignored(self):
+        got = self.f({"x": 5000, "y": 60}, 1280, 800, None, None, lambda: self.PRIMARY)
+        self.assertEqual(got[2:], (None, None), "보이지 않는 자리에 창을 띄웠다")
+
+    def test_unknown_monitors_trust_saved_position(self):
+        got = self.f({"x": 5000, "y": 60}, 1280, 800, None, None, lambda: None)
+        self.assertEqual(got[2:], (5000, 60))
+
+    def test_dev_position_is_not_overridden(self):
+        """개발 모니터 위치(x 가 이미 정해짐)는 저장된 위치로 덮지 않는다."""
+        got = self.f({"x": 50, "y": 60}, 1280, 800, 3000, 10, lambda: self.PRIMARY)
+        self.assertEqual(got[2:], (3000, 10))
+
+    def test_monitors_are_read_only_when_restoring_position(self):
+        called = []
+        self.f({"width": 900, "height": 600}, 1280, 800, None, None, lambda: called.append(1))
+        self.assertEqual(called, [], "위치를 복원하지 않는데 모니터를 읽었다(느린 호출)")
+
+
 class TestWindowVisibility(unittest.TestCase):
     """창 위치 복원 방어 — 모니터를 떼면 창이 안 보이는 자리에 뜨던 문제."""
 
@@ -792,7 +829,7 @@ def main():
     sys.exit(0 if res.wasSuccessful() else 1)
 
 
-MIN_TESTS = 100
+MIN_TESTS = 106
 
 
 class TestPadTimezone(unittest.TestCase):

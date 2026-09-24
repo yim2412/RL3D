@@ -178,6 +178,32 @@ class Api:
         return "pong"
 
 
+def _is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)   # True 는 int 이지만 창 크기가 아니다
+
+
+def restored_geometry(saved, width, height, x, y, areas_fn):
+    """저장된 창 상태 → (width, height, x, y). **순수 판정** — 창 없이 테스트가 잰다.
+
+    전면 감사: 이 판정이 창을 띄우는 `_run()` 안에 있어 **조건을 뒤집어도 아무 테스트도
+    실패하지 않았다**(F-021), 그리고 `window` 가 dict 가 아니면(손으로 고친 설정)
+    `.get` 에서 죽어 **매 실행 크래시 안내**가 떴다(F-011).
+    `areas_fn` 은 모니터 영역을 읽는 함수 — 위치를 복원할 때만 부른다(비싸다).
+    """
+    if not isinstance(saved, dict):
+        return width, height, x, y
+    if _is_int(saved.get("width")) and _is_int(saved.get("height")):
+        width, height = saved["width"], saved["height"]
+    if x is None and _is_int(saved.get("x")) and _is_int(saved.get("y")):
+        # 보조 모니터에서 창을 옮긴 뒤 그 모니터를 떼면 저장된 좌표가 어느 화면에도
+        # 없는 자리가 된다 — 그대로 복원하면 창이 보이지 않는 곳에 떠서 앱이 안 뜬
+        # 것처럼 보인다. 못 읽는 환경(areas is None)에선 판단하지 않고 그대로 쓴다.
+        areas = areas_fn()
+        if areas is None or _rect_visible(saved["x"], saved["y"], width, height, areas):
+            x, y = saved["x"], saved["y"]
+    return width, height, x, y
+
+
 def _run():
     """창을 띄우는 본체. 시작 중 예외는 main() 이 잡아 안내한다."""
     api = Api()
@@ -191,19 +217,9 @@ def _run():
     x, y = dev_window_pos(width, height)
 
     # 개발 모니터 지정이 없을 때만 저장된 창 상태를 복원(P8-9). dev 위치는 저장 안 함.
-    saved_win = {}
     if not dev_mode:
-        saved_win = api_client.load_settings().get("window") or {}
-        if isinstance(saved_win.get("width"), int) and isinstance(saved_win.get("height"), int):
-            width, height = saved_win["width"], saved_win["height"]
-        if x is None and isinstance(saved_win.get("x"), int) and isinstance(saved_win.get("y"), int):
-            # 보조 모니터에서 창을 옮긴 뒤 그 모니터를 떼면 저장된 좌표가 어느 화면에도
-            # 없는 자리가 된다 — 그대로 복원하면 창이 보이지 않는 곳에 떠서 앱이 안 뜬
-            # 것처럼 보인다. 못 읽는 환경(areas is None)에선 판단하지 않고 그대로 쓴다.
-            areas = _monitor_areas()
-            if areas is None or _rect_visible(saved_win["x"], saved_win["y"],
-                                              width, height, areas):
-                x, y = saved_win["x"], saved_win["y"]
+        width, height, x, y = restored_geometry(
+            api_client.load_settings().get("window"), width, height, x, y, _monitor_areas)
 
     kwargs = dict(
         url=resource_path(os.path.join("web", "index.html")),

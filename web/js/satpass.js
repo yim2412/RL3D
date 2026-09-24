@@ -305,7 +305,8 @@ function dropPastPasses(rows, nowMs) {
   });
 }
 
-/** 끝까지 한 번에 돌린다 — 테스트와, 대상이 적을 때의 경로. */
+/** 끝까지 한 번에 돌린다 — **테스트 전용 기준 구현**. 앱은 나눠 도는 경로만 쓴다(P19-0);
+ *  테스트가 두 경로의 결과가 같은지 대조하는 데 쓴다(전면 감사 F-009: 주석이 앱 경로라 말했다). */
 function computeTonight(obs, hours = TONIGHT_HOURS, stepSec = 30, now = null) {
   const job = tonightJob(obs, hours, stepSec, now);
   while (!job.step(Infinity)) { /* 한 번에 끝난다 */ }

@@ -308,18 +308,18 @@ class TestArchive(CacheTestBase):
 
     def test_page_cap_stops_the_walk(self):
         # next 가 끝없이 이어지는 응답 — 캡이 없으면 여기서 무한 요청이 된다.
-        self.serve(_page(1, next_url="https://ll/next"))
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
         res = api_client.get_archive(2018)
         self.assertEqual(len(self.calls), api_client.ARCHIVE_MAX_PAGES)
         self.assertEqual(len(res["launches"]), api_client.ARCHIVE_MAX_PAGES)
 
     def test_truncated_flag_when_capped(self):
         # P12-6: 캡에 걸린 사실이 화면까지 가야 한다. 없으면 "그 해는 이게 전부"로 읽힌다.
-        self.serve(_page(1, next_url="https://ll/next"))
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
         self.assertTrue(api_client.get_archive(2018)["truncated"])
 
     def test_not_truncated_when_walk_ends(self):
-        self.serve(_page(1, next_url="https://ll/p2"), _page(1, next_url=None, tag="p2"))
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/p2"), _page(1, next_url=None, tag="p2"))
         res = api_client.get_archive(2017)
         self.assertFalse(res["truncated"], "끝까지 받았는데 잘렸다고 했다")
         self.assertEqual(len(res["launches"]), 2)
@@ -327,7 +327,7 @@ class TestArchive(CacheTestBase):
     def test_truncated_is_remembered_in_cache(self):
         # 캐시에서 꺼내 쓸 때도 잘림 표시가 남아야 한다 — 두 번째 실행부터 조용해지면
         # "처음 열었을 때만 경고가 뜨는" 더 나쁜 모양이 된다.
-        self.serve(_page(1, next_url="https://ll/next"))
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
         api_client.get_archive(2013)
         self.calls.clear()
         again = api_client.get_archive(2013)
@@ -336,7 +336,7 @@ class TestArchive(CacheTestBase):
 
     def test_delay_between_pages_only(self):
         # 마지막 페이지 뒤에는 자지 않는다(멈춘 것처럼 보이는 시간을 늘리지 않는다).
-        self.serve(_page(1, next_url="https://ll/p2"), _page(1, next_url=None, tag="p2"))
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/p2"), _page(1, next_url=None, tag="p2"))
         api_client.get_archive(2016)
         self.assertEqual(self.sleep_mock.call_count, 1)
 
@@ -1125,7 +1125,7 @@ class TestAuditMutationGaps(CacheTestBase):
 
     def test_delay_between_every_page_pair(self):
         """2페이지로는 '사이에만'과 '끝에 한 번'이 같은 1회라 못 가른다 — 3페이지로 잰다."""
-        self.serve(_page(1, next_url="https://ll/p2"), _page(1, next_url="https://ll/p3", tag="p2"),
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/p2"), _page(1, next_url=api_client.LL2_BASE + "/p3", tag="p2"),
                    _page(1, next_url=None, tag="p3"))
         with mock.patch.object(api_client.time, "sleep") as sl:
             api_client.get_archive(2016)
@@ -1322,7 +1322,32 @@ class TestArchiveYearEnd(CacheTestBase):
         self.assertEqual(len(self.calls), n)
 
 
-MIN_TESTS = 111   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
+class TestAuditLowFixes(CacheTestBase):
+    """전면 감사 낮음 묶음 — F-010 · F-012 · F-013."""
+
+    def test_non_string_groups_are_dropped_not_raised(self):
+        self.serve(TestSatelliteGroups.TLE)
+        res = api_client.get_satellites(groups=[{}, ["a"], "stations", 3])
+        self.assertEqual(res["groups"], ["stations"])
+
+    def test_future_mtime_is_not_fresh_forever(self):
+        self.serve(_page(2), _page(0))
+        api_client.get_launches()
+        future = time.time() + 3 * 86400
+        os.utime(api_client._cache_path("launches.json"), (future, future))
+        n = len(self.calls)
+        api_client.get_launches()
+        self.assertGreater(len(self.calls), n, "미래 시각 캐시를 신선하다고 봤다")
+
+    def test_foreign_next_url_is_not_followed(self):
+        with mock.patch("time.sleep"):
+            self.serve(_page(1, next_url="file:///C:/Windows/win.ini"))
+            res = api_client.get_archive(2016)
+        self.assertEqual(len(self.calls), 1, "LL2 밖의 next 를 따라갔다")
+        self.assertTrue(res["truncated"], "멈췄는데 '이게 전부'라고 말한다")
+
+
+MIN_TESTS = 114   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":
