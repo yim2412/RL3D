@@ -6195,6 +6195,141 @@ function fresh2(ctx, key, t) {
   })();
 }
 {
+  // ── 조건 18줄 — 뒤집어도 1,443건이 전부 초록이던 자리 (전면 감사 F-019) ──────────
+  // 한 줄씩 동치 변이인지 따졌고 **동치는 없었다**: 뒤집으면 정상 입력에서 결과가 바뀐다
+  // (중계 링크가 있을 때 오히려 사라진다 · 시간대 이름이 빈 문자열이 된다 · 소유국 통계가
+  // 빈다 · 속보 띠가 5초가 아니라 매초 넘어간다 …). 각 단언은 **정상 입력**에서 잰다.
+  group("조건 분기 — 뒤집으면 바뀌는 값 (F-019)");
+  const future = (h) => new Date(Date.now() + h * 3600 * 1000).toISOString();
+  const past = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+
+  { // keys.js — closeOverlay("help") 는 도움말을 닫는다
+    const { ctx, el } = loadApp();
+    ctx.toggleKeyHelp(true);
+    ctx.closeOverlay("help");
+    check("Esc 로 단축키 도움말을 닫는다", el("keyhelp").hidden, true);
+  }
+  { // launches.js — 속보 띠: 예정 2건마다 결과 1건 · 지난 예정은 건너뜀 · 5초마다 넘김
+    const { ctx, state, el, timers } = loadApp();
+    const up = (n, h) => ({ id: n, name: n, outcome: "upcoming", net: future(h) });
+    const res = (n, h) => ({ id: n, name: n, outcome: "success", net: past(h) });
+    state.launches = [up("u1", 1), up("u2", 2), up("u3", 3), up("u4", 4),
+                      res("r1", 1), res("r2", 2), res("r3", 3)];
+    check("속보 띠 순서 — 예정 둘마다 결과 하나, 남은 결과는 뒤에",
+      ctx.buildTickerItems().map((x) => x.d.id), ["u1", "u2", "r1", "u3", "u4", "r2", "r3"]);
+
+    const a = up("알파호", 1), b = up("베타호", 2);
+    state.launches = [a, b];
+    ctx.startTicker();
+    const text = () => el("ticker-text").innerHTML;
+    for (let i = 0; i < 4; i++) timers.run(1000);
+    check("속보 띠 — 4초까지는 첫 항목에 머문다", text().includes("알파호"), true);
+    timers.run(1000);
+    check("속보 띠 — 5초째에 다음 항목으로 넘어간다", text().includes("베타호"), true);
+    for (let i = 0; i < 5; i++) timers.run(1000);   // 한 바퀴 돌아 다시 알파호
+    a.net = past(0.1);                               // 카운트다운이 끝났다
+    timers.run(1000);
+    check("속보 띠 — 카운트다운이 끝난 예정 항목은 건너뛴다", text().includes("베타호"), true);
+  }
+  { // panels.js — 제원 통산 · 중계 · 소식 · 지도 이동
+    const { ctx, state, map } = loadApp();
+    const rec = (sp) => ctx.rocketSpecBlock({ rocket_spec: sp });
+    check("통산 — 성공 수가 있으면 적는다", rec({ total: 10, success: 9, fail: 1 }).includes("성공 9"), true);
+    check("통산 — 성공 수가 없으면 적지 않는다", rec({ total: 3 }).includes("성공"), false);
+    check("중계 링크가 있으면 버튼을 그린다",
+      ctx.vidLinksBlock({ vid_urls: [{ url: "https://x.test/v", title: "생중계" }] }).includes("vid-btn"), true);
+    check("중계 링크가 없으면 아무것도 안 그린다", ctx.vidLinksBlock({}), "");
+    check("발사 소식이 있으면 그린다",
+      ctx.updatesBlock({ updates: [{ comment: "연기됨", created_on: past(1) }] }).includes("연기됨"), true);
+    check("발사 소식이 없으면 아무것도 안 그린다", ctx.updatesBlock({ updates: [] }), "");
+    state.map = map;
+    ctx.openPanel({ id: "g1", name: "좌표 있음", outcome: "upcoming", net: future(5), lat: 28.5, lng: -80.6 });
+    const flew = map.moves().filter((m) => m[0] === "flyTo");
+    check("상세를 열면 그 발사장으로 이동한다", flew.length === 1 && flew[0][1].center, [-80.6, 28.5]);
+    ctx.openPanel({ id: "g2", name: "좌표 없음", outcome: "upcoming", net: future(5) });
+    check("좌표 없는 발사는 이동하지 않는다", map.moves().filter((m) => m[0] === "flyTo").length, 1);
+  }
+  { // satfilter.js — 종류·소유국 구역 · 필터 뒤 즉시 위치 갱신
+    const { ctx, state, el } = loadApp();
+    state.satrecs = [{ norad: "1", name: "A", band: "leo" }];
+    state.satcat = { 1: { type: "PAYLOAD" } };   // 소유국 없음
+    ctx.renderFacetFilters();
+    const h = el("sat-facets").innerHTML;
+    check("메타가 있는 구역은 체크박스를 그린다", h.includes('class="satt"'), true);
+    check("메타가 없는 구역은 제목도 남기지 않는다", h.includes("소유국"), false);
+
+    let redraws = 0;
+    ctx.updateSatellitePositions = () => { redraws++; };
+    state.sidebarTab = "launches";
+    // 두 경우를 **따로** 센다 — 합쳐 세면 뒤집어도 합이 1로 같아 못 잡는다(처음에 그렇게 썼다).
+    state.satTimer = 7;
+    ctx.applySatFilter();
+    const whileRunning = redraws;
+    state.satTimer = null;
+    ctx.applySatFilter();
+    check("필터를 바꾸면 루프가 돌 때만 위치를 바로 다시 그린다", [whileRunning, redraws - whileRunning], [1, 0]);
+  }
+  { // satpanel.js — 매초 갱신은 값 줄만 바꾼다
+    const app = loadApp();
+    let opened = 0;
+    app.ctx.openSatPanel = () => { opened++; };
+    app.ctx.satRowsHtml = () => "값줄";
+    app.ctx.refreshSatPanel({ norad: "1" });
+    check("위성 상세 갱신 — 값 줄이 있으면 그것만 갈아끼운다",
+      [app.el("sat-rows").innerHTML, opened], ["값줄", 0]);
+    const gone = loadApp({ missing: ["sat-rows"] });
+    let reopened = 0;
+    gone.ctx.openSatPanel = () => { reopened++; };
+    gone.ctx.refreshSatPanel({ norad: "1" });
+    check("위성 상세 갱신 — 값 줄이 없으면 패널을 새로 연다", reopened, 1);
+  }
+  { // satpass.js — 빈 결과 안내 · "오늘 밤"은 보이는 통과만
+    const { ctx, state, el } = loadApp();
+    const t0 = Date.now() + 3600 * 1000;
+    const pass = (vis) => ({ visible: vis, start: t0, end: t0 + 300000, startAz: 0, endAz: 90, maxEl: 40 });
+    state.selectedSat = { norad: "1", name: "A", rec: {} };
+    state.observer = { lat: 37.5, lng: 127 };
+    ctx.computePasses = () => [];
+    ctx.showPasses();
+    check("통과가 없으면 없다고 말한다", el("pass-body").innerHTML.includes("pass-empty"), true);
+    ctx.computePasses = () => [pass(true)];
+    ctx.showPasses();
+    check("통과가 있으면 빈 안내를 내지 않는다",
+      [el("pass-body").innerHTML.includes("pass-empty"), el("pass-body").innerHTML.includes("pass-row")], [false, true]);
+
+    ctx.sunTable = () => [];
+    ctx.tonightTargets = () => [{ name: "A", norad: "1", rec: {} }];
+    ctx.computePasses = () => [pass(true), pass(false), pass(false)];
+    const job = ctx.tonightJob(state.observer);
+    job.step();
+    check("오늘 밤 — 눈에 보이는 통과만 담는다", job.result().length, 1);
+  }
+  { // sats.js — 위성을 끄면 위치 루프를 멈춘다
+    const { ctx, state, map, timers } = loadApp();
+    state.map = map;
+    state.sidebarTab = "launches";
+    state.satTimer = ctx.setInterval(() => {}, 1000);
+    ctx.setSatelliteVisible(false);
+    check("위성을 끄면 위치 루프를 멈춘다", [timers.every(1000).length, state.satTimer], [0, null]);
+  }
+  { // stats.js — 국가별 집계
+    const { ctx } = loadApp();
+    const s = ctx.computeStats([
+      { outcome: "success", provider_country: "USA" },
+      { outcome: "success", provider_country: "USA" },
+      { outcome: "success", provider_country: "" },
+    ]);
+    check("국가별 집계(빈 값 제외)", s.byCountry, { [ctx.countryKo("USA")]: 2 });
+  }
+  { // utils.js — 시간대 이름
+    const { ctx, state } = loadApp();
+    state.timeZoneMode = "local";
+    check("현지 모드 이름이 비어 있지 않다(TZ=Asia/Seoul)", ctx.tzName().length > 0, true);
+    check("발사장 시간대의 짧은 이름", ctx.zoneShortName("2026-01-01T00:00:00Z", "Asia/Shanghai"), "GMT+8");
+    check("시간대가 없으면 빈 문자열", ctx.zoneShortName("2026-01-01T00:00:00Z", ""), "");
+  }
+}
+{
   // P26-2 — 늦게 온 옛 응답이 화면을 되돌리면 안 된다. `renderTonightList()` 는 이미
   // 같은 규칙을 갖고 있었고 발사 로더에만 없었다.
   const pending = [];
@@ -6257,7 +6392,7 @@ function fresh2(ctx, key, t) {
       check("위성 선택 해제: 궤적 타이머가 있었다", withTrack, 1);
       check("위성 선택 해제: 궤적 타이머를 지운다", app.timers.every(30000).length, 0);
     }
-    done(1443);   // 건수 하한 — 2026-09-24 실측(1427 + F-018 의 16)
+    done(1469);   // 건수 하한 — 2026-09-24 실측(1427 + F-018 의 16 + F-019 의 26)
   })();
 }
 
