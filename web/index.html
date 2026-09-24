@@ -100,7 +100,7 @@
 
   <!-- 상세 패널 -->
   <aside id="panel" class="panel hidden">
-    <button id="panel-close" class="panel-close">✕</button>
+    <button id="panel-close" class="panel-close" title="닫기 (Esc)" aria-label="닫기">✕</button>
     <div id="panel-scope" class="panel-scope hidden"></div>
     <div id="panel-body"></div>
   </aside>
@@ -121,7 +121,7 @@
 
   <!-- 통과 예측 패널 -->
   <aside id="pass-panel" class="panel hidden">
-    <button id="pass-close" class="panel-close">✕</button>
+    <button id="pass-close" class="panel-close" title="닫기 (Esc)" aria-label="닫기">✕</button>
     <label class="pass-filter" title="관측자가 어둡고 위성이 햇빛을 받는 통과만">
       <input type="checkbox" id="toggle-visible-only" checked> 눈에 보이는 통과만
     </label>
@@ -130,7 +130,7 @@
 
   <!-- 발사 통계 패널 -->
   <aside id="stats-panel" class="panel hidden">
-    <button id="stats-close" class="panel-close">✕</button>
+    <button id="stats-close" class="panel-close" title="닫기 (Esc)" aria-label="닫기">✕</button>
     <div id="stats-body"></div>
   </aside>
 
@@ -144,7 +144,7 @@
        문구는 errors.js 가 textContent 로만 넣는다(그래서 XSS 가 구조적으로 막힌다). -->
   <div id="app-error" class="app-error hidden">
     <span id="app-error-text"></span>
-    <button id="app-error-close" class="app-error-close">✕</button>
+    <button id="app-error-close" class="app-error-close" title="오류 알림 닫기" aria-label="오류 알림 닫기">✕</button>
   </div>
 
   <script src="lib/maplibre-gl.js"></script>

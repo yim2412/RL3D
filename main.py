@@ -25,7 +25,7 @@ weblog = logging.getLogger("rl3d.web")
 
 WEB_LOG_MAX_CHARS = 2000   # JS 가 보내는 한 건의 상한(브릿지 입력은 신뢰하지 않는다)
 
-__version__ = "1.64.0"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.64.1"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):

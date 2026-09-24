@@ -110,6 +110,30 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("제어 문자가 든 파일", bad, []);
 }
 
+// ── 아이콘만 있는 버튼에는 이름이 있다 (P52) ──────────────────────────────────
+// 2026-09-24 실측: 버튼 43개 중 닫기(✕) 넷이 `title`·`aria-label` 없이 글자 하나뿐이었다 —
+// 화면 읽기 프로그램은 "버튼"이라고만 읽고 마우스를 올려도 설명이 안 뜬다. 같은 앱의 다른
+// 닫기 버튼(`sat-ctrl-close`·`focus-close`)에는 있었다. 한쪽만 고친 자리는 조용히 남는다.
+{
+  group("아이콘 버튼의 이름");
+  const srcs = [["web/index.html", HTML]].concat(JS_FILES.map((f) => ["web/js/" + f, read("web/js/" + f)]));
+  let total = 0;
+  const bad = [];
+  for (const [f, s] of srcs) {
+    const re = /<button\b([^>]*)>([\s\S]*?)<\/button>/g;
+    let m;
+    while ((m = re.exec(s))) {
+      total++;
+      const inner = m[2].replace(/<[^>]+>/g, "").replace(/\$\{[^}]*\}/g, "X").trim();
+      const named = /\b(title|aria-label)=/.test(m[1]);
+      if (!named && !/[A-Za-z가-힣0-9X]/.test(inner)) bad.push(f + " " + (m[1].match(/id="([^"]+)"/) || [, inner])[1]);
+    }
+  }
+  // 버튼을 못 찾으면 이름 없는 버튼도 0개로 초록이다 — 찾은 수부터 단언한다
+  check("버튼을 충분히 찾았다(정규식이 빗나가면 검사가 공허하다)", total >= 30, true);
+  check("글자·숫자 없이 기호뿐인데 이름도 없는 버튼", bad, []);
+}
+
 // ── 버전: 세 곳이 같은 버전을 말한다 ────────────────────────────────────────
 {
   group("버전 표기");
@@ -153,4 +177,4 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   }
 }
 
-done(24);   // 건수 하한 — 2026-09-24 실측(+ 제어 문자 2)
+done(26);   // 건수 하한 — 2026-09-24 실측(+ 제어 문자 2 + 아이콘 버튼 2)
