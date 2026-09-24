@@ -28,6 +28,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
+| `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지** 대조(P50). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
@@ -344,6 +345,8 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 **이틀 만에 10개가 다시 밀렸다**(2026-09-14 실측: 태그 `v1.22.1` · 코드 `v1.32.0`).
 정리는 일회성이었고 원인은 그대로였다 — 버전을 올릴 때 태그를 안 붙이니 또 쌓인다.
 
+- **빌드한 뒤 `python tools/check_exe.py` 가 전부 `[OK]` 인지 본다**(P50). 빌드 성공은 번들이 들어갔다는 뜻이
+  아니다 — `--add-data` 가 틀려도 exe 는 만들어지고 실행하면 빈 창이다. CI 의 `build` 잡도 같은 것을 돈다.
 - **`main.py` 의 `__version__` 을 올리는 커밋에는 annotated 태그를 같이 붙여 푸시한다.**
   형식은 `vX.Y.Z — 한 줄 요약 (Pnn-n)`.
 - **밀렸는지는 `python api_client.py` 스모크가 말해 준다** — `[OK] update - 최신 릴리스 vX.Y.Z`

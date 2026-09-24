@@ -3,8 +3,9 @@
 # windows-latest 를 쓴다 — 이 앱은 Windows 데스크톱 exe 이고, startup.py 는 winreg 로
 # WebView2 를 감지한다. 리눅스에서 도는 초록은 실제 배포 환경을 대변하지 못한다.
 #
-# 두 테스트 모두 네트워크가 필요 없다(픽스처·스텁 DOM 기반) → exe 빌드나 API 호출 없이
-# 그대로 올라간다. 빌드(build.bat)는 CI 에 넣지 않았다 — 필요가 생기면 그때.
+# 테스트는 네트워크가 필요 없다(픽스처·스텁 DOM 기반) → API 호출 없이 그대로 올라간다.
+# 빌드는 `build` 잡이 따로 돈다(P50) — 처음엔 "필요가 생기면 그때"로 뺐는데, 2026-09-24 에
+# build.bat 이 깨진 채 세 커밋·약 7시간 동안 CI 가 초록이었다. 그게 그 필요다.
 name: tests
 
 on:
@@ -79,3 +80,24 @@ jobs:
         # [FAIL] 로 끝난다. 그건 앱의 실패가 아니라 러너의 사실이고, 감지 로직 자체는
         # 레지스트리 리더를 주입하는 테스트가 이미 덮는다.
         run: python applog.py
+
+  build:
+    # exe 가 **만들어지는지**와 **무엇이 들어갔는지**를 잰다(P50). 뜨는지는 못 잰다 —
+    # 러너에 WebView2 가 없다(로컬 exe 스모크의 몫). 테스트 잡과 따로 두어 한쪽이
+    # 빨개도 다른 쪽 결과가 가려지지 않게 한다.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"   # 릴리스 exe 를 만드는 로컬 venv 와 같은 부 버전
+          cache: pip
+
+      - name: exe 빌드 (build.bat)
+        shell: cmd
+        run: build.bat
+
+      - name: 번들 대조 (web 전부 + 라이선스 전문)
+        run: .venv\Scripts\python.exe tools\check_exe.py dist\RL3D.exe
