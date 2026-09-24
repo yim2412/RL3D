@@ -64,3 +64,7 @@
 | `web/js/update.js` | 보안(배지 이스케이프) · 리소스 누수 · 정적 스캔 전수 | 훑음 |
 | `web/js/utils.js` | 보안(escapeHtml) · 정적 스캔 전수 | 훑음 |
 | `web/style.css` | UI(ui-top 스캔) | 훑음 |
+| `THIRD_PARTY_LICENSES.txt` | 라이선스(F-016 산출물) | 정독 |
+| `tools/build_licenses.py` | 라이선스(F-016) | 정독 |
+| `tools/licenses/maplibre-gl-js.LICENSE.txt` | 라이선스 원문 | 정독 |
+| `tools/licenses/satellite-js.LICENSE.md` | 라이선스 원문 | 정독 |

@@ -20,8 +20,11 @@ echo [2/3] Installing dependencies...
 if errorlevel 1 goto :err
 
 echo [3/3] Building exe...
+REM Third-party license texts ship inside the exe (audit F-016).
+"%PY%" toolsuild_licenses.py
+if errorlevel 1 goto :err
 REM web folder is bundled and loaded via _MEIPASS (resource_path).
-"%PY%" -m PyInstaller --noconfirm --onefile --windowed --name RL3D --add-data "web;web" main.py
+"%PY%" -m PyInstaller --noconfirm --onefile --windowed --name RL3D --add-data "web;web" --add-data "THIRD_PARTY_LICENSES.txt;." main.py
 if errorlevel 1 goto :err
 
 echo.

@@ -252,7 +252,9 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 
 [MIT](LICENSE)
 
-번들된 서드파티 라이브러리는 각자의 라이선스를 따른다 — MapLibre GL JS(BSD-3-Clause), satellite.js(MIT).
+번들된 서드파티 라이브러리는 각자의 라이선스를 따른다 — MapLibre GL JS(BSD-3-Clause), satellite.js(MIT),
+그리고 exe 에 함께 들어가는 파이썬 패키지(pywebview·pythonnet 등). **전문은 [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt)**
+에 있고 exe 안에도 함께 들어간다(`tools/build_licenses.py` 가 빌드 때 생성).
 발사/위성 데이터는 각 제공처(thespacedevs, Celestrak)의 이용 조건을 따른다.
 
 ## 파일 구조

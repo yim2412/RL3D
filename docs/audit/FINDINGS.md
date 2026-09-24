@@ -196,7 +196,7 @@
 - 대상: web/index.html, web/js/*.js
 - 요약: 방어 한 겹을 더할지의 결정. XSS 가 뚫려도 브릿지로 할 수 있는 일은 설정 덮어쓰기·http(s) 링크 열기 정도다. 출처: 독립 리뷰 발견 8.
 
-### F-016 · 영역: 라이선스·귀속 · 상태: 미처리
+### F-016 · 영역: 라이선스·귀속 · 상태: 완료
 - 위치: `build.bat:24` — `--add-data "web;web" main.py`
 - 근거: 인용 — MapLibre(BSD-3)는 바이너리 재배포에 저작권 고지·조건·면책을 배포물과 함께 요구한다. 번들 JS 헤더에는 전문 대신 URL 만 있고, exe 에는 라이선스 파일이 없다. README 에는 이름만 있다.
 - 이력: [신규]
@@ -206,6 +206,7 @@
 - 수정비용: 소
 - 대상: build.bat, README.md (또는 THIRD_PARTY_LICENSES 파일)
 - 요약: 판단용 숫자 — 필요한 전문 2개(MapLibre BSD-3, satellite.js MIT) · 추가 크기 수 KB. 릴리스 페이지에 붙일지 exe 에 넣을지 결정.
+- 결과: `THIRD_PARTY_LICENSES.txt`(609줄) — JS 2 · Natural Earth · Python 런타임 · exe 에 실제로 들어간 파이썬 패키지 8개(`build/RL3D/PYZ-00.toc` 로 확인). `tools/build_licenses.py` 가 생성하고 `build.bat` 이 exe 에 넣는다(`--check` 로 번들 목록 대조). README 라이선스 절 갱신. exe 안에 들어갔는지는 수정 판 끝 빌드에서 확인한다.
 
 ### F-017 · 영역: 빌드·배포물 · 상태: 미처리
 - 위치: `build.bat:24` — `--onefile --windowed --name RL3D`
