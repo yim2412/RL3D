@@ -89,6 +89,27 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("CI 워크플로에 빠진 테스트", ciMusts.filter((c) => !ci.includes(c)), []);
 }
 
+// ── 제어 문자: 셸에서 파일을 쓰다 백슬래시가 먹힌 흔적 ─────────────────────────
+// 이 PC 의 Bash 는 **인용 heredoc 에서도** `\b` 를 백스페이스(0x08)로 바꾼다. 2026-09-24 에
+// `build.bat` 의 `tools\build_licenses.py` 가 `tools<0x08>uild_licenses.py` 로 커밋돼
+// **빌드가 깨진 채** 사흘치 커밋을 지나갔다(빌드를 안 돌려 몰랐다). 문서 둘에도 같은 흔적이 있었다.
+// 사람이 기억하는 규칙(메모리)은 이미 있었는데 네 번째로 당했다 — 그래서 여기서 잰다.
+{
+  group("텍스트 파일에 제어 문자가 없다");
+  const EXT = /\.(py|js|bat|md|json|html|css|txt|yml|spec)$/;
+  const SKIP = new Set(["node_modules", ".venv", "build", "dist", "lib", ".git", "__pycache__"]);
+  const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+    const rel = dir ? dir + "/" + e.name : e.name;
+    if (e.isDirectory()) return SKIP.has(e.name) ? [] : walk(rel);
+    return EXT.test(e.name) ? [rel] : [];
+  });
+  const files = walk("");
+  // 목록이 비면 검사도 0건으로 초록이다 — 대상 수를 먼저 단언한다
+  check("훑은 파일이 충분하다(대상이 비면 검사가 공허하다)", files.length > 40, true);
+  const bad = files.filter((f) => /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(read(f)));
+  check("제어 문자가 든 파일", bad, []);
+}
+
 // ── 버전: 세 곳이 같은 버전을 말한다 ────────────────────────────────────────
 {
   group("버전 표기");
@@ -132,4 +153,4 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   }
 }
 
-done(22);   // 건수 하한 — 2026-09-24 실측
+done(24);   // 건수 하한 — 2026-09-24 실측(+ 제어 문자 2)
