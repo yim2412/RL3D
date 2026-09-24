@@ -362,8 +362,14 @@ def load_settings():
 
     **못 읽은 것과 없는 것을 구분해야 하면 `_read_settings()` 를 쓴다** —
     이 함수의 빈 dict 는 그 둘을 합쳐 버린다. 저장 경로가 그래서 저쪽을 쓴다.
+
+    **읽기도 `_settings_lock` 을 거친다**(전면 감사 F-022). 저장이 `os.replace` 하는 순간
+    다른 브릿지 스레드가 읽으면 Windows 가 파일을 잠가 PermissionError 가 나고, 재시도
+    3회(60ms)가 바닥나면 **설정이 통째로 빈 것으로** 보였다 — 테스트 100회 중 4회 실측.
+    한 프로세스 안의 겹침은 이걸로 없어진다(다른 프로세스는 여전히 재시도가 막는다).
     """
-    return _read_settings()[0]
+    with _settings_lock:
+        return _read_settings()[0]
 
 
 # 읽고-고치고-쓰기를 한 번에 하나만 하게 한다(P22-3).
