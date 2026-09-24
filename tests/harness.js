@@ -392,8 +392,15 @@ function check(name, got, want) {
   else { results.fail++; console.log(`  FAIL ${name}\n         got  ${JSON.stringify(got)}\n         want ${JSON.stringify(want)}`); }
 }
 
-function done() {
+// minPass — 건수 하한(전면 감사 2026-09-24). 주입·수집이 조용히 실패하면 검사가
+// **0건으로 통과**한다 — 이 프로젝트에서 도구가 그렇게 여러 번 틀렸다. 테스트를 지웠으면
+// 하한도 같이 내린다(그게 의도한 삭제인지 한 번 묻게 하려는 것).
+function done(minPass) {
   console.log(`\n${results.pass} passed, ${results.fail} failed`);
+  if (minPass && results.pass < minPass) {
+    console.log(`FAIL 건수 하한: ${results.pass} < ${minPass} — 검사가 빠졌거나 주입이 실패했다`);
+    process.exit(1);
+  }
   process.exit(results.fail ? 1 : 0);
 }
 

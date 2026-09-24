@@ -429,7 +429,8 @@ function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverfl
 const edge = findEdge();
 if (!edge) {
   console.log("Edge 를 찾지 못해 레이아웃 테스트를 건너뜁니다 (" + os.platform() + ")");
-  process.exit(0);
+  // CI(windows-latest)에는 Edge 가 있다 — 거기서 건너뛰면 0건 통과가 되므로 실패로 친다.
+  process.exit(process.env.CI ? 1 : 0);
 }
 
 let pass = 0;
@@ -464,3 +465,5 @@ for (const c of CASES) {
 
 console.log("\n" + pass + " passed, " + failures.length + " failed");
 if (failures.length) process.exit(1);
+const MIN_PASS = 52;   // 건수 하한 — 2026-09-24 실측. 주입 치환이 실패하면 0건 초록이 된다
+if (pass < MIN_PASS) { console.log(`FAIL 건수 하한: ${pass} < ${MIN_PASS}`); process.exit(1); }

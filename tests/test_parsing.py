@@ -250,6 +250,48 @@ class LaunchParsing(unittest.TestCase):
         self.assertEqual(out[0]["outcome"], "success")
 
 
+def _key_paths(obj, prefix=""):
+    """정규화 결과의 필드 경로 집합 — 값이 아니라 **모양**만."""
+    out = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.add(prefix + k)
+            out |= _key_paths(v, prefix + k + ".")
+    elif isinstance(obj, list):
+        for v in obj:
+            out |= _key_paths(v, prefix + "[].")
+    return out
+
+
+class SchemaShapeGuard(unittest.TestCase):
+    """정규화 결과의 모양이 바뀌면 `CACHE_SCHEMA` 도 바뀌어야 한다(전면 감사 2026-09-24).
+
+    안 올리면 **지난 연도 아카이브는 TTL 이 없어 영구**라 새 필드가 영원히 안 채워진다 —
+    2026-09-12 에 실제로 당했다(필드 넷). 골든 비교는 값이 바뀐 것만 알고 **스키마를 올렸는지는
+    모른다**. 백테스트(docs/audit/backtest.py)에서 이 사건을 어떤 도구도 못 잡았다.
+
+    모양이나 스키마가 바뀌면 여기가 빨개진다 → 스키마를 올렸는지 확인하고 `--update`.
+    """
+
+    def shape(self):
+        launches = (api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_upcoming.json")))
+                    + api_parsing._parse_launches(_read_json(os.path.join(FIXTURES, "ll2_previous.json"))))
+        tle = api_parsing._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
+        satcat = api_parsing._parse_satcat(_read_text(os.path.join(FIXTURES, "celestrak_satcat.csv")))
+        return {"launch": sorted(_key_paths(launches)), "tle": sorted(_key_paths(tle)),
+                "satcat": sorted(_key_paths(list(satcat.values())))}
+
+    def test_shape_change_requires_schema_bump(self):
+        now = {"schema": api_client.CACHE_SCHEMA, "shape": self.shape()}
+        rec = _golden("schema_shape.json", now, UPDATE)
+        if now["shape"] != rec["shape"] and now["schema"] == rec["schema"]:
+            added = {k: sorted(set(now["shape"][k]) - set(rec["shape"][k])) for k in now["shape"]}
+            removed = {k: sorted(set(rec["shape"][k]) - set(now["shape"][k])) for k in now["shape"]}
+            self.fail(f"정규화 결과의 모양이 바뀌었는데 CACHE_SCHEMA({now['schema']}) 를 안 올렸다 — "
+                      f"추가 {added} · 제거 {removed}. 올린 뒤 --update")
+        self.assertEqual(now, rec, "스키마나 모양이 바뀌었다 — 의도한 것이면 --update 로 기록을 갱신한다")
+
+
 class TleParsing(unittest.TestCase):
     def test_tle_matches_golden(self):
         parsed = api_parsing._parse_tle(_read_text(os.path.join(FIXTURES, "celestrak_stations.txt")))
@@ -741,7 +783,16 @@ def main():
     if "--update" in argv:
         UPDATE = True
         argv.remove("--update")
-    unittest.main(argv=argv, exit=True)
+    res = unittest.main(argv=argv, exit=False).result
+    # 건수 하한(전면 감사 2026-09-24 실측) — 수집이 조용히 비면 0건으로 통과한다.
+    # 인자로 일부만 골라 돌릴 때는 하한을 보지 않는다.
+    if len(argv) == 1 and res.testsRun < MIN_TESTS:
+        print(f"FAIL 건수 하한: {res.testsRun} < {MIN_TESTS}")
+        sys.exit(1)
+    sys.exit(0 if res.wasSuccessful() else 1)
+
+
+MIN_TESTS = 100
 
 
 class TestPadTimezone(unittest.TestCase):

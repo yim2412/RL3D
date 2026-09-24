@@ -1,0 +1,82 @@
+[
+ {
+  "check": "innerHTML",
+  "where": "web/js/favorites.js",
+  "max": 3,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/focus.js",
+  "max": 3,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/launches.js",
+  "max": 5,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/observer.js",
+  "max": 1,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/panels.js",
+  "max": 33,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/satfilter.js",
+  "max": 5,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/satpanel.js",
+  "max": 1,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/satpass.js",
+  "max": 1,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/sidebar.js",
+  "max": 16,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "innerHTML",
+  "where": "web/js/stats.js",
+  "max": 10,
+  "사유": "감사(2026-09-24) 시점 기준선 — 전수 분류는 docs/audit/FINDINGS.md. 늘면 FAIL, 줄면 상한을 내린다"
+ },
+ {
+  "check": "endpoint-location",
+  "where": "startup.py|https://developer.microsoft.com/microsoft-edge/webview2/\\n\\n",
+  "사유": "API 엔드포인트가 아니라 사용자에게 보여 주는 설치 안내 문구 속 주소"
+ },
+ {
+  "check": "endpoint-location",
+  "where": "tools/build_ne_land.py|https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_",
+  "사유": "앱이 아니라 개발용 생성 도구(P17-2). 결과물만 커밋되고 런타임에 부르지 않는다"
+ },
+ {
+  "check": "endpoint-location",
+  "where": "web/js/map.js|https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/",
+  "사유": "지도 타일은 MapLibre 가 JS 에서 직접 받는다 — 파이썬 브릿지를 거칠 수 없는 요청"
+ },
+ {
+  "check": "endpoint-location",
+  "where": "web/js/map.js|https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/",
+  "사유": "위와 같음(위성사진 배경 타일)"
+ }
+]

@@ -1044,5 +1044,12 @@ class TestSettingsDurability(CacheTestBase):
         self.assertEqual(leftovers, [], "캐시 임시 파일이 남았다")
 
 
+MIN_TESTS = 92   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
+
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    _res = unittest.main(verbosity=2, exit=False).result
+    if len(sys.argv) == 1 and _res.testsRun < MIN_TESTS:
+        print(f"FAIL 건수 하한: {_res.testsRun} < {MIN_TESTS}")
+        sys.exit(1)
+    sys.exit(0 if _res.wasSuccessful() else 1)

@@ -59,6 +59,20 @@ jobs:
         # windows-latest 러너에는 Edge 가 깔려 있다 — 없으면 스크립트가 스스로 건너뛴다.
         run: node tests/test_layout.js
 
+      - name: 정적 스캔 (전면 감사 2026-09-24)
+        # 이 앱에서 반복된 실수(인코딩 미지정·재대입 전역 이름 import·URL 흩뿌림·변이 흔적·
+        # top: 92px·이스케이프 없는 innerHTML 증가·bat 인코딩·BOM)를 잰다. selftest 가 먼저 —
+        # 검사 하나가 조용히 죽으면(0건 초록) 스캔 결과를 믿을 수 없다.
+        run: |
+          python tools/audit_scan.py --selftest
+          python tools/audit_scan.py
+
+      - name: 감사 대장 규약 (docs/audit)
+        # 재현 없는 높음·사라진 앵커·COVERAGE 누락을 기계로 막는다. selftest 먼저.
+        run: |
+          python docs/audit/check_findings.py --selftest
+          python docs/audit/check_findings.py
+
       - name: 로그 스모크 (네트워크 불필요)
         # api_client.py 스모크는 네트워크를 쓰므로 CI 에서 돌리지 않는다.
         # startup.py 스모크도 넣지 않는다 — GitHub 러너에는 WebView2 런타임이 없어

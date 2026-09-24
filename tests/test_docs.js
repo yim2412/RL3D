@@ -99,4 +99,35 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("PLAN 머리글이 그 버전을 말한다", PLAN.slice(0, 400).includes(ver), true);
 }
 
-done();
+// ── 문서 수치 ↔ 코드 상수 (전면 감사 2026-09-24) ─────────────────────────────
+// 문서에 적힌 TTL·주기·상한은 **바뀌어도 아무도 모른다** — P47 에서 TTL 을 15분 → 6시간으로
+// 바꿔도 테스트가 전부 초록이었다. 문구와 상수를 쌍으로 두고 값이 같은지 잰다.
+// 상수식은 숫자와 * 만 허용한다(15 * 60 같은 것) — 그 밖의 식이면 대조표를 고친다.
+{
+  group("문서 수치 ↔ 코드 상수");
+  const constSec = (file, name) => {
+    const m = new RegExp("^\\s*(?:const\\s+)?" + name + "\\s*=\\s*([\\d\\s*]+)", "m").exec(read(file));
+    if (!m) return null;
+    return m[1].split("*").reduce((a, x) => a * Number(x.trim()), 1);
+  };
+  // [설명, 문서 문자열, 문구 정규식(첫 캡처 = 숫자), 단위(초), 코드 파일, 상수, 상수 단위(초)]
+  const PAIRS = [
+    ["README 표 · 발사 TTL", README, /\| 발사 \|[^\n]*\| (\d+)분 \|/, 60, "api_client.py", "TTL_LAUNCHES", 1],
+    ["README 표 · TLE TTL", README, /\| 위성 TLE \|[^\n]*\| (\d+)시간 \|/, 3600, "api_client.py", "TTL_TLE", 1],
+    ["CLAUDE · 발사 TTL", CLAUDE, /TTL: 발사 (\d+)분/, 60, "api_client.py", "TTL_LAUNCHES", 1],
+    ["CLAUDE · TLE TTL", CLAUDE, /TTL: 발사 \d+분 \/ TLE (\d+)시간/, 3600, "api_client.py", "TTL_TLE", 1],
+    ["README · 자동 갱신 주기", README, /(\d+)분마다 백그라운드 폴링/, 60, "web/js/state.js", "AUTO_REFRESH_MS", 0.001],
+    ["CLAUDE · 폴링 주기", CLAUDE, /프론트는 (\d+)분마다 폴링/, 60, "web/js/state.js", "AUTO_REFRESH_MS", 0.001],
+    ["CLAUDE · 아카이브 페이지 상한", CLAUDE, /연도당 최대\s*(\d+)페이지/, 1, "api_client.py", "ARCHIVE_MAX_PAGES", 1],
+  ];
+  for (const [label, doc, re, unit, file, name, cunit] of PAIRS) {
+    const m = re.exec(doc);
+    const code = constSec(file, name);
+    // 문구나 상수를 못 찾으면 null 로 실패한다 — 못 찾은 것을 통과로 두면 이 표가 공허해진다
+    check(`${label}: 문서 ${m ? m[1] : "문구 없음"} ↔ ${name}`,
+      m && code != null ? Number(m[1]) * unit : "문서 문구 없음",
+      code != null ? code * cunit : "상수 없음");
+  }
+}
+
+done(20);   // 건수 하한 — 2026-09-24 실측

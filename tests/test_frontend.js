@@ -6220,7 +6220,7 @@ function fresh2(ctx, key, t) {
     check("늦게 온 옛 응답은 버린다(화면이 되돌아가지 않는다)",
       state.allLaunches.map((d) => d.id), ["a", "b"]);
     check("사이드바 수도 새 응답 기준이다", el("sidebar-count").textContent, "2건");
-    done();
+    done(1427);   // 건수 하한 — 2026-09-24 실측
   })();
 }
 
