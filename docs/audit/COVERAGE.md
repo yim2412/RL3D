@@ -67,5 +67,6 @@
 | `THIRD_PARTY_LICENSES.txt` | 라이선스(F-016 산출물) | 정독 |
 | `tools/build_licenses.py` | 라이선스(F-016) | 정독 |
 | `tools/check_exe.py` | 측정 도구(감사 뒤 P50 — exe 번들 대조) | 정독 |
+| `tools/ci_local.py` | 측정 도구(감사 뒤 P51 — CI test 잡 로컬 실행) | 정독 |
 | `tools/licenses/maplibre-gl-js.LICENSE.txt` | 라이선스 원문 | 정독 |
 | `tools/licenses/satellite-js.LICENSE.md` | 라이선스 원문 | 정독 |

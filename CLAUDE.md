@@ -28,6 +28,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
+| `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(68초 절약) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지** 대조(P50). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
@@ -298,6 +299,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   **PID 는 한 번만 잡고 그 뒤로는 `Get-Process -Id` 로 폴링한다** — `Get-CimInstance` 전체 조회를
   매번 돌리면 한 번에 2분씩 걸려 표본이 안 쌓인다(같은 날 실측).
   기준선(다음에 비교할 값): 위성 20개 **578~588MB** · 전 그룹 2,896개 **691~748MB**(톱니, 바닥 일정).
+- **푸시 전에 `python tools/ci_local.py`**(P51). 테스트 넷만 돌리면 정적 스캔·감사 대장 검사가 빠진다 —
+  2026-09-24 에 새 파일을 `COVERAGE.md` 에 안 올려 CI 가 빨갰다. **새 파일은 `git add` 한 뒤에** 돌린다
+  (대장 검사는 추적 파일만 본다 — 스테이지 전에는 누락이 안 보인다).
 - **푸시한 뒤 CI 를 본다.** `gh run list --workflow=tests.yml --limit 5` 한 줄이면 된다 —
   로컬이 초록이어도 CI 는 다른 환경이다(위가 그 증거다).
 - **시각·실제 데이터에 기대는 단언은 그 자리를 덮는지가 우연이다.** 2026-09-11 하루에 세 개를
