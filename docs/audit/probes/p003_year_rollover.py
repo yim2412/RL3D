@@ -25,7 +25,10 @@ class FakeTime:
         self.year = year
 
     def gmtime(self, *a):
+        # 인자가 있으면(파일 시각 변환) 진짜 시각 — '지금'만 바꾼다
         t = _time.gmtime(*a)
+        if a and a[0] is not None:
+            return t
         return _time.struct_time((self.year,) + tuple(t)[1:])
 
     def __getattr__(self, n):

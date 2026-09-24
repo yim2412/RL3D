@@ -274,8 +274,10 @@ def _atomic_write_json(path, obj, **dump_kw):
 
 
 def _cache_write(name, data):
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    # makedirs 도 try 안에 둔다 — 밖에 있으면 그 OSError 가 호출자의 `except NET_ERRORS` 로
+    # 떨어져 **받은 데이터를 버리고 "연결이 끊겼다"** 고 말하며 폴링마다 다시 요청했다(F-006).
     try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
         # 데이터를 **봉투에 담아** 모양 버전을 함께 남긴다(_cache_read 가 대조한다).
         _atomic_write_json(_cache_path(name), {"schema": CACHE_SCHEMA, "data": data})
     except OSError as e:
@@ -399,7 +401,67 @@ def save_settings(patch):
         return data
 
 
+# ── 요청 간격 — 실패 백오프 · 강제 갱신 쿨다운 (전면 감사 F-004·F-005) ─────────
+# 예전에는 실패해도 캐시가 안 바뀌어 **5분 폴링마다 다시 때렸다** — 2026-09-24 실측: 429 가
+# 이어지면 LL2 시간당 12회, previous 만 실패하면 24회(한도 15), Celestrak 403 에 그룹 8개면
+# TLE 96회. 한도를 스스로 채워 429 가 풀리지 않는다. 강제 갱신(↻·R)도 누르는 만큼 2회씩 나갔다.
+FAIL_BACKOFF = {"ll2": 30 * 60,             # LL2 실패 뒤 30분 — 폴링 6회를 건너뛴다
+                "celestrak": 2 * 60 * 60}   # Celestrak 은 같은 그룹을 2시간 안에 다시 받으면 403
+FORCE_MIN_INTERVAL = 60                     # 강제 갱신의 최소 간격(초)
+_gate_lock = threading.Lock()
+_blocked_until = {}   # 키 → (이 시각까지 막음, 그때의 사람 말 오류)
+_last_attempt = {}    # 키 → 마지막으로 실제 요청을 낸 시각
+
+
+def _reset_request_memory():
+    """테스트·프로브 격리용 — 모듈 전역이라 안 비우면 앞 테스트의 실패가 뒤로 샌다."""
+    with _gate_lock:
+        _blocked_until.clear()
+        _last_attempt.clear()
+
+
+def _gate(key, force, cached_age):
+    """요청을 내도 되나 → (허용, 막힌 이유). 이유가 None 이면 '방금 받은 캐시가 있다'.
+
+    · 강제 갱신이라도 캐시가 FORCE_MIN_INTERVAL 보다 새것이면 요청하지 않는다(F-005).
+    · 실패 뒤 백오프 동안은 폴링이 요청하지 않는다(F-004). 강제 갱신은 사용자가 명시적으로
+      다시 해 보는 것이라 허용하되, 그것도 FORCE_MIN_INTERVAL 에 한 번이다.
+    """
+    now = time.time()
+    if force and cached_age is not None and 0 <= cached_age < FORCE_MIN_INTERVAL:
+        return False, None
+    with _gate_lock:
+        until, msg = _blocked_until.get(key, (0, None))
+        if now < until and (not force or now - _last_attempt.get(key, 0) < FORCE_MIN_INTERVAL):
+            return False, msg
+        _last_attempt[key] = now
+    return True, None
+
+
+def _gate_fail(key, msg):
+    with _gate_lock:
+        _blocked_until[key] = (time.time() + FAIL_BACKOFF[key.split(":")[0]], msg)
+
+
+def _gate_ok(key):
+    with _gate_lock:
+        _blocked_until.pop(key, None)
+
+
 # ── 발사(Launch Library 2) ────────────────────────────────────────────────────
+
+
+def _ll2_payload(url):
+    """LL2 한 페이지 → dict. **모양이 틀린 200 은 ValueError** 로 올려 폴백 경로를 태운다.
+
+    전면 감사 F-002(2026-09-24): 본문이 `null`·`[]` 이면 `.get` 에서 AttributeError 가 나
+    NET_ERRORS 밖으로 새 **캐시 폴백을 건너뛰었고**, `{"results": null}` 은 0건을 정상으로
+    캐시에 써 **지난 연도가 영구히 비었다**(P38 과 같은 피해의 다른 길).
+    """
+    payload = json.loads(_http_get(url))
+    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+        raise ValueError("LL2 응답의 모양이 아닙니다")
+    return payload
 
 
 def get_launches(force=False):
@@ -407,30 +469,43 @@ def get_launches(force=False):
 
     반환: {"launches": [...], "stale": bool, "error": str|None}
     캐시 유효 → 캐시 / 만료 → API / 실패 → 오래된 캐시라도 반환.
+    실패 직후와 연타한 강제 갱신은 요청을 내지 않는다(`_gate`, F-004·F-005).
     """
     cached, age = _cache_read("launches.json")
     if not force and cached is not None and age is not None and age < TTL_LAUNCHES:
         _log_result("발사", len(cached), "캐시 " + _age_text(age))
         return {"launches": cached, "stale": False, "error": None, "age": age}
 
+    def fallback(msg):
+        c, a = cached, age
+        if c is None:
+            c, a = _stale_fallback("launches.json")   # 모양이 낡아도 빈 화면보다 낫다
+        if c is not None:
+            return {"launches": c, "stale": True, "error": msg, "age": a}
+        return {"launches": [], "stale": False, "error": msg, "age": None}
+
+    allowed, why = _gate("ll2", force, age if cached is not None else None)
+    if not allowed:
+        if why is None:   # 방금 받은 캐시 — 강제 갱신 연타
+            return {"launches": cached, "stale": False, "error": None, "age": age}
+        return fallback(why)
+
     t0 = time.time()
     try:
-        upcoming = api_parsing._parse_launches(json.loads(_http_get(LL2_UPCOMING)))
-        previous = api_parsing._parse_launches(json.loads(_http_get(LL2_PREVIOUS)))
+        upcoming = api_parsing._parse_launches(_ll2_payload(LL2_UPCOMING))
+        previous = api_parsing._parse_launches(_ll2_payload(LL2_PREVIOUS))
         # 막 발사된 건은 LL2가 upcoming·previous 양쪽에 내보낸다 → id로 중복 제거.
         # (안 하면 마커·통계·티커에 같은 발사가 두 번 잡힌다. previous 쪽이 결과가 최신)
         launches = api_parsing._dedupe_launches(previous + upcoming)
         _cache_write("launches.json", launches)
+        _gate_ok("ll2")
         _log_result("발사", len(launches), "네트워크", t0)
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        if cached is None:
-            cached, age = _stale_fallback("launches.json")   # 모양이 낡아도 빈 화면보다 낫다
+        _gate_fail("ll2", msg)
         log.warning("발사 조회 실패(%s) — %s", e, "오래된 캐시 사용" if cached is not None else "캐시 없음")
-        if cached is not None:
-            return {"launches": cached, "stale": True, "error": msg, "age": age}
-        return {"launches": [], "stale": False, "error": msg, "age": None}
+        return fallback(msg)
 
 
 # ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
@@ -443,7 +518,7 @@ def _fetch_launch_pages(url, max_pages):
     """
     launches, pages = [], 0
     while url and pages < max_pages:
-        payload = json.loads(_http_get(url))
+        payload = _ll2_payload(url)
         launches.extend(api_parsing._parse_launches(payload))
         url = payload.get("next")
         pages += 1
@@ -509,8 +584,14 @@ def get_archive(year, force=False):
     # 캐시는 예전 형식(리스트)일 수도 있다 — 그때는 잘림 여부를 모르니 False 로 본다.
     cached, cached_truncated = _unpack_archive_cache(cached)
     is_current = year >= time.gmtime().tm_year  # 올해(및 방어적으로 미래)는 갱신 대상
+    # 지난 연도는 **그 해가 끝난 뒤에 받은 캐시만** 영구로 본다. 해가 바뀌기 전에 받은 것은
+    # 그 시점의 스냅샷이라, 그대로 두면 7월에 받은 올해가 1월부터 영원히 7월에 멈춘다
+    # (전면 감사 F-003). 한 번 다시 받으면 수정 시각이 이듬해가 되어 그 뒤로는 영구다.
+    finished_when_fetched = (age is not None and
+                             time.gmtime(time.time() - age).tm_year > year)
     fresh = cached is not None and (
-        not is_current or (age is not None and age < TTL_ARCHIVE_CURRENT)
+        (not is_current and finished_when_fetched)
+        or (is_current and age is not None and age < TTL_ARCHIVE_CURRENT)
     )
     if not force and fresh:
         _log_result("아카이브 %s" % year, len(cached), "캐시 " + _age_text(age))
@@ -560,21 +641,36 @@ def _get_group_tle(group, force=False):
     cached, age = _cache_read(name)
     if not force and cached is not None and age is not None and age < TTL_TLE:
         return cached, False, None
+    key = "celestrak:tle:" + group
+
+    def fallback(msg):
+        c = cached
+        if c is None:
+            c, _ = _stale_fallback(name)
+        if c is not None:
+            return c, True, msg
+        return [], False, msg
+
+    allowed, why = _gate(key, force, age if cached is not None else None)
+    if not allowed:
+        return (cached, False, None) if why is None else fallback(why)
     try:
         sats = api_parsing._parse_tle(_http_get(CELESTRAK_GP.format(group=group)))
+        if not sats:
+            # 0건을 정상으로 캐시에 쓰면 TTL 동안 위성이 조용히 사라지고 폴백도 지워진다 —
+            # 캡티브 포털·오류 페이지가 200 으로 오는 경우다(전면 감사 F-001).
+            raise ValueError("TLE 응답에 위성이 없습니다")
         cap = (SATELLITE_GROUP_CATALOG.get(group) or {}).get("cap")
         if cap:
             sats = sats[:cap]  # 대형 그룹은 상한까지만(렌더 성능)
         _cache_write(name, sats)
+        _gate_ok(key)
         return sats, False, None
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        if cached is None:
-            cached, _ = _stale_fallback(name)
+        _gate_fail(key, msg)
         log.warning("TLE 그룹 %s 조회 실패: %s", group, e)
-        if cached is not None:
-            return cached, True, msg
-        return [], False, msg
+        return fallback(msg)
 
 
 def get_satellites(force=False, groups=None):
@@ -616,20 +712,33 @@ def _get_group_satcat(group, force=False):
     cached, age = _cache_read(name)
     if not force and cached is not None and age is not None and age < TTL_SATCAT:
         return cached, False, None
+    key = "celestrak:satcat:" + group
+
+    def fallback(msg):
+        c = cached
+        if c is None:
+            c, _ = _stale_fallback(name)
+        if c is not None:
+            return c, True, msg
+        return {}, False, msg
+
+    allowed, why = _gate(key, force, age if cached is not None else None)
+    if not allowed:
+        return (cached, False, None) if why is None else fallback(why)
     try:
         meta = api_parsing._parse_satcat(_http_get(CELESTRAK_SATCAT.format(group=group)))
+        if not meta:
+            raise ValueError("SATCAT 응답에 위성이 없습니다")   # F-001 과 같은 이유
         # JSON 키는 문자열이 된다 → 저장 전에 문자열로 통일해 캐시/네트워크 결과 모양을 맞춘다.
         meta = {str(k): v for k, v in meta.items()}
         _cache_write(name, meta)
+        _gate_ok(key)
         return meta, False, None
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        if cached is None:
-            cached, _ = _stale_fallback(name)
+        _gate_fail(key, msg)
         log.warning("SATCAT 그룹 %s 조회 실패: %s", group, e)
-        if cached is not None:
-            return cached, True, msg
-        return {}, False, msg
+        return fallback(msg)
 
 
 def get_satcat(groups=None, force=False):
@@ -686,6 +795,8 @@ def check_update(current_version, force=False):
 
     try:
         payload = json.loads(_http_get(GITHUB_LATEST_RELEASE))
+        if not isinstance(payload, dict) or not isinstance(payload.get("tag_name"), str):
+            raise ValueError("릴리스 응답의 모양이 아닙니다")   # F-002 와 같은 이유
         latest = payload.get("tag_name")
         url = payload.get("html_url")
         name = payload.get("name")

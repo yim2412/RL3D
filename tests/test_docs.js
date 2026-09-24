@@ -119,6 +119,8 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
     ["README · 자동 갱신 주기", README, /(\d+)분마다 백그라운드 폴링/, 60, "web/js/state.js", "AUTO_REFRESH_MS", 0.001],
     ["CLAUDE · 폴링 주기", CLAUDE, /프론트는 (\d+)분마다 폴링/, 60, "web/js/state.js", "AUTO_REFRESH_MS", 0.001],
     ["CLAUDE · 아카이브 페이지 상한", CLAUDE, /연도당 최대\s*(\d+)페이지/, 1, "api_client.py", "ARCHIVE_MAX_PAGES", 1],
+    ["CLAUDE · 강제 갱신 간격", CLAUDE, /강제 갱신 최소 간격 (\d+)초/, 1, "api_client.py", "FORCE_MIN_INTERVAL", 1],
+    ["README · 새로고침 간격", README, /방금\((\d+)초 안\)/, 1, "api_client.py", "FORCE_MIN_INTERVAL", 1],
   ];
   for (const [label, doc, re, unit, file, name, cunit] of PAIRS) {
     const m = re.exec(doc);
@@ -130,4 +132,4 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   }
 }
 
-done(20);   // 건수 하한 — 2026-09-24 실측
+done(22);   // 건수 하한 — 2026-09-24 실측

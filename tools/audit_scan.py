@@ -137,8 +137,10 @@ def check_endpoint_location(root, files):
     hits, n = [], 0
     url = re.compile(r"""["'](https?://[^"'\s]+)""")
     for rel in files:
-        if not (rel.endswith(".py") or rel.endswith(".js")) or rel.startswith("tests/") \
-                or rel.startswith("web/lib/") or rel == "api_client.py":
+        # 감사 도구 자신(가짜 URL·selftest 주입 문자열)은 앱 코드가 아니다 — 2026-09-24 에
+        # docs/audit 가 추적되자마자 사본에서 FAIL 했다(로컬은 미추적이라 초록이었다)
+        if not (rel.endswith(".py") or rel.endswith(".js")) or rel.startswith(("tests/", "docs/audit/")) \
+                or rel.startswith("web/lib/") or rel in ("api_client.py", "tools/audit_scan.py"):
             continue
         n += 1
         for i, line in enumerate(read(root, rel).splitlines(), 1):

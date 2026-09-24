@@ -11,6 +11,7 @@
 """
 import os
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -24,6 +25,9 @@ def main():
     with Sandbox():
         api_client._http_get = _body(GOOD["ll2"])
         n0 = len(api_client.get_launches(force=True)["launches"])
+        # 강제 갱신 쿨다운(F-005) 밖으로 — 안 그러면 null 경로를 안 타고 캐시만 돌려받아 공허하게 통과한다
+        old = time.time() - 120
+        os.utime(api_client._cache_path("launches.json"), (old, old))
         api_client._http_get = _body("null")
         try:
             r = api_client.get_launches(force=True)

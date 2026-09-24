@@ -56,6 +56,7 @@ class CacheTestBase(unittest.TestCase):
         api_client.SETTINGS_PATH = os.path.join(self.tmp, "settings.json")
         self.calls = []
         self._real_http = api_client._http_get
+        api_client._reset_request_memory()   # 실패 백오프는 모듈 전역 — 앞 테스트의 실패가 새지 않게
         logging.disable(logging.CRITICAL)   # 실패 경로는 warning 을 찍는다 — 출력만 가린다
 
     def tearDown(self):
@@ -108,8 +109,11 @@ class TestLaunchCacheTTL(CacheTestBase):
         self.assertEqual(len(self.calls), 2)
 
     def test_force_ignores_fresh_cache(self):
+        # TTL 안이지만 강제 갱신 쿨다운(FORCE_MIN_INTERVAL)은 지난 캐시 — 받자마자 누른 것은
+        # 막는 게 맞다(F-005). 그 경계는 TestRequestGate 가 잰다.
         self.serve(_page(2), _page(2, tag="prev"))
         api_client.get_launches()
+        self.age_cache("launches.json", api_client.FORCE_MIN_INTERVAL + 1)
         api_client.get_launches(force=True)
         self.assertEqual(len(self.calls), 4, "force 인데 캐시를 썼다")
 
@@ -669,6 +673,16 @@ class TestRequestBudget(unittest.TestCase):
         """스푸트니크 1호(1957) 이전에는 궤도 발사가 없다(P38-1)."""
         self.assertEqual(api_client.ARCHIVE_MIN_YEAR, 1957)
 
+    def test_failure_backoff_and_force_interval(self):
+        """실패 백오프·강제 갱신 간격(전면 감사 F-004·F-005) — 값을 못 박는다.
+
+        줄이면 429 가 풀리지 않게 스스로 한도를 채우고, 늘리면 복구 뒤에도 오래 낡은 화면이다.
+        """
+        self.assertEqual(api_client.FAIL_BACKOFF, {"ll2": 30 * 60, "celestrak": 2 * 60 * 60})
+        self.assertEqual(api_client.FORCE_MIN_INTERVAL, 60)
+        # 429 가 이어질 때 LL2 요청 상한: 백오프마다 2요청 → 시간당 4 — 한도의 1/3 안
+        self.assertLessEqual(3600 / api_client.FAIL_BACKOFF["ll2"] * 2, 15 / 3)
+
     def test_file_retry_is_bounded(self):
         """파일 재시도는 **유한**해야 한다 — 무한이면 앱이 멈춘 것처럼 보인다."""
         self.assertGreaterEqual(api_client.FILE_RETRIES, 2)
@@ -845,7 +859,11 @@ class SchemaVersion(CacheTestBase):
         year = time.gmtime().tm_year - 1
         self.serve(_page(1, tag="a"))
         api_client.get_archive(year)
-        self.age_cache("archive_{}.json".format(year), 400 * 86400)
+        # 해가 끝난 뒤(올해 1월 1일)에 받은 오래된 캐시. 예전엔 400일 전으로 뒀는데, 그건
+        # **그 해가 시작되기도 전에** 받은 것이라 F-003 수정 뒤에는 한 번 다시 받는 게 맞다.
+        import calendar
+        ts = calendar.timegm((year + 1, 1, 1, 0, 0, 0))
+        os.utime(api_client._cache_path("archive_{}.json".format(year)), (ts, ts))
         api_client.get_archive(year)
         self.assertEqual(len(self.calls), 1)
 
@@ -1044,7 +1062,267 @@ class TestSettingsDurability(CacheTestBase):
         self.assertEqual(leftovers, [], "캐시 임시 파일이 남았다")
 
 
-MIN_TESTS = 92   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
+class TestAuditMutationGaps(CacheTestBase):
+    """전면 감사(2026-09-24) if-py 변이에서 살아남은 실제 경로 (F-020).
+
+    P42 이후에도 106개 중 26개가 뒤집어도 초록이었다. 스모크 전용을 빼고 남은 것 중
+    **TLE·SATCAT 폴백**(572·627)은 F-001 을 고칠 바로 그 자리라, 고치기 전에 단언부터 둔다.
+    """
+
+    def _write_raw(self, name, obj):
+        os.makedirs(api_client.CACHE_DIR, exist_ok=True)
+        with open(api_client._cache_path(name), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+
+    def test_tle_offline_with_old_shaped_cache_still_shows_something(self):
+        """발사에만 있던 단언(test_offline_with_old_shaped_cache…)을 TLE 에도."""
+        self._write_raw("tle_stations.json", [{"name": "옛 위성", "norad_id": "1", "tle1": "1 x", "tle2": "2 x"}])
+        self.fail_with(urllib.error.URLError("오프라인"))
+        res = api_client.get_satellites(groups=["stations"])
+        self.assertEqual(len(res["satellites"]), 1, "옛 모양 TLE 캐시가 있는데 위성이 사라졌다")
+        self.assertTrue(res["stale"])
+
+    def test_satcat_offline_with_old_shaped_cache_still_shows_something(self):
+        self._write_raw("satcat_stations.json", {"25544": {"name": "ISS"}})
+        self.fail_with(urllib.error.URLError("오프라인"))
+        res = api_client.get_satcat(groups=["stations"])
+        self.assertEqual(len(res["satcat"]), 1, "옛 모양 SATCAT 캐시가 있는데 메타가 사라졌다")
+        self.assertTrue(res["stale"])
+
+    def test_replace_is_retried_not_abandoned_on_first_failure(self):
+        """Windows 는 읽는 중인 파일의 교체를 거부한다(WinError 5) — 한 번 실패로 포기하면 안 된다."""
+        real = os.replace
+        seen = {"n": 0}
+
+        def flaky(src, dst):
+            seen["n"] += 1
+            if seen["n"] == 1:
+                raise OSError(5, "액세스가 거부되었습니다")
+            return real(src, dst)
+        with mock.patch("os.replace", side_effect=flaky):
+            api_client._cache_write("launches.json", [{"id": "1"}])
+        self.assertEqual(seen["n"], 2, "재시도하지 않았다")
+        self.assertTrue(os.path.exists(api_client._cache_path("launches.json")), "한 번 실패로 포기했다")
+
+    def test_half_written_settings_are_not_quarantined(self):
+        """쓰는 중이라 **한 번** 반쪽이 읽힌 설정은 격리하지 않는다 — 다음 읽기는 멀쩡하다."""
+        api_client.save_settings({"observer": {"lat": 1.0}})
+        real_open = builtins.open
+        seen = {"n": 0}
+
+        def flaky_open(path, *a, **kw):
+            mode = a[0] if a else kw.get("mode", "r")
+            if str(path) == api_client.SETTINGS_PATH and "r" in mode and "b" in mode:
+                seen["n"] += 1
+                if seen["n"] == 1:
+                    return io.BytesIO(b'{"observer": {"la')
+            return real_open(path, *a, **kw)
+        with mock.patch.object(builtins, "open", flaky_open):
+            got = api_client.load_settings()
+        bad = [n for n in os.listdir(os.path.dirname(api_client.SETTINGS_PATH)) if n.endswith(".bad.json")]
+        self.assertEqual(bad, [], "쓰는 중 한 번 반쪽을 읽었다고 멀쩡한 설정을 치웠다")
+        self.assertEqual(got.get("observer"), {"lat": 1.0})
+
+    def test_delay_between_every_page_pair(self):
+        """2페이지로는 '사이에만'과 '끝에 한 번'이 같은 1회라 못 가른다 — 3페이지로 잰다."""
+        self.serve(_page(1, next_url="https://ll/p2"), _page(1, next_url="https://ll/p3", tag="p2"),
+                   _page(1, next_url=None, tag="p3"))
+        with mock.patch.object(api_client.time, "sleep") as sl:
+            api_client.get_archive(2016)
+        self.assertEqual(sl.call_count, 2)
+
+
+class TestResponseShape(CacheTestBase):
+    """200 으로 온 **엉뚱한 본문**을 정상 결과로 캐시에 쓰지 않는다 (전면 감사 F-001·F-002).
+
+    캡티브 포털(호텔 와이파이 로그인 화면)은 모든 요청에 200 + HTML 로 답한다. 예전에는
+    파서가 0건을 돌려주고 코드가 그걸 캐시에 써서, TLE 2시간·SATCAT 24시간 동안 위성이 조용히
+    사라지고 오래된 캐시 폴백까지 지워졌다. LL2 는 `null` 본문에 폴백을 건너뛰고,
+    `{"results": null}` 이면 지난 연도 아카이브가 **영구히** 비었다.
+    """
+    PORTAL = "<html><body>Wi-Fi 로그인</body></html>"
+    TLE = TestSatelliteGroups.TLE
+
+    def _age_all(self):
+        for n in os.listdir(api_client.CACHE_DIR):
+            old = time.time() - 30 * 24 * 3600
+            os.utime(os.path.join(api_client.CACHE_DIR, n), (old, old))
+
+    def test_portal_page_does_not_wipe_tle(self):
+        self.serve(self.TLE)
+        api_client.get_satellites(groups=["stations"])
+        self._age_all()
+        self.serve(self.PORTAL)
+        res = api_client.get_satellites(groups=["stations"])
+        self.assertEqual(len(res["satellites"]), 1, "포털 응답에 가진 TLE 를 버렸다")
+        self.assertTrue(res["stale"])
+        self.assertIn("읽지 못했습니다", res["error"])
+
+    def test_portal_page_does_not_wipe_satcat(self):
+        self.serve(SATCAT_CSV)
+        api_client.get_satcat(groups=["stations"])
+        self._age_all()
+        self.serve(self.PORTAL)
+        res = api_client.get_satcat(groups=["stations"])
+        self.assertEqual(len(res["satcat"]), 1, "포털 응답에 가진 SATCAT 을 버렸다")
+        self.assertTrue(res["stale"])
+
+    def test_null_body_falls_back_for_launches(self):
+        self.serve(_page(3), _page(0))
+        api_client.get_launches()
+        self.age_cache("launches.json", api_client.FORCE_MIN_INTERVAL + 1)
+        self.serve("null")
+        res = api_client.get_launches(force=True)
+        self.assertEqual(len(res["launches"]), 3, "null 본문에 폴백을 건너뛰었다")
+        self.assertTrue(res["stale"])
+
+    def test_results_null_is_not_cached_as_an_empty_year(self):
+        self.serve('{"count": 0, "next": null, "results": null}')
+        first = api_client.get_archive(2019)
+        self.assertIsNotNone(first["error"])
+        self.serve(_page(2))
+        again = api_client.get_archive(2019)
+        self.assertEqual(len(again["launches"]), 2, "빈 응답이 지난 연도의 영구 캐시가 됐다")
+
+    def test_release_without_tag_is_an_error_not_silence(self):
+        self.serve('{"message": "API rate limit exceeded"}')
+        res = api_client.check_update("1.0.0")
+        self.assertFalse(res["update_available"])
+        self.assertIsNotNone(res["error"])
+
+
+class TestCacheWriteFailure(CacheTestBase):
+    """캐시를 못 써도 받은 데이터는 화면에 간다 (전면 감사 F-006)."""
+
+    def test_unwritable_cache_dir_still_returns_fresh_data(self):
+        with open(api_client.CACHE_DIR, "w", encoding="utf-8") as f:
+            f.write("폴더 자리에 파일")    # 권한·디스크 문제의 대역
+        self.serve(_page(3), _page(0))
+        res = api_client.get_launches()
+        self.assertEqual(len(res["launches"]), 3, "캐시를 못 쓴다고 받은 데이터를 버렸다")
+        self.assertIsNone(res["error"], "네트워크는 성공했는데 오류 문구를 냈다")
+
+
+class TestRequestGate(CacheTestBase):
+    """실패 백오프 · 강제 갱신 쿨다운 (전면 감사 F-004·F-005).
+
+    예전에는 실패하면 **5분 폴링마다 다시 때렸고**(429 지속 시 LL2 시간당 12~24회, 한도 15),
+    강제 갱신은 누르는 만큼 2회씩 나갔다.
+    """
+    E429 = urllib.error.HTTPError("u", 429, "Too Many", None, None)
+
+    def _expire(self, name="launches.json"):
+        self.age_cache(name, api_client.TTL_LAUNCHES + 1)
+
+    def _pass_backoff(self, key):
+        until, msg = api_client._blocked_until[key]
+        api_client._blocked_until[key] = (time.time() - 1, msg)
+
+    def test_polling_does_not_retry_during_backoff(self):
+        self.serve(_page(3), _page(0))
+        api_client.get_launches()
+        self._expire()
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        n = len(self.calls)
+        for _ in range(5):          # 25분 동안의 폴링
+            res = api_client.get_launches()
+        self.assertEqual(len(self.calls), n, "백오프 중에 폴링이 요청을 냈다")
+        self.assertEqual(len(res["launches"]), 3, "막는 동안에도 가진 데이터는 보여야 한다")
+        self.assertIn("한도", res["error"], "막는 동안 이유(직전 오류)를 계속 말해야 한다")
+
+    def test_backoff_ends_and_success_clears_it(self):
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        self._pass_backoff("ll2")
+        self.serve(_page(2), _page(0))
+        n = len(self.calls)
+        res = api_client.get_launches()
+        self.assertGreater(len(self.calls), n, "백오프가 끝났는데 다시 받지 않는다")
+        self.assertIsNone(res["error"])
+        self.assertNotIn("ll2", api_client._blocked_until, "성공했는데 막힘이 남았다")
+
+    def test_force_right_after_fetch_uses_cache(self):
+        self.serve(_page(2), _page(0))
+        api_client.get_launches()
+        n = len(self.calls)
+        for _ in range(7):
+            res = api_client.get_launches(force=True)
+        self.assertEqual(len(self.calls), n, "받자마자 누른 강제 갱신이 요청을 냈다")
+        self.assertEqual(len(res["launches"]), 2)
+        self.assertIsNone(res["error"])
+
+    def test_force_during_backoff_is_once_per_interval(self):
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        n = len(self.calls)
+        api_client.get_launches(force=True)
+        self.assertEqual(len(self.calls), n, "실패 직후 강제 갱신 연타가 요청을 냈다")
+        api_client._last_attempt["ll2"] = time.time() - api_client.FORCE_MIN_INTERVAL - 1
+        api_client.get_launches(force=True)
+        self.assertGreater(len(self.calls), n, "간격이 지나면 사용자가 다시 해 볼 수 있어야 한다")
+
+    def test_groups_back_off_independently(self):
+        tle = TestSatelliteGroups.TLE
+        def by_group(url):
+            self.calls.append(url)
+            if "GROUP=stations" in url:
+                raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+            return tle
+        api_client._http_get = by_group
+        api_client.get_satellites(groups=["stations", "visual"])
+        for n in os.listdir(api_client.CACHE_DIR):
+            self.age_cache(n, api_client.TTL_TLE + 1)
+        self.calls.clear()
+        api_client.get_satellites(groups=["stations", "visual"])
+        self.assertEqual([u for u in self.calls if "stations" in u], [], "막힌 그룹을 다시 때렸다")
+        self.assertEqual(len([u for u in self.calls if "visual" in u]), 1, "막히지 않은 그룹까지 막았다")
+
+
+class TestArchiveYearEnd(CacheTestBase):
+    """해가 바뀌기 전에 받은 아카이브는 영구가 아니다 (전면 감사 F-003).
+
+    예전에는 지난 연도면 캐시 나이를 안 봤다 — 7월에 받은 올해 아카이브가 이듬해 1월부터
+    **영원히 7월에 멈췄다**(결과가 뒤늦게 확정된 발사 포함). 해마다 반드시 한 번 일어난다.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sleep = mock.patch("time.sleep")
+        self.sleep.start()
+
+    def tearDown(self):
+        self.sleep.stop()
+        super().tearDown()
+
+    def _stamp(self, year, month):
+        import calendar
+        ts = calendar.timegm((year, month, 1, 0, 0, 0))
+        os.utime(api_client._cache_path("archive_2020.json"), (ts, ts))
+
+    def test_snapshot_taken_during_the_year_is_refetched_once(self):
+        self.serve(_page(1))
+        api_client.get_archive(2020)
+        self._stamp(2020, 7)                       # 2020년 7월에 받은 스냅샷
+        n = len(self.calls)
+        self.serve(_page(3))
+        res = api_client.get_archive(2020)
+        self.assertGreater(len(self.calls), n, "해가 끝나기 전의 스냅샷을 영구로 썼다")
+        self.assertEqual(len(res["launches"]), 3)
+        n = len(self.calls)
+        api_client.get_archive(2020)               # 이제 수정 시각이 올해 → 영구
+        self.assertEqual(len(self.calls), n, "해가 끝난 뒤 받은 것은 다시 받지 않는다")
+
+    def test_fetched_after_year_end_stays_permanent(self):
+        self.serve(_page(1))
+        api_client.get_archive(2020)
+        self._stamp(2021, 1)                       # 2021년 1월에 받은 것
+        n = len(self.calls)
+        api_client.get_archive(2020)
+        self.assertEqual(len(self.calls), n)
+
+
+MIN_TESTS = 111   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":

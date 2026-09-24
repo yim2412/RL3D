@@ -94,6 +94,8 @@ class Sandbox:
         api_client.CACHE_DIR = os.path.join(self.tmp, "cache")
         api_client.SETTINGS_PATH = os.path.join(self.tmp, "settings.json")
         api_client.ARCHIVE_PAGE_DELAY = 0
+        if hasattr(api_client, "_reset_request_memory"):   # 백테스트는 옛 트리에서도 돈다
+            api_client._reset_request_memory()
         return self
 
     def __exit__(self, *a):
