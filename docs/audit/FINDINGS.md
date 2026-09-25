@@ -185,6 +185,7 @@
 - 반증조건: 캐시 종류별 스키마가 따로 있다
 - 수정비용: 중
 - 대상: api_client.py
+- 설계 실측(2026-09-25): 지금까지 스키마를 올린 10번(v1~v10)이 **전부 발사 필드 변경**이었다(`git log -G`). 그때마다 TLE·SATCAT·update 도 버려졌다 — 기본 그룹 기준 Celestrak 4 + GitHub 1 요청. 단 2026-09-13 의 429 는 LL2 아카이브 재수신 탓이라 분리해도 줄지 않는다. 안: 이름으로 종류를 가린다(`launches`·`archive_*` / `tle_*` / `satcat_*` / `update`), 종류별 번호를 **전부 10 에서 시작**(전환 순간 일괄 무효화 없음), 모르는 이름은 테스트에서 실패. 사용자 결정 대기.
 - 요약: 판단용 숫자 — 스키마를 올린 직후 첫 실행 = LL2 2 + 불러온 아카이브 연도당 최대 5 + Celestrak 그룹 수 × 2 + GitHub 1. 발사 필드만 바뀐 경우 Celestrak·GitHub 몫은 낭비다. 출처: 독립 리뷰 발견 5.
 
 ### F-015 · 영역: 보안 · 상태: 미처리
@@ -196,6 +197,7 @@
 - 반증조건: index.html 에 CSP 가 있다
 - 수정비용: 중
 - 대상: web/index.html, web/js/*.js
+- 설계 실측(2026-09-25): 실제 앱(`pythonw main.py`, 원격 디버깅 포트 + CDP)에서 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://server.arcgisonline.com; worker-src blob:; child-src blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'` 을 넣고 대조군과 비교 — 브릿지·발사 99·위성 20·타일 전부 정상, 위반 0. pywebview 가 `new Function` 으로 브릿지를 만들지만 **`unsafe-eval` 없이도 살았다.** 되돌리는 확인: 주입한 `<img onerror>` 가 대조군에선 **실행**, CSP 판에선 **차단**(`script-src-attr` 위반 1). 넣으면 `onerror="this.remove()"` 3곳(focus.js:47 · panels.js:380·382)을 capture 단계 `error` 리스너로 바꿔야 한다. exe 에서는 아직 안 쟀다. 덤: 앱은 `file://` 이 아니라 pywebview 내장 서버 `http://127.0.0.1:<포트>` 로 열린다 — CLAUDE.md 의 설명이 틀렸다. 사용자 결정 대기.
 - 요약: 방어 한 겹을 더할지의 결정. XSS 가 뚫려도 브릿지로 할 수 있는 일은 설정 덮어쓰기·http(s) 링크 열기 정도다. 출처: 독립 리뷰 발견 8.
 
 ### F-016 · 영역: 라이선스·귀속 · 상태: 완료
@@ -219,6 +221,7 @@
 - 반증조건: 결정 사안이라 반증 대상이 아니다
 - 수정비용: 중
 - 대상: build.bat, README.md, CLAUDE.md
+- 설계 실측(2026-09-25): 같은 플래그로 onedir 를 따로 빌드(16초, 파일 173개 · 28.62MB / onefile 14.37MB)해 번갈아 5회씩 기동, 로그 시각 중앙값(데운 상태) — 파이썬 시작 0.48 → 0.18초 · 첫 API 호출 1.69 → 1.38초 · 프로세스 2 → 1. **결정적인 것은 따로 나왔다**: `%TEMP%` 에 onefile 이 못 지운 RL3D `_MEI*` 가 **42개 · 981.7MB**(안에 `web\js\boot.js` 가 있는 것만 셈, 전체 146개). 정상 종료는 지운다(1회 확인) — 강제 종료·크래시 때 약 23MB 씩 남고, 42개 모두 exe 스모크를 강제 종료한 날짜다. 다른 PC 콜드 스타트·Windows 종료 시 잔존은 안 쟀다. 사용자 결정 대기(찌꺼기 42개 삭제 여부 포함).
 - 요약: 단일 파일 배포의 편의와 onedir 의 시작 속도·프로세스 단순함의 교환. 바꾸려면 시작 시간을 먼저 잰다.
 
 ### F-018 · 영역: 회귀 · 상태: 완료
