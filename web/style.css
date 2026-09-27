@@ -738,7 +738,9 @@ html, body {
    지도 위 최상단 중앙: 툴바(z-index 40대)보다 위로 올려 무조건 보이게 한다. */
 .app-error {
   position: absolute;
-  top: 62px; left: 50%; transform: translateX(-50%);
+  /* 툴바 **아래**에서 시작한다(P61). `62px` 로 박혀 있어 툴바 구역을 31~68px 덮었고, 1920 폭에서는
+     `↻ 갱신`·`목록` 을 가렸다 — 오류가 난 순간에 갱신을 못 누르게 된다. 툴바 높이는 창 폭에 따라 변한다. */
+  top: var(--ui-top, 92px); left: 50%; transform: translateX(-50%);
   max-width: min(680px, calc(100% - 40px));
   display: flex; align-items: flex-start; gap: 10px;
   background: rgba(60, 22, 26, .97);

@@ -176,6 +176,57 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("포인터 커서인데 조작 요소(button·a·input·label…)가 아닌 것", bad, []);
 }
 
+// ── 떠 있는 요소는 레이아웃 장면에 들어 있다 (P61) ─────────────────────────────
+// 겹침 검사(`test_layout`)는 **장면에 넣은 요소끼리만** 본다. 두 번 연속 여기서 샜다 —
+// 상태 알림이 첫 실행 카드의 `나중에` 를 덮었고(P60), 오류 알림 띠가 툴바를 31~68px 덮었다(P61).
+// 둘 다 `position: absolute` 인데 어느 장면에도 없었다. CSS 에서 떠 있는 요소를 모아 장면과 대조한다.
+{
+  group("떠 있는 요소가 레이아웃 장면에 있다");
+  const CSS = read("web/style.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const LAYOUT = read("tests/test_layout.js");
+  // 늘 떠 있는 바탕·틀이라 장면으로 "여는" 대상이 아닌 것 — 사유 필수
+  const ALWAYS = {
+    map: "바탕 지도 — 다른 요소가 그 위에 뜬다",
+    toolbar: "늘 보인다 — 장면마다 툴바 버튼을 clickable 로 잰다",
+    "ui-stack": "좌하단 스택 컨테이너 — 자식들을 연다",
+    timeline: "늘 보인다 — 장면마다 tl-range·arch-load 를 잰다",
+    "pass-panel": "`.panel` 과 같은 자리(openRightPanel 이 하나만 연다) — panel 장면이 잰다",
+    "stats-panel": "`.panel` 과 같은 자리 — panel 장면이 잰다",
+  };
+  const sels = [];
+  const ruleRe = /([^{}]+)\{([^}]*)\}/g;
+  let r;
+  while ((r = ruleRe.exec(CSS))) {
+    if (!/position:\s*(absolute|fixed)/.test(r[2])) continue;
+    for (const sel of r[1].split(",")) sels.push(sel.trim().split(/[\s>+~]+/).pop().replace(/:.*$/, ""));
+  }
+  const opened = new Set();
+  for (const o of LAYOUT.match(/open:\s*\[[^\]]*\]/g) || []) {
+    for (const x of o.match(/"([^"]+)"/g) || []) opened.add(x.slice(1, -1));
+  }
+  const floating = new Set();
+  const tagRe = /<\w+\b[^>]*\bid="([^"]+)"[^>]*>/g;
+  let m;
+  while ((m = tagRe.exec(HTML))) {
+    const cls = ((m[0].match(/class="([^"]*)"/) || [, ""])[1]).split(/\s+/);
+    // 패널 **안**의 닫기 버튼처럼 부모 기준으로 뜨는 것은 제외 — 최상위 오버레이만 본다
+    if (sels.some((s) => s === "#" + m[1] || (s.startsWith(".") && cls.includes(s.slice(1))))
+        && !/-close$/.test(m[1])) floating.add(m[1]);
+  }
+  // 좌하단 스택의 자식은 CSS 로는 안 떠 있지만(스택이 쌓는다) 서로 밀고 잘린다 — 같이 잰다.
+  // 상태 알림을 스택으로 옮긴 뒤(P60) 이 줄이 없으면 장면에서 빠져도 조용했다(변이로 확인).
+  const stack = (HTML.match(/<div id="ui-stack"[\s\S]*?\n  <\/div>/) || [""])[0];
+  const stackKids = (stack.match(/\n    <\w+\b[^>]*\bid="([^"]+)"/g) || []).map((t) => t.match(/id="([^"]+)"/)[1]);
+  check("스택 자식을 충분히 찾았다", stackKids.length >= 5, true);
+  stackKids.forEach((id) => floating.add(id));
+  check("떠 있는 요소를 충분히 찾았다(정규식이 빗나가면 검사가 공허하다)", floating.size >= 12, true);
+  check("장면을 충분히 찾았다", opened.size >= 10, true);
+  const missing = [...floating].filter((id) => !opened.has(id) && !ALWAYS[id]);
+  check("어느 레이아웃 장면에도 없는 떠 있는 요소", missing, []);
+  // 허용 목록이 낡으면 조용히 넓어진다 — 없어진 id 는 목록에서도 지운다
+  check("허용 목록의 id 가 전부 실제로 있다", Object.keys(ALWAYS).filter((id) => !floating.has(id)), []);
+}
+
 // ── 버전: 세 곳이 같은 버전을 말한다 ────────────────────────────────────────
 {
   group("버전 표기");

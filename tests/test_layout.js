@@ -112,6 +112,22 @@ const CASES = [
     noOverlap: [["ui-stack", "toolbar"]],
   },
   {
+    // 오류 알림 띠는 **어느 장면에도 없었다**(P61 전수 대조: 떠 있는 요소 16개 중 유일한 빈칸).
+    // 뜨는 순간은 무언가 이미 잘못된 때라, 그때 툴바까지 못 누르면 사용자는 갱신도 못 한다.
+    name: "오류 알림 띠",
+    open: ["app-error"],
+    clickable: ["app-error-close", "search", "refresh", "toggle-list"],
+    visible: ["app-error"],
+    noOverlap: [["app-error", "toolbar"]],
+  },
+  {
+    name: "오류 알림 띠 (사이드바 열림)",
+    open: ["sidebar", "app-error"],
+    clickable: ["app-error-close", "search", "refresh", "toggle-list", "tab-launches", "tab-sats"],
+    visible: ["app-error"],
+    noOverlap: [["app-error", "toolbar"]],
+  },
+  {
     // 상태 알림이 첫 실행 카드의 "나중에" 를 덮었다(P60, 2026-09-27 실제 앱 캡처). 알림은
     // 가운데 아래에 따로 떠 있었고 어느 장면에도 없어서 레이아웃 테스트가 몰랐다.
     name: "첫 실행 카드 + 상태 알림",
@@ -189,6 +205,8 @@ const FILL = {
     + '<button id="fr-arch" class="btn sm">2025년 <kbd>A</kbd></button></div>'
     + '<div class="fr-row fr-foot"><span>요청 제한을 아끼려고 기본은 꺼 둔 상태입니다.</span>'
     + '<button id="fr-close" class="btn sm">나중에</button></div>',
+  // 오류 알림(P61) — `formatError` 가 만드는 모양의 긴 한 줄
+  "app-error-text": "화면 일부가 제대로 동작하지 않을 수 있습니다 — [오류] Cannot read properties of undefined (reading 'coordinates') @ sats.js:212 (같은 오류 3번)",
   // 실제로 가장 길게 뜨는 상태 문구(429). `showStatus` 는 textContent 로 넣는다.
   "status": "요청이 많아 잠시 제한됐습니다(시간당 한도). 잠시 후 다시 시도하세요. (저장된 데이터 표시)",
   // 공백 없는 긴 토큰(식별자·URL·합성어). **구조는 실제 렌더가 만드는 것과 같고
