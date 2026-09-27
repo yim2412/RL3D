@@ -29,7 +29,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
 | `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(68초 절약) · `--build` |
-| `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지** 대조(P50). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
+| `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
@@ -186,6 +186,14 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **파일을 쪼갰으면 `index.html` 과 `tests/harness.js` 를 둘 다 고친다.** 하네스에만 넣고
   `index.html` 에 빠뜨리면 **테스트는 전부 통과하고 앱만 죽는다**(클래식 스크립트라 "함수가 없다").
   두 목록이 같은 파일을 같은 순서로 읽는지는 이제 `test_frontend.js` 가 잰다(P12-23).
+- **실제 TLE·실제 날짜를 먹이는 묶음은 `loadApp({ now })` 로 시계를 고정한다**(P54). 2026-09-27 에
+  **코드 변경 없이** 프론트 테스트가 빨개졌다 — 재진입 예보를 재던 로켓 몸체가 그날 실제로 재진입해
+  지금 시각의 위치가 null 이 됐다. 시계를 밀어 보니 41~45일 뒤·해 넘김·400일·10년 뒤에 터질 것이
+  스무 건 가까이 더 있었다. `node tests/test_future.js` 가 45·400·3650일 뒤로 밀어 잰다(CI 단계).
+  - **고정한 묶음 안에서 Node 의 `Date.now()` 를 쓰지 않는다** — 하네스가 돌려주는 `now()`(앱의 시계)를
+    쓴다. 섞으면 **공허해진다**: 고정 직후 "24시간 창을 벗어나지 않는다"가 7월 계산을 9월 기준으로 재
+    무조건 참이었고, "MEO 10일은 경고 없음"은 나이가 음수라 참이었다(둘 다 커밋 전 변이로 잡았다).
+  - **전부를 기본으로 고정하는 안은 기각했다** — Node 시계와 비교하는 기존 단언이 두 건 새로 깨졌다.
 - **화면을 그리면서 붙는 배선도 전수로 잰다 — `node ~/.claude/tools/mutate.js`** (P39 · P44 에서
   전역 공용 도구로 옮겼다. `.mutate.json` 이 설정이고, 프리셋을 바꾸려면 `--preset if-js`).
   `bindUI()` 의 정적 배선은 2026-09-14 에 전수화했는데(아래), **`innerHTML` 로 만든 버튼에

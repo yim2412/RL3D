@@ -13,6 +13,11 @@
 process.env.TZ = "Asia/Seoul";
 
 const { loadApp, group, check, done , APP_FILES } = require("./harness");
+// 실제 TLE 를 먹이는 묶음의 "지금"(P54). 안 주면 달력이 흐르며 조용히 깨진다 — 2026-09-27 에
+// 재진입 예보 대상이 **실제로 재진입해** FAIL 했고, 시계를 밀어 보니 수십 건이 더 터질 예정이었다.
+// 새 묶음에 실제 TLE·실제 날짜를 넣으면 여기 것을 `loadApp({ now })` 로 넘긴다.
+const ISS_EPOCH_NOW = Date.parse("2026-07-25T12:00:00Z");   // 픽스처 ISS TLE 에포크(26205~26206)
+const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 받은 TLE 들
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────────
 {
@@ -338,7 +343,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
 // ── 원지점·근지점 배선 (P14-3) — 실제 SGP4 ────────────────────────────────────
 {
-  const { ctx } = loadApp({ realSatellite: true });
+  const { ctx } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("원지점·근지점 배선 (실제 SGP4)");
   const ISS_1 = "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992";
   const ISS_2 = "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537";
@@ -355,7 +360,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
 // ── 지상궤적선 (P6-1) — 실제 SGP4 ─────────────────────────────────────────────
 {
-  const { ctx } = loadApp({ realSatellite: true });
+  const { ctx } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("지상궤적선 (실제 SGP4)");
   // TLE 는 tests/fixtures/celestrak_stations.txt 의 ISS(epoch 2026-07-24)와 같은 값
   const ISS_1 = "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992";
@@ -385,7 +390,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
 // ── 통과 예측 (P6-2) — 실제 SGP4 ──────────────────────────────────────────────
 {
-  const { ctx } = loadApp({ realSatellite: true });
+  const { ctx, now: appNow } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("통과 예측 (실제 SGP4)");
   const rec = () => ctx.satellite.twoline2satrec(
     "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992",
@@ -416,7 +421,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     return min >= 0 && min <= 15;
   }), true);
   check("24시간 창을 벗어나지 않는다",
-    seoul.every((p) => p.end <= Date.now() + 24 * 3600 * 1000 + 1000), true);
+    seoul.every((p) => p.end <= appNow() + 24 * 3600 * 1000 + 1000), true);
 
   // 궤도 경사 51.6° 위성은 극지방 상공에 오지 않는다 → 물리적으로 통과가 없어야 한다
   const pole = ctx.computePasses(rec(), { lat: -82, lng: 0 });
@@ -434,7 +439,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 // ── 가시 통과 (P12-1) — 실제 SGP4 + 태양 기하 ─────────────────────────────────
 // 정답표가 없으므로 물리 불변식으로 잰다(P6-2 통과 예측과 같은 방식).
 {
-  const { ctx, date } = loadApp({ realSatellite: true });
+  const { ctx, date, now: appNow } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("가시 통과 (P12-1)");
   const rec = () => ctx.satellite.twoline2satrec(
     "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992",
@@ -457,7 +462,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("하지의 북위 80°는 백야(24시간 태양 고도 > 0)", polarDay, true);
 
   // ③ 조명 판정 — 태양 쪽에 있으면 무조건 조명, 정반대 저고도는 그림자.
-  const sun = ctx.sunEciUnit(date(Date.now()));
+  const sun = ctx.sunEciUnit(date(appNow()));
   const R = 6378.137;
   const toward = { x: sun.x * (R + 400), y: sun.y * (R + 400), z: sun.z * (R + 400) };
   const behind = { x: -sun.x * (R + 400), y: -sun.y * (R + 400), z: -sun.z * (R + 400) };
@@ -529,7 +534,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   //   (2026-09-11 저녁 실측). 가시 구간은 [visStart, visEnd] **하나**라 중간의 낮을
   //   표현하지 못한다 — 창의 시작과 끝이 모두 밤이면 구간이 창 전체와 같아진다.
   //   주장 자체가 틀렸던 자리다. 태양표를 주입해 **시각과 무관하게** 배선만 잰다.
-  const win = { s: Date.now(), h: 24 * 3600 * 1000 };
+  const win = { s: appNow(), h: 24 * 3600 * 1000 };
   const geoTable = ctx.sunTable(SEOUL, win.s, win.s + win.h, 30000);
   // t 를 실어 보낸다 — 표가 시간축을 정하므로(P21-2) 실제 경로를 타게 한다
   const bright = geoTable.map((e) => ({ t: e.t, unit: e.unit, dark: false }));
@@ -540,7 +545,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
     ctx.computePasses(geo, SEOUL, 24, 30, 10, dark).every((p) => p.visible), true);
 
   // ⑦ 태양표를 넘겨도 안 넘겨도 결과가 같아야 한다(P12-2 가 표를 공유한다).
-  const start = Date.now(), end = start + 24 * 3600 * 1000;
+  const start = appNow(), end = start + 24 * 3600 * 1000;
   const table = ctx.sunTable(SEOUL, start, end, 30000);
   check("태양표 길이가 시간창/간격과 맞는다", table.length, Math.floor(24 * 3600 * 1000 / 30000) + 1);
   check("태양표에 dark 플래그가 둘 다 나온다(하루니까)",
@@ -1019,7 +1024,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 }
 
 {
-  const { ctx } = loadApp({ realSatellite: true });
+  const { ctx } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("미래 위치 (satPointAt) — 실제 SGP4");
   const rec = ctx.satellite.twoline2satrec(
     "1 25544U 98067A   26206.50000000  .00016717  00000+0  10270-3 0  9008",
@@ -1063,7 +1068,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
       this.remove = () => { marks.removed++; };
     },
   };
-  const { ctx, state, el, map } = loadApp({ realSatellite: true, maplibregl });
+  const { ctx, state, el, map } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW, maplibregl });
   state.map = map;
   map.stubSource("sat-track");
   ctx.bindUI();
@@ -2988,7 +2993,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 (async () => {
   // ── 위성 위치 1초 (sats.js) ────────────────────────────────────────────────
   {
-    const { ctx, state, map, timers } = loadApp({ realSatellite: true });
+    const { ctx, state, map, timers } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
     group("타이머: 위성 위치 갱신 (P41)");
     state.map = map;
     for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
@@ -3471,7 +3476,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
   // ── 추적을 켜면 그 자리에서 지도가 따라간다 (sattrack.js) ───────────────────
   {
-    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    const { ctx, state, el, map } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
     group("추적 모드 (P45-4)");
     state.map = map;
     for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
@@ -3498,7 +3503,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 
   // ── 매 초 갱신에서도 추적 중이면 따라간다 (sats.js) ─────────────────────────
   {
-    const { ctx, state, map, timers } = loadApp({ realSatellite: true });
+    const { ctx, state, map, timers } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
     group("추적 중에는 매 초 따라간다 (P45-4)");
     state.map = map;
     for (const s of ["satellites", "sat-track", "sats"]) map.stubSource(s);
@@ -3750,7 +3755,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   ];
 
   {
-    const { ctx, state, el, map } = loadApp({ realSatellite: true });
+    const { ctx, state, el, map } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
     group("사이드바 행 클릭 — 발사와 위성이 갈린다 (P46-3)");
     state.map = map;
     for (const s of ["launches", "launch-heat", "launch-track", "satellites", "sat-track", "sats"]) {
@@ -4137,7 +4142,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 // 캐시에 49.8일 된 TLE 파일이 셋 있었고, 50일 된 TLE 로 계산한 위치는 최신 대비
 // **중앙 1,250km** 어긋났다(저궤도 HXMT 2,880km · 고궤도 SDO 73km).
 {
-  const { ctx, state, el, map, api } = loadApp({ realSatellite: true });
+  const { ctx, state, el, map, api, now: appNow } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
   group("TLE 나이 (tleAgeDays · tleAgeText)");
 
   // 에포크가 **확정된** TLE — `26255.50000000` = 2026년 255일째 12:00 UTC = 2026-09-12 12:00Z.
@@ -4186,13 +4191,13 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   check("같은 10일이라도 LEO 는 낡았다", ctx.staleTleNote([recAt(10)], now).includes("위성 1개"), true);
   check("MEO 도 30일을 넘으면 낡았다", ctx.staleTleNote([meoAt(31)], now).includes("위성 1개"), true);
   check("상세 패널도 같은 기준 — MEO 10일은 경고 없음",
-    ctx.tleAgeRow({ no: 0.008726, jdsatepoch: (Date.now() - 10 * 86400000) / 86400000 + 2440587.5 })
+    ctx.tleAgeRow({ no: 0.008726, jdsatepoch: (appNow() - 10 * 86400000) / 86400000 + 2440587.5 })
       .includes("tle-old"), false);
 
   group("위성 상세의 궤도 데이터 줄 (tleAgeRow)");
-  // 이 줄만 `Date.now()` 를 쓴다(화면은 지금을 말한다) → 나이를 만들어 상대로 잰다
-  const fresh = { jdsatepoch: (Date.now() - 0.5 * 86400000) / 86400000 + 2440587.5 };
-  const old = { jdsatepoch: (Date.now() - 40 * 86400000) / 86400000 + 2440587.5 };
+  // 이 줄만 "지금"을 쓴다(화면은 지금을 말한다) → **앱의 시계**로 나이를 만들어 상대로 잰다
+  const fresh = { jdsatepoch: (appNow() - 0.5 * 86400000) / 86400000 + 2440587.5 };
+  const old = { jdsatepoch: (appNow() - 40 * 86400000) / 86400000 + 2440587.5 };
   check("신선하면 경고 색이 없다", ctx.tleAgeRow(fresh).includes("tle-old"), false);
   check("신선해도 줄은 있다", ctx.tleAgeRow(fresh).includes("궤도 데이터"), true);
   check("낡으면 경고 색이 붙는다", ctx.tleAgeRow(old).includes("tle-old"), true);
@@ -4229,7 +4234,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
 //    흐르면 같은 위성이 "이미 재진입"으로 바뀐다 — 오전엔 통과하고 저녁엔 실패하는
 //    그 갈래다(CLAUDE.md). 에포크에 가까운 고정 시각으로 잰다.
 {
-  const { ctx, el, map, state } = loadApp({ realSatellite: true });
+  const { ctx, el, map, state, date } = loadApp({ realSatellite: true, now: SEP14_NOW });
   group("재진입 예보 (decayForecastDays · decayText)");
   const rec = (l1, l2) => ctx.satellite.twoline2satrec(l1, l2);
 
@@ -4249,7 +4254,7 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   const iss = rec("1 25544U 98067A   26257.14321681  .00004666  00000+0  92466-4 0  9990",
                   "2 25544  51.6309 219.8284 0004930 139.3822 220.7535 15.49107075585544");
 
-  const NOW = Date.parse("2026-09-14T12:00:00Z");   // TLE 에포크 근처로 고정
+  const NOW = SEP14_NOW;   // TLE 에포크 근처로 고정(묶음의 시계와 같은 값)
   const fc = (r) => ctx.decayForecastDays(r, NOW);
 
   check("ISS 는 예보가 없다(기동으로 유지한다)", fc(iss), null);
@@ -4267,6 +4272,8 @@ const { loadApp, group, check, done , APP_FILES } = require("./harness");
   // 그건 직전 전파가 남긴 찌꺼기라(재진입 너머로 전파하면 6이 박힌다) 두 번째부터 null 이
   // 됐다. 테스트가 그걸 잡았다 — 한 번만 부르는 단언이었으면 영영 안 보였다.
   check("두 번 불러도 같은 값", fc(body), fc(body));
+  // 위치도 **같은 고정 시각**에서 잰다(묶음의 `now`) — 고정 전에는 이 물체가 2026-09-27 경
+  // 실제로 재진입해 이 단언이 날짜 때문에 FAIL 했다(예보가 맞았다는 뜻이기도 하다)
   check("예보를 낸 뒤에도 실시간 위치는 멀쩡하다",
     ctx.satDetails(body) != null, true);
   // 상한을 좁히면 그 밖의 예보는 안 낸다
@@ -6038,7 +6045,8 @@ function fresh2(ctx, key, t) {
 {
   // 배선 — **여덟 화면이 같은 창구를 쓰는가.** 순수 함수만 재면 한 화면이 옛 `countdown()`
   // 을 그대로 써도 전부 통과한다(실제로 그래서 일곱 곳이 초를 세고 있었다).
-  const { ctx, el, map, state, sel } = loadApp();
+  // 발사 시각(2026-12-31)이 박혀 있다 — 해가 바뀌면 과거가 되어 목록에서 빠진다(P54)
+  const { ctx, el, map, state, sel } = loadApp({ now: Date.parse("2026-09-20T00:00:00Z") });
   group("정밀도 배선 — 여덟 화면이 같은 말을 한다 (P27-1)");
   state.map = map;
   for (const sname of ["launches", "launch-heat", "launch-track", "terminator"]) map.stubSource(sname);

@@ -184,6 +184,10 @@ function injectSatelliteLib(ctx) {
  *   sel   — querySelectorAll 결과 지정(sel[".flt:checked"] = [{value:"success"}])
  *
  * options.realSatellite: true 면 실제 SGP4 라이브러리를 넣는다(궤도 계산 검증용).
+ * options.now: 앱 realm 의 "지금"(ms). **실제 TLE·실제 날짜를 먹이는 묶음은 반드시 준다** —
+ *   안 주면 달력이 흐르며 조용히 깨진다(2026-09-27 실측, P54: 재진입 예보 대상이 실제로
+ *   재진입해 FAIL. 시계를 밀어 보니 41~45일 뒤·2027년·400일 뒤에 여덟 건이 더 터질 예정이었다).
+ *   시계는 그 시각에서 **흐른다**(오프셋) — 멈추면 경과 시간을 재는 코드가 굳는다.
  */
 function loadApp(options = {}) {
   const els = {};
@@ -257,6 +261,17 @@ function loadApp(options = {}) {
   ctx.self = ctx;          // satellite.min.js(UMD)가 self 에 전역을 붙인다
   ctx.pywebview = { api };
   vm.createContext(ctx);
+  const now = options.now;
+  if (now != null) {
+    vm.runInContext(`(() => {
+      const Real = Date, off = ${Number(now)} - Real.now();
+      class FixedDate extends Real {
+        constructor(...a) { if (a.length) super(...a); else super(Real.now() + off); }
+        static now() { return Real.now() + off; }
+      }
+      globalThis.Date = FixedDate;
+    })();`, ctx);
+  }
   if (options.realSatellite) injectSatelliteLib(ctx);
 
   const accessors = STATE_KEYS
@@ -365,6 +380,8 @@ function loadApp(options = {}) {
     },
     /** vm realm 안의 Date. 위성 계산에 넘길 시각은 **반드시** 이걸로 만든다. */
     date: (ms) => new RealmDate(ms),
+    /** 앱이 보는 "지금"(ms). `now` 옵션을 줬으면 그 시계다 — 상대 나이는 이걸로 만든다(P54) */
+    now: () => vm.runInContext("Date.now()", ctx),
     win: {
       fire: (ev, a) => winHandlers[ev] && winHandlers[ev](a),
       /** window 에 붙은 핸들러가 있는지(배선 여부) */

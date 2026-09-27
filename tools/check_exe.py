@@ -10,9 +10,15 @@
 기대 목록은 **소스 트리에서** 만든다(`web/` 아래 전부 + 라이선스 전문). exe 쪽 목록에서
 긁어 오면 빠진 파일이 기대에서도 같이 사라져 검사가 공허하게 통과한다.
 
+**들어갔는지만 보면 옛 exe 도 통과한다**(P54). 2026-09-27 에 빌드가 조용히 안 돈 채
+사흘 전 exe 를 재고 전부 `[OK]` 였다 — 이름은 같으니까. 그래서 `web/` 파일은 **내용을**
+소스와 대조하고, 파이썬 쪽은 `main.py` 의 `__version__` 이 exe 의 `main` 에 들었는지 본다.
+mtime 은 쓰지 않는다 — CI 체크아웃에서는 뜻이 없다.
+
 exe 가 실제로 뜨는지는 재지 않는다 — CI 러너에는 WebView2 가 없다(로컬 exe 스모크의 몫).
 """
 import os
+import re
 import sys
 
 from PyInstaller.archive.readers import CArchiveReader
@@ -41,6 +47,12 @@ def expected_entries(root=ROOT):
     return out
 
 
+def source_version(root=ROOT):
+    with open(os.path.join(root, "main.py"), encoding="utf-8") as f:
+        m = re.search(r'^__version__ = "([^"]+)"', f.read(), re.M)
+    return m.group(1) if m else None
+
+
 def check(exe_path, root=ROOT):
     """(ok, 줄 목록). 줄은 `[OK]`/`[FAIL]` 로 시작한다."""
     lines = []
@@ -60,6 +72,25 @@ def check(exe_path, root=ROOT):
         lines.append("[FAIL] exe 에 빠진 파일 %d개: %s" % (len(missing), ", ".join(missing[:8])))
     else:
         lines.append("[OK] 번들 %d개 전부 들어 있다(web %d · 라이선스)" % (len(want), web_count))
+    # 들어 있어도 옛것일 수 있다 — 내용을 소스와 대조한다(라이선스는 빌드가 만들므로 제외)
+    stale = []
+    for k in sorted(want):
+        if k.startswith("web\\") and k in have:
+            with open(os.path.join(root, k.replace("\\", os.sep)), "rb") as f:
+                if arc.extract(k) != f.read():
+                    stale.append(k)
+    if stale:
+        ok = False
+        lines.append("[FAIL] 소스와 내용이 다른 파일 %d개(옛 exe?): %s" % (len(stale), ", ".join(stale[:8])))
+    else:
+        lines.append("[OK] web 파일 내용이 소스와 같다")
+    ver = source_version(root)
+    main_code = arc.extract("main") if "main" in have else b""
+    if not ver or ver.encode() not in main_code:
+        ok = False
+        lines.append("[FAIL] exe 의 main 에 소스 버전 %s 가 없다(옛 exe?)" % ver)
+    else:
+        lines.append("[OK] exe 버전 = 소스 버전 %s" % ver)
     if LICENSE in have:
         size = len(arc.extract(LICENSE))
         if size < 1000:

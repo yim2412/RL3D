@@ -29,10 +29,12 @@
 | `requirements.txt` | 빌드·배포물(버전 고정) | 정독 |
 | `satcat_codes.py` | 정적 스캔 전수 | 훑음 |
 | `startup.py` | 인코딩(cp949·cp1252 스모크) · URL 허용 | 훑음 |
+| `tests/clock_shift.js` | 측정 도구(P54 — 시계 밀기) · 무력화 변이로 확인 | 정독 |
 | `tests/capture_fixtures.py` | 정적 스캔 전수 | 훑음 |
 | `tests/harness.js` | 측정 도구(XSS 프로브의 토대) · 건수 하한 | 훑음 |
 | `tests/test_cache.py` | 회귀(고장 매트릭스와 중복 확인) · 건수 하한 | 훑음 |
 | `tests/test_docs.js` | 회귀 · 문서 수치 | 훑음 |
+| `tests/test_future.js` | 회귀(P54) · 도구 자체 단언 · 건수 하한 | 정독 |
 | `tests/test_frontend.js` | 회귀 · 건수 하한 | 훑음 |
 | `tests/test_layout.js` | 회귀 · 건수 하한 | 훑음 |
 | `tests/test_parsing.py` | 회귀 · 건수 하한 | 훑음 |

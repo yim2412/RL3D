@@ -51,6 +51,11 @@ jobs:
       - name: 프론트 회귀 테스트 (스텁 DOM)
         run: node tests/test_frontend.js
 
+      - name: 날짜 시한폭탄 (시계를 밀어 프론트 테스트)
+        # 2026-09-27 에 코드 변경 없이 프론트 테스트가 빨개졌다 — 픽스처 속 위성이 실제로
+        # 재진입했다. 달력이 흐르면 깨질 단언을 터지기 전에 잡는다(P54).
+        run: node tests/test_future.js
+
       - name: 문서 회귀 테스트 (문서 ↔ 코드 대조)
         run: node tests/test_docs.js
 

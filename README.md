@@ -203,6 +203,7 @@ node tests/test_frontend.js     # 프론트엔드 회귀 테스트 (브라우저
 python tests/test_cache.py     # 캐시·TTL·폴백·아카이브·설정 회귀 (네트워크 불필요)
 node tests/test_docs.js        # 문서가 코드와 같은 말을 하는지 (파일 개수·순서·명령·버전)
 node tests/test_layout.js      # 버튼이 다른 오버레이에 가리지 않는지 (헤드리스 Edge, 네트워크 불필요)
+node tests/test_future.js      # 시계를 45·400·3650일 밀어도 프론트 테스트가 통과하는지 (날짜 시한폭탄)
 ```
 
 회귀 테스트는 **네트워크가 필요 없어** GitHub Actions 에서도 그대로 돈다
