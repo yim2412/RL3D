@@ -134,6 +134,48 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("글자·숫자 없이 기호뿐인데 이름도 없는 버튼", bad, []);
 }
 
+// ── 누르라고 생긴 것은 키보드로도 닿는다 (P53) ────────────────────────────────
+// 2026-09-27 실측: `cursor: pointer` 규칙 21개가 가리키는 요소 중 업데이트 배지의 두 칸
+// (`ub-text` 받기 · `ub-close` 닫기)만 `<span>` 이었다 — Tab 으로 못 가고 Enter 가 안 먹는다.
+// P52 는 `<button>` 만 훑어서 이 둘을 대상 밖으로 남겼다. 마우스 커서가 "눌러라"고 말하는
+// 자리를 CSS 에서 모아, 그 클래스·id 를 단 요소가 조작 요소인지 잰다.
+{
+  group("누르는 요소가 키보드로 닿는다");
+  const CSS = read("web/style.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const OK_TAGS = new Set(["button", "a", "input", "select", "label", "summary", "textarea"]);
+  const targets = new Set();
+  const ruleRe = /([^{}]+)\{([^}]*)\}/g;
+  let r;
+  while ((r = ruleRe.exec(CSS))) {
+    if (!/cursor:\s*pointer/.test(r[2])) continue;
+    for (const sel of r[1].split(",")) {
+      const last = sel.trim().split(/[\s>+~]+/).pop().replace(/:.*$/, "");
+      const cls = last.match(/\.([\w-]+)$/);
+      const id = last.match(/#([\w-]+)/);
+      if (cls) targets.add("." + cls[1]); else if (id) targets.add("#" + id[1]);
+    }
+  }
+  const srcs = [["web/index.html", HTML]].concat(JS_FILES.map((f) => ["web/js/" + f, read("web/js/" + f)]));
+  let found = 0;
+  const bad = [];
+  for (const t of targets) {
+    const name = t.slice(1).replace(/-/g, "\\-");
+    const attr = t[0] === "." ? `class="[^"]*(?<![\\w-])${name}(?![\\w-])` : `id="${name}"`;
+    const re = new RegExp(`<(\\w+)\\b[^>]*${attr}`, "g");
+    for (const [f, s] of srcs) {
+      let m;
+      while ((m = re.exec(s))) {
+        found++;
+        if (!OK_TAGS.has(m[1].toLowerCase())) bad.push(`${f} <${m[1]}> ${t}`);
+      }
+    }
+  }
+  // 규칙이나 요소를 못 찾으면 위반도 0건으로 초록이다 — 찾은 수부터 단언한다
+  check("포인터 커서 규칙을 충분히 찾았다", targets.size >= 15, true);
+  check("그 규칙이 가리키는 요소를 충분히 찾았다", found >= 20, true);
+  check("포인터 커서인데 조작 요소(button·a·input·label…)가 아닌 것", bad, []);
+}
+
 // ── 버전: 세 곳이 같은 버전을 말한다 ────────────────────────────────────────
 {
   group("버전 표기");

@@ -581,7 +581,11 @@ html, body {
   padding: 8px 11px;
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
-.update-badge .ub-text { cursor: pointer; }
+/* 두 칸은 <button> 이라(P53) 브라우저 기본 버튼 모양을 지운다 */
+.update-badge .ub-text, .update-badge .ub-close {
+  background: none; border: 0; font: inherit; color: inherit; text-align: left;
+}
+.update-badge .ub-text { cursor: pointer; padding: 0; }
 .update-badge .ub-text:hover { text-decoration: underline; }
 .update-badge .ub-close {
   flex: 0 0 auto;

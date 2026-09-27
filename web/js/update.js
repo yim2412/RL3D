@@ -29,8 +29,9 @@ function setUpdateBadge(info) {
   const show = shouldShowUpdate(info, settingsDismissedUpdate);
   if (show) {
     // 문구는 우리가 만든 것이지만 latest 는 외부(GitHub 태그)에서 온 문자열이다 → 이스케이프
-    el.innerHTML = `<span class="ub-text">${escapeHtml(updateBadgeText(info))}</span>`
-                 + `<span class="ub-close" title="닫기">✕</span>`;
+    // 두 칸 다 <button> 이다(P53) — <span> 이던 시절엔 Tab 으로 못 가고 Enter 가 안 먹었다
+    el.innerHTML = `<button class="ub-text">${escapeHtml(updateBadgeText(info))}</button>`
+                 + `<button class="ub-close" title="이 버전 알림 닫기" aria-label="이 버전 알림 닫기">✕</button>`;
   }
   el.classList.toggle("hidden", !show);
 }
