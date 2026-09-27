@@ -1272,6 +1272,74 @@ class TestRequestGate(CacheTestBase):
         self.assertIsNone(res["error"])
         self.assertNotIn("ll2", api_client._blocked_until, "성공했는데 막힘이 남았다")
 
+    # ── 재시작을 넘는 백오프 (P59) ──────────────────────────────────────────
+    # `_reset_request_memory()` 는 메모리만 비운다 — 다음 판정이 파일을 다시 읽으므로 "앱 재시작"이다.
+    # 2026-09-27 실측: 백오프가 메모리에만 있어 한 시간 동안 띄운 15회가 전부 LL2 를 때리고 429 를 받았다.
+
+    def _backoff_file(self):
+        return api_client._cache_path(api_client.BACKOFF_FILE)
+
+    def _write_backoff(self, obj):
+        os.makedirs(api_client.CACHE_DIR, exist_ok=True)
+        with open(self._backoff_file(), "w", encoding="utf-8") as f:
+            f.write(obj if isinstance(obj, str) else json.dumps(obj))
+
+    def test_backoff_survives_restart(self):
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        n = len(self.calls)
+        # 막지 않았으면 무엇이 일어났을까 — 메모리만 비우면 (파일이 없다면) 다시 요청한다
+        self.assertTrue(os.path.exists(self._backoff_file()), "실패했는데 백오프를 디스크에 안 남겼다")
+        api_client._reset_request_memory()          # 앱을 껐다 켰다
+        res = api_client.get_launches()
+        self.assertEqual(len(self.calls), n, "재시작하자마자 백오프를 잊고 다시 요청했다")
+        self.assertIn("한도", res["error"] or "", "재시작 뒤에도 막힌 이유를 말해야 한다")
+
+    def test_without_file_restart_would_retry(self):
+        # 위 단언이 재는 것이 **파일**임을 보인다 — 파일을 지우면 같은 흐름이 요청을 낸다
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        n = len(self.calls)
+        os.remove(self._backoff_file())
+        api_client._reset_request_memory()
+        api_client.get_launches()
+        self.assertGreater(len(self.calls), n)
+
+    def test_expired_backoff_on_disk_does_not_block(self):
+        self._write_backoff({"ll2": [time.time() - 1, "지난 오류"]})
+        api_client._reset_request_memory()
+        self.serve(_page(1), _page(0))
+        res = api_client.get_launches()
+        self.assertTrue(self.calls, "끝난 백오프가 재시작 뒤에도 요청을 막았다")
+        self.assertIsNone(res["error"])
+
+    def test_broken_backoff_file_is_ignored(self):
+        for junk in ("{깨진", "[]", '{"ll2": "x"}', '{"ll2": [1]}', '{"nope": [9e18, "x"]}'):
+            self.calls.clear()
+            self._write_backoff(junk)
+            api_client._reset_request_memory()
+            self.serve(_page(1), _page(0))
+            api_client.get_launches()
+            self.assertTrue(self.calls, "깨진 백오프 파일(%r)이 요청을 막았다" % junk)
+            os.remove(api_client._cache_path("launches.json"))
+
+    def test_far_future_backoff_is_capped(self):
+        # 시계가 뒤로 갔거나 파일이 손상돼도 **백오프 길이보다 오래** 막지 않는다
+        self._write_backoff({"ll2": [time.time() + 10 * 86400, "먼 미래"]})
+        api_client._reset_request_memory()
+        api_client.get_launches()   # 판정 한 번 = 파일을 읽는다
+        until, _ = api_client._blocked_until["ll2"]
+        self.assertLessEqual(until, time.time() + api_client.FAIL_BACKOFF["ll2"] + 1)
+
+    def test_success_clears_backoff_on_disk(self):
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        self._pass_backoff("ll2")
+        self.serve(_page(2), _page(0))
+        api_client.get_launches()
+        with open(self._backoff_file(), encoding="utf-8") as f:
+            self.assertNotIn("ll2", json.load(f), "성공했는데 디스크의 막힘이 남아 재시작 뒤 또 막는다")
+
     def test_force_right_after_fetch_uses_cache(self):
         self.serve(_page(2), _page(0))
         api_client.get_launches()

@@ -431,13 +431,58 @@ FORCE_MIN_INTERVAL = 60                     # 강제 갱신의 최소 간격(초
 _gate_lock = threading.Lock()
 _blocked_until = {}   # 키 → (이 시각까지 막음, 그때의 사람 말 오류)
 _last_attempt = {}    # 키 → 마지막으로 실제 요청을 낸 시각
+# 백오프는 **디스크에도 남긴다**(P59). 메모리에만 두면 앱을 다시 켤 때 풀려, 429 를 받은 채
+# 껐다 켜기를 반복하면 켤 때마다 LL2 를 때렸다 — 2026-09-27 실측: 한 시간 동안 띄운 15회가
+# 전부 429. 처음 판정할 때 한 번 읽고, 바뀔 때마다 쓴다.
+BACKOFF_FILE = "backoff.json"
+_backoff_loaded = False
 
 
 def _reset_request_memory():
-    """테스트·프로브 격리용 — 모듈 전역이라 안 비우면 앞 테스트의 실패가 뒤로 샌다."""
+    """테스트·프로브 격리용 — 모듈 전역이라 안 비우면 앞 테스트의 실패가 뒤로 샌다.
+
+    **디스크는 두고 메모리만 비운다** — 다음 판정이 파일을 다시 읽으므로 "앱 재시작"과 같다.
+    """
+    global _backoff_loaded
     with _gate_lock:
         _blocked_until.clear()
         _last_attempt.clear()
+        _backoff_loaded = False
+
+
+def _backoff_load_locked(now):
+    """파일의 백오프를 메모리로(잠금 안에서). 깨졌거나 없으면 아무것도 막지 않는다.
+
+    남은 시간은 **그 종류의 백오프 길이로 자른다** — 시계가 뒤로 갔거나 파일이 손상돼 먼 미래
+    값이 남아도 영원히 막히지 않게. 모르는 키는 버린다(FAIL_BACKOFF 가 바뀌었을 때).
+    """
+    global _backoff_loaded
+    _backoff_loaded = True
+    try:
+        with open(_cache_path(BACKOFF_FILE), encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(raw, dict):
+        return
+    for key, val in raw.items():
+        kind = str(key).split(":")[0]
+        if kind not in FAIL_BACKOFF or not isinstance(val, list) or len(val) != 2:
+            continue
+        until, msg = val
+        if not isinstance(until, (int, float)) or until <= now:
+            continue
+        _blocked_until.setdefault(key, (min(until, now + FAIL_BACKOFF[kind]), msg if isinstance(msg, str) else None))
+
+
+def _backoff_save_locked():
+    """메모리의 백오프를 파일로(잠금 안에서). 못 써도 앱은 돈다 — 재시작 뒤 한 번 더 요청할 뿐."""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        _atomic_write_json(_cache_path(BACKOFF_FILE),
+                           {k: [u, m] for k, (u, m) in _blocked_until.items()})
+    except OSError as e:
+        log.warning("백오프 기록 실패: %s", e)
 
 
 def _gate(key, force, cached_age):
@@ -451,6 +496,8 @@ def _gate(key, force, cached_age):
     if force and cached_age is not None and 0 <= cached_age < FORCE_MIN_INTERVAL:
         return False, None
     with _gate_lock:
+        if not _backoff_loaded:
+            _backoff_load_locked(now)
         until, msg = _blocked_until.get(key, (0, None))
         if now < until and (not force or now - _last_attempt.get(key, 0) < FORCE_MIN_INTERVAL):
             return False, msg
@@ -461,11 +508,13 @@ def _gate(key, force, cached_age):
 def _gate_fail(key, msg):
     with _gate_lock:
         _blocked_until[key] = (time.time() + FAIL_BACKOFF[key.split(":")[0]], msg)
+        _backoff_save_locked()
 
 
 def _gate_ok(key):
     with _gate_lock:
-        _blocked_until.pop(key, None)
+        if _blocked_until.pop(key, None) is not None:
+            _backoff_save_locked()
 
 
 # ── 발사(Launch Library 2) ────────────────────────────────────────────────────
