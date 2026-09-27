@@ -1188,6 +1188,22 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     check("사용자에게 잘렸다고 말한다", el("status").textContent.includes("일부만"), true);
   }
   {
+    // 받은 아카이브가 **실제로 목록에 들어가는가**(P67). 합칠 때 이미 가진 id 를 빼는 한 줄
+    // (`if (!have.has(d.id))`)을 뒤집으면 새 발사는 하나도 안 들어가고 중복만 들어가는데, 한 줄짜리
+    // `for … if` 라 변이 도구가 못 셌고 손으로 뒤집어 보니 **테스트가 전부 초록**이었다(2026-09-27).
+    const L = (id, y) => ({ id, name: id, net: `${y}-05-01T00:00:00Z`, outcome: "success", lat: 1, lng: 1 });
+    const byYear = { 2025: [L("a", 2025), L("b", 2025)], 2024: [L("b", 2025), L("c", 2024)] };
+    const { ctx, state, map } = loadApp({ api: {
+      get_archive: async (y) => ({ launches: byYear[y], year: y, stale: false, error: null, truncated: false }),
+    } });
+    state.map = map; map.stubSource("launches");
+    group("아카이브가 목록에 들어간다 (P67)");
+    await ctx.loadArchive(2025);
+    check("받은 두 건이 들어간다", state.archiveLaunches.map((d) => d.id).sort(), ["a", "b"]);
+    await ctx.loadArchive(2024);
+    check("겹치는 건은 한 번만, 새 건은 더한다", state.archiveLaunches.map((d) => d.id).sort(), ["a", "b", "c"]);
+  }
+  {
     const { ctx, state, map, el } = loadApp({ api: mkApi(false) });
     state.map = map; map.stubSource("launches");
     await ctx.loadArchive(2018);
