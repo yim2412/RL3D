@@ -1412,6 +1412,43 @@ class TestRequestGate(CacheTestBase):
         with open(self._backoff_file(), encoding="utf-8") as f:
             self.assertNotIn("ll2", json.load(f), "성공했는데 디스크의 막힘이 남아 재시작 뒤 또 막는다")
 
+    # ── 얼마나 기다리는지 말한다 (P70) ──────────────────────────────────────
+    def test_first_failure_says_how_long(self):
+        self.fail_with(self.E429)
+        res = api_client.get_launches()
+        self.assertIn("약 30분 뒤 자동으로 다시 받습니다", res["error"] or "")
+
+    def test_blocked_says_remaining_time(self):
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        until, msg = api_client._blocked_until["ll2"]
+        api_client._blocked_until["ll2"] = (time.time() + 9 * 60 + 5, msg)   # 9분 남짓 남았다
+        res = api_client.get_launches()
+        self.assertIn("약 10분 뒤", res["error"] or "", "남은 시간이 아니라 처음 길이를 말했다")
+
+    def test_celestrak_backoff_speaks_in_hours(self):
+        def boom(url):
+            self.calls.append(url)
+            raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+        api_client._http_get = boom
+        res = api_client.get_satellites(groups=["stations"])
+        self.assertIn("약 2시간 뒤", res["error"] or "")
+
+    def test_disk_keeps_the_plain_message(self):
+        # 대기 시간은 돌려줄 때 계산한다 — 저장하면 재시작 뒤 "30분 뒤"가 그대로 굳는다
+        self.fail_with(self.E429)
+        api_client.get_launches()
+        with open(api_client._cache_path(api_client.BACKOFF_FILE), encoding="utf-8") as f:
+            self.assertNotIn("분 뒤", json.load(f)["ll2"][1])
+
+    def test_retry_note_rounds_up_and_never_says_zero(self):
+        n = api_client._retry_note
+        self.assertEqual([n(0), n(30), n(60), n(61), n(1799)],
+                         [" (약 1분 뒤 자동으로 다시 받습니다)", " (약 1분 뒤 자동으로 다시 받습니다)",
+                          " (약 1분 뒤 자동으로 다시 받습니다)", " (약 2분 뒤 자동으로 다시 받습니다)",
+                          " (약 30분 뒤 자동으로 다시 받습니다)"])
+        self.assertEqual(n(7200), " (약 2시간 뒤 자동으로 다시 받습니다)")
+
     def test_force_right_after_fetch_uses_cache(self):
         self.serve(_page(2), _page(0))
         api_client.get_launches()
@@ -1543,7 +1580,7 @@ class TestAuditLowFixes(CacheTestBase):
         self.assertTrue(res["truncated"], "멈췄는데 '이게 전부'라고 말한다")
 
 
-MIN_TESTS = 127   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
+MIN_TESTS = 132   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":

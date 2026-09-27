@@ -500,15 +500,27 @@ def _gate(key, force, cached_age):
             _backoff_load_locked(now)
         until, msg = _blocked_until.get(key, (0, None))
         if now < until and (not force or now - _last_attempt.get(key, 0) < FORCE_MIN_INTERVAL):
-            return False, msg
+            return False, (msg + _retry_note(until - now)) if msg else msg
         _last_attempt[key] = now
     return True, None
 
 
+def _retry_note(seconds):
+    """막힌 동안 **얼마나 기다리는지**를 붙인다(P70). 한도 대기가 재시작을 넘어 30분·2시간 가는데
+    (P59) 문구는 "잠시 후" 뿐이라, 기다려야 하는지 다시 눌러야 하는지 알 수 없었다."""
+    minutes = max(1, -(-int(seconds) // 60))   # 올림 — "0분 뒤"라고 말하지 않는다
+    if minutes >= 90:
+        return " (약 %d시간 뒤 자동으로 다시 받습니다)" % round(minutes / 60)
+    return " (약 %d분 뒤 자동으로 다시 받습니다)" % minutes
+
+
 def _gate_fail(key, msg):
+    """실패를 기록하고 **화면에 보낼 문구**(대기 시간을 붙인 것)를 돌려준다. 저장은 원문으로."""
+    wait = FAIL_BACKOFF[key.split(":")[0]]
     with _gate_lock:
-        _blocked_until[key] = (time.time() + FAIL_BACKOFF[key.split(":")[0]], msg)
+        _blocked_until[key] = (time.time() + wait, msg)
         _backoff_save_locked()
+    return msg + _retry_note(wait)
 
 
 def _gate_ok(key):
@@ -572,9 +584,9 @@ def get_launches(force=False):
         return {"launches": launches, "stale": False, "error": None, "age": 0}
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        _gate_fail("ll2", msg)
+        shown = _gate_fail("ll2", msg)
         log.warning("발사 조회 실패(%s) — %s", e, "오래된 캐시 사용" if cached is not None else "캐시 없음")
-        return fallback(msg)
+        return fallback(shown)
 
 
 # ── 과거 발사 아카이브 (P7-5) ─────────────────────────────────────────────────
@@ -744,9 +756,9 @@ def _get_group_tle(group, force=False):
         return sats, False, None
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        _gate_fail(key, msg)
+        shown = _gate_fail(key, msg)
         log.warning("TLE 그룹 %s 조회 실패: %s", group, e)
-        return fallback(msg)
+        return fallback(shown)
 
 
 def get_satellites(force=False, groups=None):
@@ -812,9 +824,9 @@ def _get_group_satcat(group, force=False):
         return meta, False, None
     except NET_ERRORS as e:
         msg = api_errors._friendly_error(e)
-        _gate_fail(key, msg)
+        shown = _gate_fail(key, msg)
         log.warning("SATCAT 그룹 %s 조회 실패: %s", group, e)
-        return fallback(msg)
+        return fallback(shown)
 
 
 def get_satcat(groups=None, force=False):
