@@ -1009,6 +1009,40 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   }
 }
 
+// ── 탭마다 제 목록을 그리는가 · 위성을 다시 켜면 다시 움직이는가 (P66) ──────────
+// 고친 변이 도구로 재자 맨 앞 `else if` 넷이 생존했다(2026-09-27): 관심·오늘 밤 탭의 목록 선택
+// (sidebar.js:32·33), 관심 탭을 보며 위성을 켜고 끌 때 다시 그리기(sats.js:263), 껐다 다시 켠 위성의
+// 타이머 재시작(sats.js:266 — 빠지면 **다시 켠 위성이 그 자리에 굳는다**).
+{
+  const { ctx, el, map, state, timers } = loadApp({ realSatellite: true, now: ISS_EPOCH_NOW });
+  group("탭마다 제 목록 · 다시 켠 위성 (P66)");
+  state.map = map;
+  for (const s of ["launches", "launch-heat", "launch-track", "satellites", "sat-track", "sats"]) map.stubSource(s);
+  const list = () => el("sidebar-list").innerHTML;
+  ctx.setSidebarTab("favs");
+  check("관심 탭은 관심 목록을 그린다", list().includes("관심 항목이 없습니다"), true);
+  ctx.setSidebarTab("tonight");
+  check("오늘 밤 탭은 오늘 밤 목록을 그린다(관측지 안내)", list().includes("tonight-obs-btn"), true);
+  check("오늘 밤 탭에 관심 목록이 섞이지 않는다", list().includes("관심 항목"), false);
+
+  // 관심 탭을 보는 중에 위성을 켜고 끄면 그 목록을 다시 그린다 — 표시를 지워 두고 확인한다
+  ctx.setSidebarTab("favs");
+  el("sidebar-list").innerHTML = "지움";
+  ctx.setSatelliteVisible(false);
+  check("관심 탭에서 위성을 끄면 관심 목록을 다시 그린다", list().includes("관심 항목이 없습니다"), true);
+
+  // 껐다 다시 켜면 1초 타이머를 다시 건다(데이터가 이미 있는 경로)
+  state.satrecs = [{ norad: "25544", name: "ISS (ZARYA)", band: "leo",
+    rec: ctx.satellite.twoline2satrec(
+      "1 25544U 98067A   26205.47558714  .00010646  00000+0  20005-3 0  9992",
+      "2 25544  51.6316 115.5643 0006921 332.7863  27.2762 15.49141208577537") }];
+  ctx.setSatelliteVisible(false);
+  check("끄면 위치 타이머가 멈춘다(기준선)", state.satTimer, null);
+  ctx.setSatelliteVisible(true);
+  check("다시 켜면 위치 타이머를 다시 건다(안 걸면 위성이 그 자리에 굳는다)", !!state.satTimer, true);
+  check("그 타이머는 1초 주기다", timers.every(1000).length >= 1, true);
+}
+
 // ── 궤적 연장 · 미래 위치 (P12-16) ────────────────────────────────────────────
 // 조용히 깨지는 자리: 범위 계산과 점 간격. 선은 어느 쪽이든 "그럴듯하게" 그려지므로
 // 뒤쪽까지 늘어났는지, 점이 수천 개가 됐는지는 화면으로 알아채기 어렵다.
