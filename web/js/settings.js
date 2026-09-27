@@ -42,7 +42,7 @@ function applySettings(s) {
   if (typeof s.terminator === "boolean") document.getElementById("toggle-terminator").checked = s.terminator;
   if (typeof s.visibleOnly === "boolean") document.getElementById("toggle-visible-only").checked = s.visibleOnly;
   if (typeof s.heatmap === "boolean") {
-    // 지도 생성 전이라 레이어가 아직 없다 → 상태만 세워 두고 반영은 map.on("load") 에서(P12-15)
+    // 지도 생성 전이라 레이어가 아직 없다 → 상태만 세워 두고 반영은 지도 준비(`onMapReady`, P58) 에서(P12-15)
     heatOn = s.heatmap;
     document.getElementById("toggle-heat").checked = s.heatmap;
   }

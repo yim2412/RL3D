@@ -3690,9 +3690,37 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("설정에 없는 필터는 그대로", boxes.map((b) => b.checked), before);
 }
 
+// ── 데이터는 배경 타일을 기다리지 않는다 (P58) ──────────────────────────────
+// MapLibre 의 `load` 는 첫 화면 타일이 **다 받아진 뒤** 온다 — 거기서 데이터를 시작하면 캐시에서
+// 0초에 읽히는 발사가 Esri 타일을 기다려 창→첫 데이터 20~33초였다(2026-09-27 실측).
+// `style.load` 로 옮겼다. **`load` 로 되돌리면 이 묶음이 빨개진다**(타일 `load` 만 오는 상황).
+(async () => {
+  const { ctx, state, map, api } = loadApp();
+  group("데이터 시작이 배경 타일을 기다리지 않는다 (P58)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"]) {
+    map.stubSource(s);
+  }
+  let calls = 0;
+  api.get_launches = async () => { calls++; return { launches: [], stale: false, error: null }; };
+  ctx.initMap();
+  state.map = map;
+  check("지도를 만든 것만으로는 아직 요청하지 않는다", calls, 0);
+  map.fire("style.load");
+  check("스타일이 준비되면 바로 발사를 싣는다(타일을 기다리지 않는다)", calls, 1);
+  map.fire("load");
+  check("나중에 타일 load 가 와도 다시 싣지 않는다", calls, 1);
+  // setStyle 을 안 쓰지만, 두 번째 style.load 가 오면 레이어를 중복으로 더하다 던진다 → 한 번만.
+  // **첫 요청이 끝난 뒤에** 쏜다 — 받는 중이면 loadLaunches 의 겹침 방어(P26)가 삼켜서, 가드를
+  // 지워도 이 단언이 통과했다(처음 쓴 판이 그랬다 — 엉뚱한 가드를 재고 있었다).
+  await new Promise((r) => setTimeout(r, 0));
+  map.fire("style.load");
+  await new Promise((r) => setTimeout(r, 0));
+  check("style.load 가 또 와도 한 번만 돈다", calls, 1);
+})();
+
 // ── 복원의 나머지 절반 — 지도가 뜰 때 (P46-2) ──────────────────────────────
 // `applySettings` 는 **상태만** 세운다(P46-1). 지도 레이어는 그때 아직 없어서,
-// 실제 반영은 `map.on("load")` 안에서 일어난다 — 배경 지도 · 히트맵 · 관측 위치 · 위성.
+// 실제 반영은 지도 준비(`style.load`, P58) 안에서 일어난다 — 배경 지도 · 히트맵 · 관측 위치 · 위성.
 // 그 세 줄이 비어 있었다: 죽으면 **설정에는 켜져 있는데 화면에는 안 켜진다.**
 {
   const { ctx, state, el, map } = loadApp();
@@ -3708,7 +3736,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
 
   ctx.initMap();
   state.map = map;
-  map.fire("load", {});
+  map.fire("style.load", {});
 
   // **상태만 재면 절반이다** — 지도 레이어가 실제로 갈렸는지까지 본다.
   // `applySettings` 는 지도가 없을 때 도니까 상태만 세우고, 반영은 `load` 안에서 한다.
@@ -3737,7 +3765,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   ctx.applySettings({});
   ctx.initMap();
   state.map = map;
-  map.fire("load", {});
+  map.fire("style.load", {});
 
   check("배경 지도는 다크로 둔다", map.layout("esri", "visibility") !== "visible", true);
   check("히트맵은 꺼진 채로 둔다", map.layout("launch-heat", "visibility") !== "visible", true);
@@ -4491,7 +4519,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("아직 발사가 안 왔으면 띄우지 않는다(0건이라고 말하면 안 된다)",
     el("firstrun").hidden, true);
 
-  map.fire("load");
+  map.fire("style.load");
   await new Promise((r) => setImmediate(r));
   check("발사가 들어온 뒤 안내가 뜬다", el("firstrun").hidden, false);
   check("실제 건수를 말한다", el("firstrun").innerHTML.includes("2건"), true);
@@ -4519,7 +4547,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     map.stubSource(s);
   await win.fire("pywebviewready");
   await new Promise((r) => setImmediate(r));
-  map.fire("load");
+  map.fire("style.load");
   await new Promise((r) => setImmediate(r));
 
   check("위성은 아직 꺼져 있다", el("toggle-sat").checked, false);
@@ -4541,7 +4569,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   for (const s of ["launches", "launch-heat", "launch-track", "terminator"]) a2.map.stubSource(s);
   await a2.win.fire("pywebviewready");
   await new Promise((r) => setImmediate(r));
-  a2.map.fire("load");
+  a2.map.fire("style.load");
   await new Promise((r) => setImmediate(r));
   a2.el("fr-arch").fire("click", {});
   await new Promise((r) => setImmediate(r));
@@ -4687,7 +4715,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     map.stubSource(s);
   await win.fire("pywebviewready");
   await new Promise((r) => setImmediate(r));
-  map.fire("load");
+  map.fire("style.load");
   await new Promise((r) => setImmediate(r));
   check("실패 전에는 기록이 없다", state.satLoadError, null);
 
@@ -4729,7 +4757,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   ctx.setInterval = (fn, ms) => { if (ms === 5 * 60 * 1000) tick = fn; return 1; };
   await win.fire("pywebviewready");
   await new Promise((r) => setImmediate(r));
-  map.fire("load");
+  map.fire("style.load");
   await new Promise((r) => setImmediate(r));
   check("주기 콜백이 걸린다", typeof tick, "function");
 
@@ -4778,7 +4806,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     map.stubSource(s);
   await win.fire("pywebviewready");
   await new Promise((r) => setImmediate(r));
-  map.fire("load");
+  map.fire("style.load");
   await new Promise((r) => setImmediate(r));
   el("toggle-sat").checked = true;
   await ctx.loadSatellites();
@@ -6194,7 +6222,7 @@ function fresh2(ctx, key, t) {
   await (async () => {
     await win.fire("pywebviewready");
     await new Promise((r) => setImmediate(r));
-    map.fire("load");
+    map.fire("style.load");
     await new Promise((r) => setImmediate(r));
     calls = 0;
     const t = el("toggle-sat");
