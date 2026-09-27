@@ -197,7 +197,7 @@
 - 반증조건: index.html 에 CSP 가 있다
 - 수정비용: 중
 - 대상: web/index.html, web/js/*.js
-- 설계 실측(2026-09-25): 실제 앱(`pythonw main.py`, 원격 디버깅 포트 + CDP)에서 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://server.arcgisonline.com; worker-src blob:; child-src blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'` 을 넣고 대조군과 비교 — 브릿지·발사 99·위성 20·타일 전부 정상, 위반 0. pywebview 가 `new Function` 으로 브릿지를 만들지만 **`unsafe-eval` 없이도 살았다.** 되돌리는 확인: 주입한 `<img onerror>` 가 대조군에선 **실행**, CSP 판에선 **차단**(`script-src-attr` 위반 1). 넣으면 `onerror="this.remove()"` 3곳(focus.js:47 · panels.js:380·382)을 capture 단계 `error` 리스너로 바꿔야 한다. exe 에서는 아직 안 쟀다. 덤: 앱은 `file://` 이 아니라 pywebview 내장 서버 `http://127.0.0.1:<포트>` 로 열린다 — CLAUDE.md 의 설명이 틀렸다. 사용자 결정 대기.
+- 설계 실측(2026-09-25): 실제 앱(`pythonw main.py`, 원격 디버깅 포트 + CDP)에서 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://server.arcgisonline.com; worker-src blob:; child-src blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'` 을 넣고 대조군과 비교 — 브릿지·발사 99·위성 20·타일 전부 정상, 위반 0. pywebview 가 `new Function` 으로 브릿지를 만들지만 **`unsafe-eval` 없이도 살았다.** 되돌리는 확인: 주입한 `<img onerror>` 가 대조군에선 **실행**, CSP 판에선 **차단**(`script-src-attr` 위반 1). 넣으면 `onerror="this.remove()"` 3곳(focus.js:47 · panels.js:380·382)을 capture 단계 `error` 리스너로 바꿔야 한다. exe 에서는 아직 안 쟀다. 덤: 앱은 `file://` 이 아니라 pywebview 내장 서버 `http://127.0.0.1:<포트>` 로 열린다 — CLAUDE.md 의 설명이 틀렸다(→ P55 에서 문서·주석을 고쳤다. 포트는 실행마다 무작위). 사용자 결정 대기.
 - 요약: 방어 한 겹을 더할지의 결정. XSS 가 뚫려도 브릿지로 할 수 있는 일은 설정 덮어쓰기·http(s) 링크 열기 정도다. 출처: 독립 리뷰 발견 8.
 
 ### F-016 · 영역: 라이선스·귀속 · 상태: 완료

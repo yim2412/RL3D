@@ -64,7 +64,7 @@ function errorKey(message, source, line) {
 }
 
 /**
- * `file:///C:/.../web/js/sats.js` → `sats.js`. 순수 함수.
+ * `http://127.0.0.1:<포트>/js/sats.js` → `sats.js`. 순수 함수. (앱은 pywebview 내장 서버로 열린다 — P55)
  * 경로 전체를 남기면 한 줄이 200자를 넘고, 정작 알고 싶은 건 파일과 줄번호다.
  */
 function shortSource(source) {

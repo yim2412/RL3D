@@ -5195,6 +5195,9 @@ function fresh2(ctx, key, t) {
   group("오류 문장 만들기 (formatError·shortSource — 순수 함수)");
   check("경로에서 파일 이름만 남긴다",
     ctx.shortSource("file:///C:/Users/x/RL3D/web/js/sats.js"), "sats.js");
+  // 앱이 실제로 받는 모양(P55) — pywebview 내장 서버, 포트는 실행마다 무작위다
+  check("실제 모양(내장 서버 주소)에서도 파일 이름만",
+    ctx.shortSource("http://127.0.0.1:51234/js/sats.js"), "sats.js");
   check("쿼리·해시를 떼어낸다", ctx.shortSource("a/b/c.js?v=2#x"), "c.js");
   check("없으면 빈 문자열(지어내지 않는다)", ctx.shortSource(null), "");
   check("파일과 줄번호를 붙인다",

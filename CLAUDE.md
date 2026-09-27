@@ -22,7 +22,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `satcat_codes.py` | SATCAT 코드표(소유국·궤도·타입) — 숫자·약어를 한국어로 |
 | `RL3D.spec` | PyInstaller 산출물. `build.bat` 이 플래그로 빌드하므로 **이 파일은 쓰이지 않는다**(생성물) |
 | `web/index.html` · `style.css` | 레이아웃과 테마. `<script>` 순서가 곧 JS 의존 관계다 |
-| `web/js/*.js` | UI 로직 23개 파일: `errors` → `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다(`file://` 로 열려 모듈을 못 쓴다) |
+| `web/js/*.js` | UI 로직 23개 파일: `errors` → `state` → `utils` → `map` → `launches` → `sequence` → `focus` → `sats` → `satfilter` → `sattrack` → `satpass` → `observer` → `trajectory` → `favorites` → `sidebar` → `panels` → `satpanel` → `stats` → `keys` → `settings` → `update` → `firstrun` → `boot`. **ES 모듈이 아니라 클래식 스크립트** — 최상위 `let`·`function` 이 파일 간에 공유되므로 로드 순서를 지켜야 한다. ⚠ 페이지는 `file://` 이 **아니라** pywebview 내장 서버 `http://127.0.0.1:<실행마다 무작위 포트>/` 로 열린다(로컬 경로를 주면 서버가 자동으로 켜진다 — `webview/__init__.py` 의 `has_local_urls`). P11-5 가 `file://` 이라 모듈을 못 쓴다고 판단했는데 전제가 틀렸다(감사 F-015 실측 · P55). 클래식 스크립트로 둔 결정은 그대로다 — 오리진이 실행마다 바뀌니 **`localStorage` 같은 브라우저 저장소에 기대면 안 된다**(설정은 파이썬 쪽 파일) |
 | `web/lib/` | MapLibre GL JS, satellite.js (오프라인 번들) |
 | `build.bat` | exe 빌드 (venv→설치→pyinstaller) |
 | `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
