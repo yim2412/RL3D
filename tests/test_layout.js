@@ -93,7 +93,7 @@ const CASES = [
     // 스택에 들어갈 수 있는 것이 **전부** 뜬 상태. 계단을 손으로 계산하던 때에는
     // 이 조합이 성립하지 않았다(겹쳐서 아래 것이 안 보였다).
     name: "좌하단 스택 전원 (사이드바 열림)",
-    open: ["sidebar", "sat-ctrl", "offline-badge", "update-badge", "firstrun", "heat-legend"],
+    open: ["sidebar", "sat-ctrl", "offline-badge", "update-badge", "firstrun", "status", "heat-legend"],
     clickable: ["sat-track-btn", "sat-ctrl-close", "offline-badge", "update-badge",
       // 스택은 위로 자란다 — 세로 상한이 없으면 **툴바를 덮는다**. 검색창이 그 첫 희생자다.
       "search", "toggle-list", "tl-range", "arch-load"],
@@ -110,6 +110,20 @@ const CASES = [
     // 스택은 위로 자란다 — **세로 상한이 없으면 툴바 구역으로 파고든다**(실측 507×13).
     // 누가 위에 그려지든 둘이 겹치면 한쪽은 읽히지 않으므로, 방향을 따지지 않고 금지한다.
     noOverlap: [["ui-stack", "toolbar"]],
+  },
+  {
+    // 상태 알림이 첫 실행 카드의 "나중에" 를 덮었다(P60, 2026-09-27 실제 앱 캡처). 알림은
+    // 가운데 아래에 따로 떠 있었고 어느 장면에도 없어서 레이아웃 테스트가 몰랐다.
+    name: "첫 실행 카드 + 상태 알림",
+    open: ["firstrun", "status"],
+    clickable: ["fr-sat", "fr-arch", "fr-close", "tl-range", "arch-load"],
+    visible: ["status", "firstrun"],
+  },
+  {
+    name: "첫 실행 카드 + 상태 알림 (사이드바 열림)",
+    open: ["sidebar", "firstrun", "status"],
+    clickable: ["fr-sat", "fr-arch", "fr-close", "toggle-list", "tl-range"],
+    visible: ["status", "firstrun"],
   },
   {
     // 내용이 길어지면 상자가 감당하는가(P37-1). 실측에서 72자짜리 공백 없는 발사명이
@@ -166,8 +180,17 @@ const FILL = {
     + '<span class="ub-close">✕</span>',
   "offline-badge": "🌐 오프라인 — 배경 지도를 못 받았습니다 (발사·위성은 저장된 데이터)",
   "sat-ctrl-name": "ISS (ZARYA)",
-  "firstrun": '<div class="fr-title">지금 지도에 2026년 발사 100건이 있습니다</div>'
-    + '<div class="fr-row">위성을 켜면 실시간 위치가 함께 움직입니다</div>',
+  // 실제 `firstrun.js` 가 만드는 모양 — **버튼까지** 넣는다. 예전 판에는 버튼이 없어
+  // "나중에" 를 상태 알림이 덮어도 잴 것이 없었다(P60, 2026-09-27 캡처로 발견).
+  "firstrun": '<div class="fr-title">지금 지도에 2026년 발사 100건이 있습니다 <span class="muted">(예정 49 · 지난 50)</span></div>'
+    + '<div class="fr-row"><span>🛰 위성을 켜면 실시간 위치가 함께 움직입니다</span>'
+    + '<button id="fr-sat" class="btn sm">켜기 <kbd>5</kbd></button></div>'
+    + '<div class="fr-row"><span>📅 과거 연도를 불러오면 통계·밀도가 두꺼워집니다</span>'
+    + '<button id="fr-arch" class="btn sm">2025년 <kbd>A</kbd></button></div>'
+    + '<div class="fr-row fr-foot"><span>요청 제한을 아끼려고 기본은 꺼 둔 상태입니다.</span>'
+    + '<button id="fr-close" class="btn sm">나중에</button></div>',
+  // 실제로 가장 길게 뜨는 상태 문구(429). `showStatus` 는 textContent 로 넣는다.
+  "status": "요청이 많아 잠시 제한됐습니다(시간당 한도). 잠시 후 다시 시도하세요. (저장된 데이터 표시)",
   // 공백 없는 긴 토큰(식별자·URL·합성어). **구조는 실제 렌더가 만드는 것과 같고
   // 내용만 극단값**이다 — `openPanel` 이 만드는 `h2` + `.row .k/.v` + `.site-link`.
   "panel-body": '<span class="badge m-success">발사 성공</span>'

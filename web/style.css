@@ -706,16 +706,17 @@ html, body {
 .sat-meta { margin: 8px 0 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 
 /* 상태 토스트 */
+/* 좌하단 스택의 한 칸(P60) — 위치를 직접 적지 않는다(`#ui-stack` 이 쌓는다). */
 .status {
-  position: absolute;
-  bottom: 62px; left: 50%; transform: translateX(-50%);
+  max-width: 520px;
   background: rgba(19, 26, 43, .95);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 16px;
   font-size: 13px;
-  z-index: 40;
   color: var(--partial);
+  /* 한글은 기본값이면 단어 중간(`데 / 이터`)에서 끊긴다 — 2026-09-27 캡처(P23 과 같은 갈래) */
+  word-break: keep-all; overflow-wrap: anywhere;
 }
 .status.hidden { display: none; }
 

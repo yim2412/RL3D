@@ -76,6 +76,9 @@
     <div id="update-badge" class="update-badge hidden"></div>
     <!-- 첫 실행 안내 (P17-4) — 기본이 얇다는 **사실**과 켜는 길을 같이 말한다 -->
     <div id="firstrun" class="firstrun hidden"></div>
+    <!-- 상태 알림 — 예전엔 가운데 아래에 따로 떠서 첫 실행 카드의 "나중에" 를 덮었다(P60).
+         읽기 전용이라 조작 대상들 **위**에 둔다(넘치면 위부터 잘린다) -->
+    <div id="status" class="status hidden"></div>
     <!-- 발사 밀도 범례 (P12-15) — 색의 뜻과 **무엇을 세고 있는지**(모수) -->
     <div id="heat-legend" class="heat-legend hidden"></div>
   </div>
@@ -138,7 +141,6 @@
   <div id="keyhelp" class="keyhelp hidden"></div>
 
   <!-- 상태 표시 -->
-  <div id="status" class="status hidden"></div>
 
   <!-- 앱 내부 오류 배너 (P23-1) — 세션당 한 번만 뜨고 닫으면 다시 안 뜨다.
        문구는 errors.js 가 textContent 로만 넣는다(그래서 XSS 가 구조적으로 막힌다). -->
