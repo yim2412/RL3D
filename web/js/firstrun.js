@@ -46,17 +46,21 @@ function firstRunCounts(launches, nowMs) {
  * **무엇이 빠졌는지**를 켜는 법과 함께 말한다. 단축키를 같이 적는 것은 P17-3 에서 낸
  * 길이 여기서 발견되게 하려는 것이다 — 아무 데서도 안 가리키는 단축키는 없는 것과 같다.
  */
-function firstRunHtml(counts, archiveYear) {
+// `done` — 사용자가 **이미 한 것**(P63). 툴바에서 위성을 직접 켠 사람에게 "위성을 켜면…[켜기]" 를
+// 실행할 때마다 권하고 있었다(2026-09-27 캡처 세 장 — 설정에 `satellites.enabled: true` 인데 카드가 떴다).
+function firstRunHtml(counts, archiveYear, done = {}) {
   const span = counts.years.length
     ? (counts.years.length === 1 ? `${counts.years[0]}년`
        : `${counts.years[0]}~${counts.years[counts.years.length - 1]}년`)
     : "최근";
   return `<div class="fr-head">지금 지도에 ${span} 발사 ${counts.total}건이 있습니다` +
     ` <span class="fr-sub">(예정 ${counts.upcoming} · 지난 ${counts.past})</span></div>` +
-    `<div class="fr-row"><span>🛰 위성을 켜면 실시간 위치가 함께 움직입니다</span>` +
-    `<button id="fr-sat" class="btn sm">켜기 <kbd>5</kbd></button></div>` +
-    `<div class="fr-row"><span>📅 과거 연도를 불러오면 통계·밀도가 두꺼워집니다</span>` +
-    `<button id="fr-arch" class="btn sm">${escapeHtml(String(archiveYear))}년 <kbd>A</kbd></button></div>` +
+    (done.satOn ? "" :
+      `<div class="fr-row"><span>🛰 위성을 켜면 실시간 위치가 함께 움직입니다</span>` +
+      `<button id="fr-sat" class="btn sm">켜기 <kbd>5</kbd></button></div>`) +
+    (done.archLoaded ? "" :
+      `<div class="fr-row"><span>📅 과거 연도를 불러오면 통계·밀도가 두꺼워집니다</span>` +
+      `<button id="fr-arch" class="btn sm">${escapeHtml(String(archiveYear))}년 <kbd>A</kbd></button></div>`) +
     `<div class="fr-foot"><span>요청 제한을 아끼려고 기본은 꺼 둔 상태입니다.</span>` +
     `<button id="fr-close" class="btn sm">나중에</button></div>`;
 }
@@ -71,7 +75,11 @@ function showFirstRun() {
   const cur = new Date().getUTCFullYear();
   // 올해는 이미 화면에 있다 → 권하는 것은 **작년**이다
   const year = cur - 1;
-  box.innerHTML = firstRunHtml(counts, year);
+  const satBox = document.getElementById("toggle-sat");
+  const done = { satOn: !!(satBox && satBox.checked), archLoaded: loadedYears.has(year) };
+  // 권할 것이 하나도 없으면 띄우지 않고 **본 것으로 친다** — 둘 다 이미 찾아 쓴 사람이다
+  if (done.satOn && done.archLoaded) { saveSettings({ firstRunSeen: true }); return; }
+  box.innerHTML = firstRunHtml(counts, year, done);
   box.classList.remove("hidden");
   bindFirstRunButtons(year, sel);
 }

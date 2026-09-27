@@ -4496,6 +4496,56 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("권하는 연도를 버튼에 적는다", html.includes("2025년"), true);
   check("세 버튼이 모두 있다",
     ["fr-sat", "fr-arch", "fr-close"].filter((id) => !html.includes(id)), []);
+  // 이미 한 것은 권하지 않는다(P63) — 툴바에서 위성을 켠 사람에게 매번 "[켜기]" 를 내밀었다
+  const satOn = ctx.firstRunHtml(c, 2025, { satOn: true });
+  check("위성을 이미 켰으면 위성 행이 없다", [satOn.includes("fr-sat"), satOn.includes("<kbd>5</kbd>")], [false, false]);
+  check("그래도 아카이브 행과 닫기는 남는다", ["fr-arch", "fr-close"].filter((id) => !satOn.includes(id)), []);
+  const archOn = ctx.firstRunHtml(c, 2025, { archLoaded: true });
+  check("그 연도를 이미 불러왔으면 아카이브 행이 없다", [archOn.includes("fr-arch"), archOn.includes("fr-sat")], [false, true]);
+}
+{
+  // 배선(P63): **설정에 위성이 켜진 채** 부트하면 카드가 위성을 권하지 않는다.
+  // 순수 함수만 재면 `showFirstRun` 이 상태를 안 넘겨도 전부 통과한다.
+  const saved = [];
+  const { el, map, win } = loadApp({ api: {
+    get_settings: async () => ({ satellites: { enabled: true } }),
+    save_settings: (p) => saved.push(p),
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 }] }),
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("첫 실행 — 이미 켠 위성은 권하지 않는다 (P63)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  check("설정대로 위성이 켜져 있다(기준선)", el("toggle-sat").checked, true);
+  map.fire("style.load");
+  await new Promise((r) => setImmediate(r));
+  check("카드는 뜬다(아카이브는 아직 안 했다)", el("firstrun").hidden, false);
+  check("그 카드에 위성 [켜기] 가 없다", el("firstrun").innerHTML.includes("fr-sat"), false);
+  check("아직 권할 것(아카이브)은 남아 있다", el("firstrun").innerHTML.includes("fr-arch"), true);
+}
+{
+  // 둘 다 이미 했으면 권할 것이 없다 — 카드를 띄우지 않고 **본 것으로 저장**한다(P63)
+  const saved = [];
+  const { el, map, win, state } = loadApp({ api: {
+    get_settings: async () => ({ satellites: { enabled: true } }),
+    save_settings: (p) => saved.push(p),
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 }] }),
+    get_satellites: async () => ({ satellites: [] }),
+  } });
+  group("첫 실행 — 권할 것이 없으면 띄우지 않는다 (P63)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  state.loadedYears.add(new Date().getUTCFullYear() - 1);   // 작년 아카이브를 이미 불러온 상태
+  map.fire("style.load");
+  await new Promise((r) => setImmediate(r));
+  check("카드가 안 뜬다", el("firstrun").hidden, true);
+  check("본 것으로 저장한다(다음 실행에도 안 뜬다)", saved.some((p) => p.firstRunSeen === true), true);
 }
 {
   // 배선: **부트 → 발사 로드 → 안내** 가 실제로 이어지는가.
