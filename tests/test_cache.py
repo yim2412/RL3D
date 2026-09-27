@@ -1233,6 +1233,78 @@ class TestCacheWriteFailure(CacheTestBase):
         self.assertIsNone(res["error"], "네트워크는 성공했는데 오류 문구를 냈다")
 
 
+class TestRunWindowGeometry(CacheTestBase):
+    """창 위치 복원·저장이 **배포 모드에서만** 도는가 (P68).
+
+    `_run()` 의 `if not dev_mode:` 두 줄은 고친 변이 도구로 재자 생존했다(2026-09-27). 판정은
+    `restored_geometry` 가 순수 함수로 재지만, **그걸 부르는지·닫을 때 저장하는지**는 `_run()` 안에 있다.
+    뒤집히면 배포 exe 가 창 위치를 잊고, 개발 실행이 2번 모니터 좌표를 사용자 설정에 써 넣는다.
+    `webview` 를 가짜로 바꿔 GUI 없이 돌린다.
+    """
+
+    class _Hook(list):
+        def __iadd__(self, fn):
+            self.append(fn)
+            return self
+
+    def _run(self, dev):
+        created = {}
+        test = self
+
+        class FakeWindow:
+            def __init__(self, kw):
+                self.x, self.y = kw.get("x"), kw.get("y")
+                self.width, self.height = kw["width"], kw["height"]
+                self.events = type("E", (), {})()
+                self.events.closing = test._Hook()
+
+        def create_window(title, **kw):
+            created["kw"] = kw
+            created["win"] = FakeWindow(kw)
+            return created["win"]
+
+        def start():
+            win = created["win"]
+            win.x, win.y, win.width, win.height = 300, 200, 1100, 750   # 사용자가 옮기고 키웠다
+            for fn in win.events.closing:
+                fn()
+
+        saved = (main.webview.create_window, main.webview.start, main._monitor_areas, main.dev_window_pos,
+                 os.environ.get("RL3D_DEV_MONITOR"))
+        main.webview.create_window, main.webview.start = create_window, start
+        main._monitor_areas = lambda: [(0, 0, 3000, 2000)]
+        main.dev_window_pos = lambda w, h: (4000, 100) if dev else (None, None)
+        if dev:
+            os.environ["RL3D_DEV_MONITOR"] = "2"
+        else:
+            os.environ.pop("RL3D_DEV_MONITOR", None)
+        try:
+            main._run()
+        finally:
+            main.webview.create_window, main.webview.start, main._monitor_areas, main.dev_window_pos, env = saved
+            if env is None:
+                os.environ.pop("RL3D_DEV_MONITOR", None)
+            else:
+                os.environ["RL3D_DEV_MONITOR"] = env
+        return created["kw"]
+
+    def test_release_restores_and_saves_geometry(self):
+        api_client.save_settings({"window": {"x": 100, "y": 120, "width": 1000, "height": 700}})
+        kw = self._run(dev=False)
+        self.assertEqual((kw["width"], kw["height"], kw.get("x"), kw.get("y")), (1000, 700, 100, 120),
+                         "저장된 창 위치·크기를 복원하지 않았다")
+        self.assertEqual(api_client.load_settings().get("window"),
+                         {"x": 300, "y": 200, "width": 1100, "height": 750}, "닫을 때 창 상태를 저장하지 않았다")
+
+    def test_dev_mode_neither_restores_nor_saves(self):
+        api_client.save_settings({"window": {"x": 100, "y": 120, "width": 1000, "height": 700}})
+        kw = self._run(dev=True)
+        self.assertEqual((kw["width"], kw.get("x")), (1280, 4000), "개발 모드가 저장된 위치로 덮였다")
+        self.assertEqual(api_client.load_settings().get("window"),
+                         {"x": 100, "y": 120, "width": 1000, "height": 700},
+                         "개발 실행의 창 위치가 사용자 설정에 새었다")
+
+
 class TestRequestGate(CacheTestBase):
     """실패 백오프 · 강제 갱신 쿨다운 (전면 감사 F-004·F-005).
 
@@ -1471,7 +1543,7 @@ class TestAuditLowFixes(CacheTestBase):
         self.assertTrue(res["truncated"], "멈췄는데 '이게 전부'라고 말한다")
 
 
-MIN_TESTS = 114   # 건수 하한 — 2026-09-24 실측. 수집이 조용히 비면 0건으로 통과한다
+MIN_TESTS = 127   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":
