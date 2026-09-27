@@ -25,7 +25,7 @@ weblog = logging.getLogger("rl3d.web")
 
 WEB_LOG_MAX_CHARS = 2000   # JS 가 보내는 한 건의 상한(브릿지 입력은 신뢰하지 않는다)
 
-__version__ = "1.65.5"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
+__version__ = "1.65.6"   # 배포 단위. 올릴 때 CHANGELOG.md 도 함께 갱신한다.
 
 
 def resource_path(rel):
@@ -77,7 +77,15 @@ def order_screens(screens):
     return primary + others
 
 
-def dev_window_pos(width, height):
+def _all_screens():
+    """실제 모니터 목록(`.Primary`·`.Bounds` 를 가진 객체). pythonnet 이 없으면 예외."""
+    import clr  # pythonnet (win)
+    clr.AddReference("System.Windows.Forms")
+    from System.Windows.Forms import Screen
+    return list(Screen.AllScreens)
+
+
+def dev_window_pos(width, height, screens_fn=_all_screens):
     """개발 테스트 규칙: 창을 지정 모니터(기본 2번=보조)에 중앙 배치.
 
     환경변수 RL3D_DEV_MONITOR 가 설정됐을 때만 동작. 값은 **주 모니터를 1번으로 세는**
@@ -88,12 +96,10 @@ def dev_window_pos(width, height):
     sel = os.environ.get("RL3D_DEV_MONITOR")
     if sel is None:
         return None, None
+    # 화면 목록은 주입받는다(P69) — 번호 고르기가 한 번 조용히 틀렸던 자리인데(위 order_screens),
+    # 실제 화면을 안에서 불러 **테스트가 못 쟀다.** 기본값은 그대로 실제 화면이다.
     try:
-        import clr  # pythonnet (win)
-        clr.AddReference("System.Windows.Forms")
-        from System.Windows.Forms import Screen
-
-        screens = order_screens(list(Screen.AllScreens))
+        screens = order_screens(screens_fn())
         target = None
         if sel.isdigit() and int(sel) >= 1:
             idx = int(sel) - 1

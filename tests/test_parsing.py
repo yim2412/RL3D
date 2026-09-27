@@ -727,6 +727,68 @@ class TestMonitorOrder(unittest.TestCase):
         self.assertEqual(main_mod.order_screens([a, b]), [a, b])
 
 
+class TestDevWindowPos(unittest.TestCase):
+    """개발 창을 **몇 번 모니터 가운데에** 놓는가 (P69).
+
+    `order_screens` 는 재고 있었지만, 그 결과로 번호를 고르고 가운데를 계산하는 `dev_window_pos` 는
+    실제 화면을 안에서 불러 못 쟀다 — 고친 변이 도구로 재자 네 줄이 생존했다(2026-09-27).
+    이 자리는 한 번 조용히 틀렸다(2번이 주 모니터를 가리켰다). 화면 목록을 주입해 잰다.
+    """
+    class _B:
+        def __init__(self, x, y, w, h):
+            self.X, self.Y, self.Width, self.Height = x, y, w, h
+
+    class _S:
+        def __init__(self, primary, x, w=1920, h=1080):
+            self.Primary, self.Bounds = primary, TestDevWindowPos._B(x, 0, w, h)
+
+    def setUp(self):
+        self._env = os.environ.get("RL3D_DEV_MONITOR")
+        # 실측 배치 그대로 — 보조가 먼저 나열되고, 보조는 x=1920 오른쪽에 있다
+        self.sec, self.pri = self._S(False, 1920), self._S(True, 0)
+        self.screens = lambda: [self.sec, self.pri]
+
+    def tearDown(self):
+        if self._env is None:
+            os.environ.pop("RL3D_DEV_MONITOR", None)
+        else:
+            os.environ["RL3D_DEV_MONITOR"] = self._env
+
+    def pos(self, sel, w=1280, h=800):
+        if sel is None:
+            os.environ.pop("RL3D_DEV_MONITOR", None)
+        else:
+            os.environ["RL3D_DEV_MONITOR"] = sel
+        return main_mod.dev_window_pos(w, h, screens_fn=self.screens)
+
+    def test_no_env_means_os_default(self):
+        self.assertEqual(self.pos(None), (None, None))
+
+    def test_2_is_the_secondary_centered(self):
+        self.assertEqual(self.pos("2"), (1920 + (1920 - 1280) // 2, (1080 - 800) // 2))
+
+    def test_1_is_the_primary(self):
+        self.assertEqual(self.pos("1"), ((1920 - 1280) // 2, (1080 - 800) // 2))
+
+    def test_out_of_range_or_garbage_falls_back_to_first_secondary(self):
+        for sel in ("9", "0", "abc", ""):
+            with self.subTest(sel=sel):
+                self.assertEqual(self.pos(sel)[0], 1920 + (1920 - 1280) // 2)
+
+    def test_single_primary_only_gives_os_default(self):
+        self.screens = lambda: [self.pri]
+        self.assertEqual(self.pos("2"), (None, None), "보조가 없는데 주 모니터 위치를 지어냈다")
+
+    def test_window_bigger_than_screen_is_not_pushed_off(self):
+        self.assertEqual(self.pos("2", w=2500, h=1500), (1920, 0), "화면보다 큰 창을 음수 오프셋으로 밀었다")
+
+    def test_screen_failure_means_os_default(self):
+        def boom():
+            raise RuntimeError("pythonnet 없음")
+        self.screens = boom
+        self.assertEqual(self.pos("2"), (None, None))
+
+
 class TestSatcatParsing(unittest.TestCase):
     """SATCAT 정규화 (P12-5). 실제 응답 + 일부러 넣은 경계 사례로 잰다."""
 
