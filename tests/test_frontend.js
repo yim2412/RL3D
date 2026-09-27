@@ -987,6 +987,28 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   }
 }
 
+// ── Esc 가 대상마다 실제로 닫는가 (P65) ──────────────────────────────────────
+// `closeOverlay` 의 `else if` 여덟 줄은 **한 번도 안 재졌다** — 변이 도구가 줄 맨 앞의 `else if` 를
+// 대상에서 빼고 있었다(2026-09-27 도구 수정 뒤 재측정: 8줄 전부 생존). 순서(`escapeTarget`)는
+// 순수 함수로 재 왔지만, 그 결과로 **실제로 닫히는지**는 아무도 안 봤다.
+{
+  const CASES = [
+    ["more", "toolbar-more"], ["panel", "panel"], ["pass", "pass-panel"], ["stats", "stats-panel"],
+    ["obsPopover", "obs-popover"], ["satGroups", "sat-groups"], ["satCtrl", "sat-ctrl"], ["sidebar", "sidebar"],
+  ];
+  group("Esc — 대상마다 실제로 닫힌다 (P65)");
+  for (const [what, id] of CASES) {
+    const { ctx, el, doc, map, state } = loadApp();
+    state.map = map;
+    for (const s of ["launches", "launch-heat", "launch-track", "satellites", "sat-track", "sats"]) map.stubSource(s);
+    ctx.bindUI();
+    el(id).classList.remove("hidden");
+    check(`${what}: 연 상태에서 Esc 의 대상이 된다(기준선)`, ctx.escapeTarget(ctx.openOverlays()), what);
+    doc.fire("keydown", { key: "Escape", target: { tagName: "BODY" }, preventDefault() {} });
+    check(`${what}: Esc 로 닫힌다`, el(id).classList.contains("hidden"), true);
+  }
+}
+
 // ── 궤적 연장 · 미래 위치 (P12-16) ────────────────────────────────────────────
 // 조용히 깨지는 자리: 범위 계산과 점 간격. 선은 어느 쪽이든 "그럴듯하게" 그려지므로
 // 뒤쪽까지 늘어났는지, 점이 수천 개가 됐는지는 화면으로 알아채기 어렵다.
