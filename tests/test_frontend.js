@@ -4548,6 +4548,40 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("본 것으로 저장한다(다음 실행에도 안 뜬다)", saved.some((p) => p.firstRunSeen === true), true);
 }
 {
+  // 카드가 **떠 있는 동안** 툴바로 한 것도 반영한다(P64). 전에는 처음 그린 그대로 남아
+  // 방금 켠 위성을 "켜기" 로 계속 권했다.
+  const saved = [];
+  const year = new Date().getUTCFullYear() - 1;
+  const { el, map, win } = loadApp({ api: {
+    get_settings: async () => ({}),
+    save_settings: (p) => saved.push(p),
+    get_launches: async () => ({ launches: [
+      { id: "1", net: "2026-09-20T00:00:00Z", outcome: "upcoming", lat: 1, lng: 1 }] }),
+    get_satellites: async () => ({ satellites: [] }),
+    get_archive: async (y) => ({ year: y, launches: [] }),
+  } });
+  group("첫 실행 — 떠 있는 동안 툴바로 한 것도 반영한다 (P64)");
+  for (const s of ["launches", "launch-heat", "launch-track", "terminator", "sats", "sat-track", "satellites"])
+    map.stubSource(s);
+  await win.fire("pywebviewready");
+  await new Promise((r) => setImmediate(r));
+  map.fire("style.load");
+  await new Promise((r) => setImmediate(r));
+  check("처음엔 위성을 권한다(기준선)", el("firstrun").innerHTML.includes("fr-sat"), true);
+  el("toggle-sat").checked = true;
+  el("toggle-sat").fire("change", { target: el("toggle-sat") });   // 툴바 체크박스로 켠다
+  await new Promise((r) => setImmediate(r));
+  check("툴바로 켜면 카드의 위성 행이 사라진다", el("firstrun").innerHTML.includes("fr-sat"), false);
+  check("카드는 남는다(아카이브를 아직 권한다)", [el("firstrun").hidden, el("firstrun").innerHTML.includes("fr-arch")], [false, true]);
+  check("아직 본 것으로 저장하지 않는다", saved.some((p) => p.firstRunSeen === true), false);
+  el("arch-year").value = String(year);
+  el("arch-load").fire("click", {});                                  // 툴바로 그 연도를 불러온다
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  check("권할 것이 다 없어지면 카드가 닫힌다", el("firstrun").hidden, true);
+  check("본 것으로 저장한다", saved.some((p) => p.firstRunSeen === true), true);
+}
+{
   // 배선: **부트 → 발사 로드 → 안내** 가 실제로 이어지는가.
   // 순수 함수만 재면 `loadLaunches` 안의 호출 한 줄이 빠져도 전부 통과한다.
   const saved = [];

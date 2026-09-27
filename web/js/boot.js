@@ -49,6 +49,7 @@ function bindUI() {
   wire("toggle-sat", "change", (e) => {
     setSatelliteVisible(e.target.checked);
     saveSatSettings();   // 저장 모양은 sats.js 한 곳에만 둔다
+    refreshFirstRun();   // 떠 있는 첫 실행 카드가 방금 켠 것을 계속 권하지 않게(P64)
   });
   wire("toggle-heat", "change", (e) => {
     setHeatVisible(e.target.checked);

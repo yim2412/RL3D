@@ -75,13 +75,29 @@ function showFirstRun() {
   const cur = new Date().getUTCFullYear();
   // 올해는 이미 화면에 있다 → 권하는 것은 **작년**이다
   const year = cur - 1;
+  renderFirstRun(box, counts, year, sel);
+}
+
+/** 지금 상태로 카드를 그린다. 권할 것이 하나도 없으면 **본 것으로 치고 닫는다**. */
+function renderFirstRun(box, counts, year, sel) {
   const satBox = document.getElementById("toggle-sat");
   const done = { satOn: !!(satBox && satBox.checked), archLoaded: loadedYears.has(year) };
-  // 권할 것이 하나도 없으면 띄우지 않고 **본 것으로 친다** — 둘 다 이미 찾아 쓴 사람이다
-  if (done.satOn && done.archLoaded) { saveSettings({ firstRunSeen: true }); return; }
+  // 둘 다 이미 찾아 쓴 사람이다 — 띄우지 않고, 떠 있었다면 닫는다
+  if (done.satOn && done.archLoaded) { dismissFirstRun(); return; }
   box.innerHTML = firstRunHtml(counts, year, done);
   box.classList.remove("hidden");
   bindFirstRunButtons(year, sel);
+}
+
+/**
+ * 카드가 **떠 있는 동안** 사용자가 툴바로 위성을 켜거나 연도를 불러오면 그 행을 지운다(P64).
+ * 전에는 카드가 처음 그린 그대로 남아, 방금 켠 위성을 "켜기" 로 계속 권했다.
+ */
+function refreshFirstRun() {
+  const box = document.getElementById("firstrun");
+  if (!box || box.classList.contains("hidden")) return;
+  const counts = firstRunCounts(allLaunches, Date.now());
+  renderFirstRun(box, counts, new Date().getUTCFullYear() - 1, document.getElementById("arch-year"));
 }
 
 function dismissFirstRun() {
