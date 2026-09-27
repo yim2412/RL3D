@@ -1441,13 +1441,32 @@ class TestRequestGate(CacheTestBase):
         with open(api_client._cache_path(api_client.BACKOFF_FILE), encoding="utf-8") as f:
             self.assertNotIn("분 뒤", json.load(f)["ll2"][1])
 
-    def test_retry_note_rounds_up_and_never_says_zero(self):
-        n = api_client._retry_note
+    def test_wait_text_rounds_up_and_never_says_zero(self):
+        n = api_client._wait_text
         self.assertEqual([n(0), n(30), n(60), n(61), n(1799)],
-                         [" (약 1분 뒤 자동으로 다시 받습니다)", " (약 1분 뒤 자동으로 다시 받습니다)",
-                          " (약 1분 뒤 자동으로 다시 받습니다)", " (약 2분 뒤 자동으로 다시 받습니다)",
-                          " (약 30분 뒤 자동으로 다시 받습니다)"])
-        self.assertEqual(n(7200), " (약 2시간 뒤 자동으로 다시 받습니다)")
+                         ["약 1분 뒤 자동으로 다시 받습니다.", "약 1분 뒤 자동으로 다시 받습니다.",
+                          "약 1분 뒤 자동으로 다시 받습니다.", "약 2분 뒤 자동으로 다시 받습니다.",
+                          "약 30분 뒤 자동으로 다시 받습니다."])
+        self.assertEqual(n(7200), "약 2시간 뒤 자동으로 다시 받습니다.")
+
+    def test_wait_replaces_retry_advice_not_appends(self):
+        # "잠시 후 다시 시도하세요 (자동으로 다시 받습니다)" 로 부딪히던 것(P71)
+        self.fail_with(self.E429)
+        err = api_client.get_launches()["error"] or ""
+        self.assertIn("약 30분 뒤 자동으로 다시 받습니다", err)
+        self.assertNotIn(api_client.api_errors.RETRY_ADVICE, err, "다시 시도하라와 자동으로 받는다가 같이 나갔다")
+        self.assertTrue(err.startswith("요청이 많아 잠시 제한됐습니다(시간당 한도)."), err)
+
+    def test_message_without_advice_gets_wait_appended(self):
+        self.assertEqual(api_client._with_wait("요청한 데이터를 찾을 수 없습니다(404).", 600),
+                         "요청한 데이터를 찾을 수 없습니다(404). 약 10분 뒤 자동으로 다시 받습니다.")
+
+    def test_manual_paths_keep_retry_advice(self):
+        # 백오프가 없는 경로(아카이브)는 자동으로 안 받는다 — "다시 시도하세요" 가 맞는 말이다
+        self.fail_with(self.E429)
+        err = api_client.get_archive(2019)["error"] or ""
+        self.assertIn(api_client.api_errors.RETRY_ADVICE, err)
+        self.assertNotIn("자동으로", err)
 
     def test_force_right_after_fetch_uses_cache(self):
         self.serve(_page(2), _page(0))
@@ -1580,7 +1599,7 @@ class TestAuditLowFixes(CacheTestBase):
         self.assertTrue(res["truncated"], "멈췄는데 '이게 전부'라고 말한다")
 
 
-MIN_TESTS = 132   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
+MIN_TESTS = 135   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":

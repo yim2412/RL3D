@@ -500,18 +500,27 @@ def _gate(key, force, cached_age):
             _backoff_load_locked(now)
         until, msg = _blocked_until.get(key, (0, None))
         if now < until and (not force or now - _last_attempt.get(key, 0) < FORCE_MIN_INTERVAL):
-            return False, (msg + _retry_note(until - now)) if msg else msg
+            return False, _with_wait(msg, until - now) if msg else msg
         _last_attempt[key] = now
     return True, None
 
 
-def _retry_note(seconds):
-    """막힌 동안 **얼마나 기다리는지**를 붙인다(P70). 한도 대기가 재시작을 넘어 30분·2시간 가는데
+def _wait_text(seconds):
+    """막힌 동안 **얼마나 기다리는지**(P70). 한도 대기가 재시작을 넘어 30분·2시간 가는데
     (P59) 문구는 "잠시 후" 뿐이라, 기다려야 하는지 다시 눌러야 하는지 알 수 없었다."""
     minutes = max(1, -(-int(seconds) // 60))   # 올림 — "0분 뒤"라고 말하지 않는다
     if minutes >= 90:
-        return " (약 %d시간 뒤 자동으로 다시 받습니다)" % round(minutes / 60)
-    return " (약 %d분 뒤 자동으로 다시 받습니다)" % minutes
+        return "약 %d시간 뒤 자동으로 다시 받습니다." % round(minutes / 60)
+    return "약 %d분 뒤 자동으로 다시 받습니다." % minutes
+
+
+def _with_wait(msg, seconds):
+    """문구의 "잠시 후 다시 시도하세요." 를 대기 시간으로 **바꿔 끼운다**(P71). 그 꼬리가 없는 문구는
+    뒤에 붙인다. 둘을 같이 쓰면 "다시 시도하세요 (자동으로 다시 받습니다)" 로 부딪혔다."""
+    advice = api_errors.RETRY_ADVICE
+    if msg.endswith(advice):
+        return msg[: -len(advice)] + _wait_text(seconds)
+    return msg + " " + _wait_text(seconds)
 
 
 def _gate_fail(key, msg):
@@ -520,7 +529,7 @@ def _gate_fail(key, msg):
     with _gate_lock:
         _blocked_until[key] = (time.time() + wait, msg)
         _backoff_save_locked()
-    return msg + _retry_note(wait)
+    return _with_wait(msg, wait)
 
 
 def _gate_ok(key):
