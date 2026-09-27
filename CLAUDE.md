@@ -30,6 +30,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
 | `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(68초 절약) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
+| `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
@@ -338,6 +339,9 @@ build.bat          # exe 빌드 → dist\RL3D.exe
     주 모니터에 뜬다** — 환경변수가 안 듣는 창이라 규칙이 지켜지지 않은 것처럼 보인다(2026-09-12 지적받음).
     로그는 `%APPDATA%\RL3D\logs\` 에 남으므로(P12-9) 콘솔이 없어도 잃는 정보가 없다.
   **끝나면 앱을 끄고 다음 작업으로 간다** — 띄워 둔 채로 넘어가지 않는다.
+  - **exe 스모크는 `python tools/smoke_exe.py` 로 한다**(P57). 손으로 할 때는 강제 종료로 끝냈고,
+    onefile 은 강제 종료되면 `%TEMP%\_MEI*`(약 23MB)를 못 지운다 — 감사 F-017 이 찾은 찌꺼기 42개가
+    **전부 스모크를 강제 종료한 날짜**였다. WM_CLOSE 면 1.7초 · rc 0 · 새 `_MEI` 0 이다(2026-09-27 실측).
   - **exe 스모크는 부모만 죽이면 창이 남는다.** onefile PyInstaller 는 부트로더(부모)가
     **자식 프로세스**를 띄우고 창은 자식이 갖는다. `Start-Process` 가 준 PID 를 `Stop-Process`
     해도 **창은 그대로 떠 있다** — 2026-09-17 에 v1.41.0 exe 창이 그렇게 남아, 다음 작업에서
@@ -357,7 +361,7 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 **이틀 만에 10개가 다시 밀렸다**(2026-09-14 실측: 태그 `v1.22.1` · 코드 `v1.32.0`).
 정리는 일회성이었고 원인은 그대로였다 — 버전을 올릴 때 태그를 안 붙이니 또 쌓인다.
 
-- **빌드한 뒤 `python tools/check_exe.py` 가 전부 `[OK]` 인지 본다**(P50). 빌드 성공은 번들이 들어갔다는 뜻이
+- **빌드한 뒤 `python tools/check_exe.py` 와 `python tools/smoke_exe.py` 가 전부 `[OK]` 인지 본다**(P50·P57). 빌드 성공은 번들이 들어갔다는 뜻이
   아니다 — `--add-data` 가 틀려도 exe 는 만들어지고 실행하면 빈 창이다. CI 의 `build` 잡도 같은 것을 돈다.
 - **`main.py` 의 `__version__` 을 올리는 커밋에는 annotated 태그를 같이 붙여 푸시한다.**
   형식은 `vX.Y.Z — 한 줄 요약 (Pnn-n)`.
