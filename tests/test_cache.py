@@ -212,6 +212,40 @@ class TestResultLogging(CacheTestBase):
             api_client.get_satellites(groups=["stations"])
         self.assertIn("위성 TLE", chr(10).join(cm.output))
 
+    def test_waiting_for_limit_still_logs_one_line(self):
+        """한도 대기 중에도 한 줄(P72). 없으면 그동안의 로그가 비어 **저장본을 썼는지** 알 수 없다
+        — 2026-09-27 한도에 걸린 exe 실행의 로그가 창 생성 뒤 데이터 줄 0개였다."""
+        self.serve(_page(3), _page(0))
+        api_client.get_launches()
+        self.age_cache("launches.json", api_client.TTL_LAUNCHES + 1)
+        self.fail_with(urllib.error.HTTPError("u", 429, "Too Many", None, None))
+        api_client.get_launches()                      # 실패 → 대기 시작
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_launches()                  # 대기 중(요청 없음)
+        line = chr(10).join(cm.output)
+        self.assertIn("발사 3건", line)
+        self.assertIn(api_client.WAITING_SOURCE, line, "대기 중 저장본이라는 사실이 안 남는다")
+
+    def test_waiting_satellites_log_group(self):
+        def boom(url):
+            raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+        api_client._http_get = boom
+        api_client.get_satellites(groups=["stations"])       # 실패 → 대기 시작
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_satellites(groups=["stations"])
+        line = chr(10).join(cm.output)
+        self.assertIn("그룹 stations, " + api_client.WAITING_SOURCE, line)
+
+    def test_waiting_satcat_logs_group(self):
+        def boom(url):
+            raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+        api_client._http_get = boom
+        api_client.get_satcat(groups=["stations"])            # 실패 → 대기 시작
+        with self.assertLogs("api_client", level="INFO") as cm:
+            api_client.get_satcat(groups=["stations"])
+        self.assertIn("SATCAT", chr(10).join(cm.output))
+        self.assertIn(api_client.WAITING_SOURCE, chr(10).join(cm.output))
+
     def test_truncated_archive_says_so_in_the_line(self):
         """잘린 아카이브는 **그 줄에서** 드러나야 한다 — 따로 찾아 맞춰 보지 않아도 되게."""
         pages = [json.dumps({"results": [], "next": "http://x/next"})] * 20
@@ -1599,7 +1633,7 @@ class TestAuditLowFixes(CacheTestBase):
         self.assertTrue(res["truncated"], "멈췄는데 '이게 전부'라고 말한다")
 
 
-MIN_TESTS = 135   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
+MIN_TESTS = 138   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
 if __name__ == "__main__":

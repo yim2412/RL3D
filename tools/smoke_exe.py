@@ -31,7 +31,11 @@ DEFAULT_EXE = os.path.join(ROOT, "dist", "RL3D.exe")
 LOG = os.path.join(os.environ.get("APPDATA", ""), "RL3D", "logs", "rl3d.log")
 TITLE_PREFIX = "RL3D v"
 WINDOW_TIMEOUT_S = 30     # 실측 1.6초(데운 상태). 콜드 스타트 여유
-SETTLE_S = 5              # 첫 API 호출(실측 1.4~1.7초)과 그 로그가 나올 시간
+DATA_TIMEOUT_S = 30       # 창 → 첫 발사 데이터 로그. 실측 0.8~17.5초(P58 뒤 20회 · WebGL 대기가 대부분)
+SETTLE_S = 1              # 데이터 로그 뒤 한숨 — 같은 틱의 다른 로그(위성 등)까지 받는다
+# 발사 데이터는 부트마다 한 번 반드시 온다 — 캐시·네트워크·한도 대기 중 어느 경로든 한 줄 남긴다(P72).
+# 예전엔 창 뒤 **5초 고정**으로 닫아, WebGL 대기가 길면 데이터 경로를 안 거친 채 통과했다(2026-09-27).
+DATA_LINE = re.compile(r"api_client: 발사 \d+건")
 CLOSE_TIMEOUT_S = 30      # 실측 1.5초
 WM_CLOSE = 0x0010
 MONITOR_DEFAULTTONEAREST = 2
@@ -102,6 +106,15 @@ def log_problems(since):
     return out
 
 
+def data_seen(since):
+    """since 이후 발사 데이터 로그가 찍혔나."""
+    if not os.path.exists(LOG):
+        return False
+    cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(since))
+    with open(LOG, encoding="utf-8", errors="replace") as f:
+        return any(line[:19] >= cutoff and DATA_LINE.search(line) for line in f)
+
+
 def run(exe, kill=False):
     """(ok, 줄 목록). 줄은 [OK]/[FAIL] 로 시작한다."""
     lines, ok = [], True
@@ -135,6 +148,12 @@ def run(exe, kill=False):
             say(not primary, "보조 모니터에 떴다" if not primary else "주 모니터에 떴다(RL3D_DEV_MONITOR 가 안 들었다)")
         else:
             lines.append("[OK] 모니터가 %d개라 위치는 재지 않았다" % monitors)
+        got = False
+        while time.time() - t0 < DATA_TIMEOUT_S and not got:
+            time.sleep(0.5)
+            got = data_seen(t0)
+        say(got, "발사 데이터가 들어왔다 %.1f초" % (time.time() - t0) if got
+            else "%d초 안에 발사 데이터 로그가 없다 — 부트가 데이터 단계까지 못 갔다" % DATA_TIMEOUT_S)
         time.sleep(SETTLE_S)
 
     t1 = time.time()

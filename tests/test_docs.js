@@ -108,6 +108,10 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   check("훑은 파일이 충분하다(대상이 비면 검사가 공허하다)", files.length > 40, true);
   const bad = files.filter((f) => /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(read(f)));
   check("제어 문자가 든 파일", bad, []);
+  // `\r` 은 CRLF 때문에 위에서 뺐는데, 그래서 **줄 중간의 외톨이 CR** 이 샜다 — 2026-09-27 CHANGELOG 의
+  // `logs\rl3d.log` 가 파이썬 문자열에서 CR 이 되어 경로가 `logs⏎l3d.log` 로 깨졌고 이 검사는 초록이었다.
+  const loneCr = files.filter((f) => /\r(?!\n)/.test(read(f)));
+  check("줄바꿈이 아닌 자리의 CR 이 든 파일", loneCr, []);
 }
 
 // ── 아이콘만 있는 버튼에는 이름이 있다 (P52) ──────────────────────────────────

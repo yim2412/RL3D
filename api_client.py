@@ -428,6 +428,7 @@ def save_settings(patch):
 FAIL_BACKOFF = {"ll2": 30 * 60,             # LL2 실패 뒤 30분 — 폴링 6회를 건너뛴다
                 "celestrak": 2 * 60 * 60}   # Celestrak 은 같은 그룹을 2시간 안에 다시 받으면 403
 FORCE_MIN_INTERVAL = 60                     # 강제 갱신의 최소 간격(초)
+WAITING_SOURCE = "한도 대기 중 — 저장본"     # 막힌 동안의 로그 출처 표기(P72)
 _gate_lock = threading.Lock()
 _blocked_until = {}   # 키 → (이 시각까지 막음, 그때의 사람 말 오류)
 _last_attempt = {}    # 키 → 마지막으로 실제 요청을 낸 시각
@@ -578,7 +579,10 @@ def get_launches(force=False):
     if not allowed:
         if why is None:   # 방금 받은 캐시 — 강제 갱신 연타
             return {"launches": cached, "stale": False, "error": None, "age": age}
-        return fallback(why)
+        res = fallback(why)
+        # 한도 대기 중에도 **한 줄**(P72) — 없으면 그동안의 로그가 비어 "저장본을 썼나"를 알 수 없었다
+        _log_result("발사", len(res["launches"]), WAITING_SOURCE)
+        return res
 
     t0 = time.time()
     try:
@@ -750,7 +754,11 @@ def _get_group_tle(group, force=False):
 
     allowed, why = _gate(key, force, age if cached is not None else None)
     if not allowed:
-        return (cached, False, None) if why is None else fallback(why)
+        if why is None:
+            return cached, False, None
+        res = fallback(why)
+        _log_result("위성 TLE", len(res[0]), "그룹 %s, %s" % (group, WAITING_SOURCE))   # P72
+        return res
     try:
         sats = api_parsing._parse_tle(_http_get(CELESTRAK_GP.format(group=group)))
         if not sats:
@@ -821,7 +829,11 @@ def _get_group_satcat(group, force=False):
 
     allowed, why = _gate(key, force, age if cached is not None else None)
     if not allowed:
-        return (cached, False, None) if why is None else fallback(why)
+        if why is None:
+            return cached, False, None
+        res = fallback(why)
+        _log_result("위성 정보(SATCAT)", len(res[0]), "그룹 %s, %s" % (group, WAITING_SOURCE))   # P72
+        return res
     try:
         meta = api_parsing._parse_satcat(_http_get(CELESTRAK_SATCAT.format(group=group)))
         if not meta:
