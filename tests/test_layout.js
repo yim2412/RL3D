@@ -112,6 +112,18 @@ const CASES = [
     noOverlap: [["ui-stack", "toolbar"]],
   },
   {
+    // 통과 예측·통계 패널은 상세 패널과 **같은 자리**(`.panel`)라 위치만 재고 있었다 — 닫기 버튼과
+    // 내용이 길 때의 모양은 따로 안 쟀다(P61 의 "재지 않은 것" · P62).
+    name: "통과 예측 패널 (사이드바 열림)",
+    open: ["sidebar", "pass-panel"],
+    clickable: ["pass-close", "toggle-visible-only", "toggle-list", "tl-range", "arch-load"],
+  },
+  {
+    name: "통계 패널",
+    open: ["stats-panel"],
+    clickable: ["stats-close", "refresh", "tl-range", "arch-load"],
+  },
+  {
     // 오류 알림 띠는 **어느 장면에도 없었다**(P61 전수 대조: 떠 있는 요소 16개 중 유일한 빈칸).
     // 뜨는 순간은 무언가 이미 잘못된 때라, 그때 툴바까지 못 누르면 사용자는 갱신도 못 한다.
     name: "오류 알림 띠",
@@ -207,6 +219,9 @@ const FILL = {
     + '<button id="fr-close" class="btn sm">나중에</button></div>',
   // 오류 알림(P61) — `formatError` 가 만드는 모양의 긴 한 줄
   "app-error-text": "화면 일부가 제대로 동작하지 않을 수 있습니다 — [오류] Cannot read properties of undefined (reading 'coordinates') @ sats.js:212 (같은 오류 3번)",
+  // 통과 예측·통계 패널(P62) — 목록이 길어 스크롤이 생길 만큼. 닫기 버튼이 가려지지 않는지를 잰다
+  "pass-body": '<h2>ISS (ZARYA)</h2><div class="pass-obs">서울 · 앞으로 24시간</div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:10 · 6분</div><div class="pass-meta">최대 고도 30° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:11 · 6분</div><div class="pass-meta">최대 고도 31° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:12 · 6분</div><div class="pass-meta">최대 고도 32° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:13 · 6분</div><div class="pass-meta">최대 고도 33° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:14 · 6분</div><div class="pass-meta">최대 고도 34° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:15 · 6분</div><div class="pass-meta">최대 고도 35° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:16 · 6분</div><div class="pass-meta">최대 고도 36° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:17 · 6분</div><div class="pass-meta">최대 고도 37° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:18 · 6분</div><div class="pass-meta">최대 고도 38° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:19 · 6분</div><div class="pass-meta">최대 고도 39° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:20 · 6분</div><div class="pass-meta">최대 고도 40° · 북서 → 남동</div></div><div class="pass-row"><div class="pass-time">9월 27일 (토) 19:21 · 6분</div><div class="pass-meta">최대 고도 41° · 북서 → 남동</div></div>',
+  "stats-body": '<h2>2026년 발사 통계</h2><div class="st-tiles"><div class="st-tile">99</div><div class="st-tile">50</div><div class="st-tile">49</div></div>' + '<div style="height:900px">표</div>',
   // 실제로 가장 길게 뜨는 상태 문구(429). `showStatus` 는 textContent 로 넣는다.
   "status": "요청이 많아 잠시 제한됐습니다(시간당 한도). 잠시 후 다시 시도하세요. (저장된 데이터 표시)",
   // 공백 없는 긴 토큰(식별자·URL·합성어). **구조는 실제 렌더가 만드는 것과 같고

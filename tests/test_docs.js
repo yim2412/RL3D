@@ -190,8 +190,6 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
     toolbar: "늘 보인다 — 장면마다 툴바 버튼을 clickable 로 잰다",
     "ui-stack": "좌하단 스택 컨테이너 — 자식들을 연다",
     timeline: "늘 보인다 — 장면마다 tl-range·arch-load 를 잰다",
-    "pass-panel": "`.panel` 과 같은 자리(openRightPanel 이 하나만 연다) — panel 장면이 잰다",
-    "stats-panel": "`.panel` 과 같은 자리 — panel 장면이 잰다",
   };
   const sels = [];
   const ruleRe = /([^{}]+)\{([^}]*)\}/g;
