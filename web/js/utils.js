@@ -271,9 +271,30 @@ function coarseCountdown(iso) {
  * 화면에 적을 카운트다운. **정밀도를 보는 유일한 창구**다 — 여덟 곳이 이걸 쓴다.
  * `countdown()` 은 이제 "시·분까지 확정된 발사"에만 간접적으로 쓰인다.
  */
+/**
+ * 예정 발사가 시각을 이만큼 넘기면 `T+…` 대신 **결과 대기**라고 말한다(P80).
+ * 첫 한 시간은 실제로 비행 중일 수 있다(집중 화면도 T+30분까지 남긴다). 그 뒤의 `예정 · T+1일 03:12`
+ * 는 데이터가 결과를 모르는 것(캐시가 낡았거나 LL2 가 아직 안 고침)인데, 초를 세며 목록 **맨 위**에 선다 —
+ * 예정은 시각이 이른 순이라 지난 것이 가장 위다. 실측: 지금 캐시를 72시간 낡게 두면 맨 위 5줄 중 3줄.
+ */
+const OVERDUE_MS = 60 * 60 * 1000;
+
+/** 지난 시간 → "3시간" · "2일". 순수 함수. */
+function lateText(ms) {
+  const h = Math.floor(ms / 3600000);
+  return h < 24 ? `${h}시간` : `${Math.floor(h / 24)}일`;
+}
+
 function countdownText(d) {
   if (!d || !d.net) return "";
   const rank = netRank(d.net_precision);
+  // **흐린 정밀도는 판정하지 않는다** — 월·연 미정은 NET 이 그 기간 경계의 00:00 UTC 라(실측 39건 전부),
+  // NET 으로 재면 "10월 중" 발사가 10월 1일 01시에 벌써 결과 대기가 된다. 날짜만 확정이면 그날이 끝난 뒤부터.
+  if (d.outcome === "upcoming" && rank >= 1) {
+    const since = Date.now() - new Date(d.net).getTime();
+    const dayWindow = rank === 1 ? 24 * 3600000 : 0;   // 날짜만 확정 → 그날 하루가 예정 창
+    if (since - dayWindow > OVERDUE_MS) return `결과 대기 · ${lateText(since)} 전 예정`;
+  }
   if (rank >= 3) return countdown(d.net);
   if (rank >= 1) return coarseCountdown(d.net);
   return vagueWhen(d.net, d.net_precision);

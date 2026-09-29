@@ -1691,6 +1691,23 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("index.html 이 lib/ne_land.js 를 싣는다", html.includes('src="lib/ne_land.js"'), true);
   check("그 파일이 실제로 있다",
     fs.existsSync(path.join(__dirname, "..", "web", "lib", "ne_land.js")), true);
+
+  // P80 — **클래식 스크립트라 최상위 이름이 파일 사이에 공유된다.** 같은 이름의 함수를 두 파일에 두면
+  // **나중에 로드된 쪽이 조용히 이긴다** — 예외도 경고도 없다. 2026-09-29 에 utils.js 에 `agoText(ms)` 를
+  // 새로 적었는데 launches.js 의 `agoText(iso)` 가 덮어 "56.8년 전 전 예정" 이 나왔다(테스트가 잡았다).
+  // 로드 순서가 반대였다면 **기존 화면 쪽이 조용히 깨졌을** 자리다.
+  group("최상위 이름이 파일 사이에 겹치지 않는다 (P80)");
+  const owners = new Map();
+  for (const f of APP_FILES) {
+    const src = fs.readFileSync(path.join(__dirname, "..", "web", "js", f), "utf8");
+    for (const m of src.matchAll(/^(?:async\s+)?(?:function\s*\*?\s*|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/gm)) {
+      if (!owners.has(m[1])) owners.set(m[1], []);
+      owners.get(m[1]).push(f);
+    }
+  }
+  check("최상위 이름을 읽었다(≥ 300 — 적으면 정규식이 빗나간 것)", owners.size >= 300, true);
+  check("두 파일 이상에 같은 이름이 없다",
+    [...owners].filter(([, fs2]) => fs2.length > 1).map(([n, fs2]) => n + " @ " + fs2.join(",")), []);
 }
 
 // ── 오프라인 배경 (P17-2) ────────────────────────────────────────────────────
@@ -6358,6 +6375,20 @@ function fresh2(ctx, key, t) {
     ["2026년 4분기 중", "2026년 하반기 중"]);
   check("모르는 표기도 연도까지는 참이므로 그만큼 말한다",
     ctx.countdownText({ net: "2026-12-31T00:00:00Z", net_precision: "Decade" }), "2026년 중");
+
+  // P80 — 예정인데 시각이 지난 발사. 첫 한 시간은 실제 비행일 수 있어 T+ 로 센다
+  const up = (ms, p) => ctx.countdownText({ outcome: "upcoming", net: iso(ms), net_precision: p });
+  check("지난 지 59분 — 아직 T+ 로 센다", /^T\+00:59:/.test(up(-59 * 60e3, "Minute")), true);
+  check("61분 — 결과 대기", up(-61 * 60e3, "Minute"), "결과 대기 · 1시간 전 예정");
+  check("하루 넘게 — 일 단위", up(-(2 * 86400e3 + 3600e3), "Second"), "결과 대기 · 2일 전 예정");
+  check("결과가 난 발사는 그대로 T+ (예정일 때만 판정)",
+    /^T\+/.test(ctx.countdownText({ outcome: "success", net: iso(-5 * 3600e3), net_precision: "Minute" })), true);
+  // 날짜만 확정 — NET 은 그날 00:00 UTC 다. 그날 하루는 아직 예정이다
+  check("날짜만 확정: 그날 안(NET + 20시간)은 결과 대기가 아니다", up(-20 * 3600e3, "Day").startsWith("결과 대기"), false);
+  check("날짜만 확정: 그날이 끝나고 한 시간 넘게(NET + 26시간)", up(-26 * 3600e3, "Day"), "결과 대기 · 1일 전 예정");
+  // 월·연 미정은 NET 이 기간 경계라 판정하지 않는다 — 판정하면 "10월 중" 이 10월 1일에 결과 대기가 된다
+  check("월·연 미정은 결과 대기라고 하지 않는다",
+    [up(-3 * 86400e3, "Month").startsWith("결과 대기"), up(-40 * 86400e3, "Year").startsWith("결과 대기")], [false, false]);
   check("net 이 깨졌으면 시기 미정",
     ctx.countdownText({ net: "이상한값", net_precision: "Year" }), "시기 미정");
   check("net 이 없으면 빈 문자열", ctx.countdownText({ net: null }), "");
