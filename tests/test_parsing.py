@@ -264,7 +264,7 @@ def _key_paths(obj, prefix=""):
 
 
 class SchemaShapeGuard(unittest.TestCase):
-    """정규화 결과의 모양이 바뀌면 `CACHE_SCHEMA` 도 바뀌어야 한다(전면 감사 2026-09-24).
+    """정규화 결과의 모양이 바뀌면 **그 종류의** `CACHE_SCHEMAS` 번호도 바뀌어야 한다(전면 감사 2026-09-24 · F-014 로 종류별).
 
     안 올리면 **지난 연도 아카이브는 TTL 이 없어 영구**라 새 필드가 영원히 안 채워진다 —
     2026-09-12 에 실제로 당했다(필드 넷). 골든 비교는 값이 바뀐 것만 알고 **스키마를 올렸는지는
@@ -282,12 +282,15 @@ class SchemaShapeGuard(unittest.TestCase):
                 "satcat": sorted(_key_paths(list(satcat.values())))}
 
     def test_shape_change_requires_schema_bump(self):
-        now = {"schema": api_client.CACHE_SCHEMA, "shape": self.shape()}
+        shape = self.shape()
+        now = {"schema": {k: api_client.CACHE_SCHEMAS[k] for k in shape}, "shape": shape}
         rec = _golden("schema_shape.json", now, UPDATE)
-        if now["shape"] != rec["shape"] and now["schema"] == rec["schema"]:
-            added = {k: sorted(set(now["shape"][k]) - set(rec["shape"][k])) for k in now["shape"]}
-            removed = {k: sorted(set(rec["shape"][k]) - set(now["shape"][k])) for k in now["shape"]}
-            self.fail(f"정규화 결과의 모양이 바뀌었는데 CACHE_SCHEMA({now['schema']}) 를 안 올렸다 — "
+        # **종류마다** 판정한다 — 발사 모양이 바뀌었는데 TLE 번호만 올렸으면 여전히 FAIL 이다
+        stale = [k for k in shape if shape[k] != rec["shape"].get(k) and now["schema"][k] == rec["schema"].get(k)]
+        if stale:
+            added = {k: sorted(set(shape[k]) - set(rec["shape"].get(k, []))) for k in stale}
+            removed = {k: sorted(set(rec["shape"].get(k, [])) - set(shape[k])) for k in stale}
+            self.fail(f"정규화 결과의 모양이 바뀌었는데 CACHE_SCHEMAS 의 {stale} 번호를 안 올렸다 — "
                       f"추가 {added} · 제거 {removed}. 올린 뒤 --update")
         self.assertEqual(now, rec, "스키마나 모양이 바뀌었다 — 의도한 것이면 --update 로 기록을 갱신한다")
 

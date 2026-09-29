@@ -170,7 +170,35 @@ def _cache_path(name):
 # v8(2026-09-13, P15-3): `rocket_spec.land_*`·`provider_landings` 추가.
 # v9(2026-09-13, P15-7): `last_updated` 추가.
 # v10(2026-09-14, P15-4): `rocket_family` 추가.
-CACHE_SCHEMA = 10
+#
+# **종류별로 나눈다(감사 F-014, 2026-09-29).** 전역 번호 하나일 때는 v1~v10 이 **전부 발사 필드 변경**이었는데도
+# 올릴 때마다 TLE·SATCAT·업데이트 캐시까지 버려져 Celestrak 그룹 수 × 2 + GitHub 1 요청이 헛되이 나갔다.
+# 이제 **바뀐 종류의 번호만** 올린다. 전부 10 에서 시작한다 — 지금 디스크의 캐시가 모두 schema 10 이라
+# 나누는 순간에는 아무것도 다시 받지 않는다.
+CACHE_SCHEMAS = {
+    "launch": 10,    # launches.json · archive_<연도>.json — api_parsing._parse_launches 의 모양
+    "tle": 10,       # tle_<그룹>.json — _parse_tle
+    "satcat": 10,    # satcat_<그룹>.json — _parse_satcat
+    "update": 10,    # update.json — 최신 릴리스 정보
+}
+
+
+def _cache_kind(name):
+    """캐시 파일 이름 → 종류. **모르는 이름은 ValueError** — 새 캐시를 더하면서 종류를 안 정하면
+    테스트에서 바로 드러나게 한다(조용히 한 종류에 묶이면 그 종류를 올릴 때 같이 버려진다)."""
+    if name == "launches.json" or (name.startswith("archive_") and name.endswith(".json")):
+        return "launch"
+    if name.startswith("tle_") and name.endswith(".json"):
+        return "tle"
+    if name.startswith("satcat_") and name.endswith(".json"):
+        return "satcat"
+    if name == "update.json":
+        return "update"
+    raise ValueError("캐시 종류를 모르는 이름: " + str(name))
+
+
+def _cache_schema(name):
+    return CACHE_SCHEMAS[_cache_kind(name)]
 
 
 def _cache_read(name, any_schema=False):
@@ -202,16 +230,17 @@ def _cache_read(name, any_schema=False):
         log.debug("캐시 읽기 실패 %s: %s", name, e)
         return None, None
     if not isinstance(raw, dict) or "schema" not in raw:
-        # 봉투가 없다 = CACHE_SCHEMA 도입 전에 저장된 것. 그때는 데이터가 통째로 들어 있다.
+        # 봉투가 없다 = 스키마 번호 도입 전에 저장된 것. 그때는 데이터가 통째로 들어 있다.
         if any_schema:
             return raw, age
         log.info("옛 캐시 형식 %s — 다시 받는다", name)
         return None, None
-    if raw.get("schema") != CACHE_SCHEMA:
+    want = _cache_schema(name)
+    if raw.get("schema") != want:
         if any_schema:
             return raw.get("data"), age
         log.info("캐시 스키마 불일치 %s (%s ≠ %s) — 다시 받는다",
-                 name, raw.get("schema"), CACHE_SCHEMA)
+                 name, raw.get("schema"), want)
         return None, None
     return raw.get("data"), age
 
@@ -293,7 +322,7 @@ def _cache_write(name, data):
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
         # 데이터를 **봉투에 담아** 모양 버전을 함께 남긴다(_cache_read 가 대조한다).
-        _atomic_write_json(_cache_path(name), {"schema": CACHE_SCHEMA, "data": data})
+        _atomic_write_json(_cache_path(name), {"schema": _cache_schema(name), "data": data})
     except OSError as e:
         # 치명적이지 않다(다음 호출이 다시 받는다) — 다만 매번 느려지므로 기록은 남긴다.
         log.warning("캐시 쓰기 실패 %s: %s", name, e)

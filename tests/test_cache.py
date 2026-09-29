@@ -870,27 +870,67 @@ class SchemaVersion(CacheTestBase):
             json.dump(obj, f, ensure_ascii=False)
 
     def test_write_puts_data_in_a_versioned_envelope(self):
-        api_client._cache_write("x.json", [1, 2, 3])
-        with open(api_client._cache_path("x.json"), encoding="utf-8") as f:
+        api_client._cache_write("launches.json", [1, 2, 3])
+        with open(api_client._cache_path("launches.json"), encoding="utf-8") as f:
             raw = json.load(f)
-        self.assertEqual(raw, {"schema": api_client.CACHE_SCHEMA, "data": [1, 2, 3]})
+        self.assertEqual(raw, {"schema": api_client.CACHE_SCHEMAS["launch"], "data": [1, 2, 3]})
 
     def test_round_trip(self):
-        api_client._cache_write("x.json", {"a": 1})
-        data, age = api_client._cache_read("x.json")
+        api_client._cache_write("launches.json", {"a": 1})
+        data, age = api_client._cache_read("launches.json")
         self.assertEqual(data, {"a": 1})
         self.assertIsNotNone(age)
 
     def test_envelopeless_cache_is_ignored(self):
         """봉투가 없는 = 스키마 도입 전 캐시. 읽어 쓰면 새 필드가 빠진 채 화면에 나온다."""
-        self._write_raw("x.json", [{"id": "옛날 것"}])
-        self.assertEqual(api_client._cache_read("x.json"), (None, None))
+        self._write_raw("launches.json", [{"id": "옛날 것"}])
+        self.assertEqual(api_client._cache_read("launches.json"), (None, None))
 
     def test_other_schema_is_ignored(self):
-        self._write_raw("x.json", {"schema": api_client.CACHE_SCHEMA + 1, "data": [1]})
-        self.assertEqual(api_client._cache_read("x.json"), (None, None))
-        self._write_raw("x.json", {"schema": None, "data": [1]})
-        self.assertEqual(api_client._cache_read("x.json"), (None, None))
+        self._write_raw("launches.json", {"schema": api_client.CACHE_SCHEMAS["launch"] + 1, "data": [1]})
+        self.assertEqual(api_client._cache_read("launches.json"), (None, None))
+        self._write_raw("launches.json", {"schema": None, "data": [1]})
+        self.assertEqual(api_client._cache_read("launches.json"), (None, None))
+
+    # ── 종류별 스키마 (감사 F-014, 2026-09-29) ──
+    def test_every_cache_name_has_a_kind(self):
+        """앱이 쓰는 이름은 전부 종류가 있고, 모르는 이름은 **던진다**(조용히 한 종류에 묶이지 않게)."""
+        kinds = {n: api_client._cache_kind(n) for n in
+                 ("launches.json", "archive_2025.json", "tle_stations.json", "satcat_geo.json", "update.json")}
+        self.assertEqual(kinds, {"launches.json": "launch", "archive_2025.json": "launch",
+                                 "tle_stations.json": "tle", "satcat_geo.json": "satcat", "update.json": "update"})
+        with self.assertRaises(ValueError):
+            api_client._cache_kind("x.json")
+        self.assertEqual(set(api_client.CACHE_SCHEMAS), {"launch", "tle", "satcat", "update"})
+
+    def test_raising_launch_schema_keeps_other_kinds(self):
+        """**이 항목의 목적.** 발사 필드를 바꿔 발사 번호만 올리면 발사·아카이브만 다시 받고,
+        TLE·SATCAT·업데이트 캐시는 살아남는다(전역 번호일 때는 전부 버려져 요청이 헛되이 나갔다)."""
+        files = {"launches.json": [1], "archive_2024.json": {"launches": [], "truncated": False},
+                 "tle_stations.json": [2], "satcat_stations.json": {"1": {}}, "update.json": {"latest": "v1"}}
+        for n, d in files.items():
+            api_client._cache_write(n, d)
+        # 먼저 "막지 않았으면" — 다 읽힌다
+        self.assertTrue(all(api_client._cache_read(n)[0] is not None for n in files))
+        saved = dict(api_client.CACHE_SCHEMAS)
+        try:
+            api_client.CACHE_SCHEMAS["launch"] += 1
+            alive = {n: api_client._cache_read(n)[0] is not None for n in files}
+            # 올린 번호로 **다시 쓰면 읽힌다** — 쓰기가 번호를 상수로 박으면(지금은 전부 10 이라) 여기서만 드러난다
+            api_client._cache_write("launches.json", [9])
+            rewritten = api_client._cache_read("launches.json")[0]
+        finally:
+            api_client.CACHE_SCHEMAS.clear()
+            api_client.CACHE_SCHEMAS.update(saved)
+        self.assertEqual(alive, {"launches.json": False, "archive_2024.json": False,
+                                 "tle_stations.json": True, "satcat_stations.json": True, "update.json": True})
+        self.assertEqual(rewritten, [9])
+
+    def test_existing_schema10_files_survive_the_split(self):
+        """나누는 순간 아무것도 다시 받지 않는다 — 옛 전역 번호(10)로 쓴 파일이 모든 종류에서 읽힌다."""
+        for n in ("launches.json", "tle_stations.json", "satcat_stations.json", "update.json"):
+            self._write_raw(n, {"schema": 10, "data": [n]})
+            self.assertEqual(api_client._cache_read(n)[0], [n], n)
 
     def test_past_year_archive_is_refetched_when_schema_differs(self):
         """**이 테스트가 이 항목의 이유다.** 지난 연도 아카이브는 TTL 이 없어 영구인데,

@@ -1,5 +1,9 @@
 {
- "schema": 10,
+ "schema": {
+  "launch": 10,
+  "satcat": 10,
+  "tle": 10
+ },
  "shape": {
   "launch": [
    "[].agency_count",
