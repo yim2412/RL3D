@@ -17,7 +17,7 @@
 
   <!-- 툴바 -->
   <div id="toolbar" class="toolbar">
-    <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색  ( / )" />
+    <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색  ( / )" title="여러 단어는 모두 들어간 발사를 찾습니다 · 한글도 됩니다 — 예: falcon starlink · 스페이스X · 창정 · 중국" />
     <div class="filters" id="filters">
       <label title="예정 발사 표시 — 단축키 1"><input type="checkbox" class="flt" value="upcoming" checked /> <span class="dot d-upcoming"></span>예정</label>
       <label title="성공한 발사 표시 — 단축키 2"><input type="checkbox" class="flt" value="success" checked /> <span class="dot d-success"></span>성공</label>
@@ -94,7 +94,7 @@
       <button id="tab-favs" class="sb-tab" title="관심 발사·위성">⭐ 관심</button>
       <button id="tab-tonight" class="sb-tab" title="오늘 밤 눈으로 볼 만한 위성 통과">🌙 오늘 밤</button>
     </div>
-    <input id="sat-search" class="sb-search hidden" type="text" placeholder="🔍 위성명 · NORAD" />
+    <input id="sat-search" class="sb-search hidden" type="text" placeholder="🔍 위성명 · NORAD · 소유국" title="이름 · NORAD 번호 · 소유국 · 종류 — 예: iss · 25544 · 중국 · 로켓 몸체" />
     <div class="sidebar-head"><span id="sidebar-count">불러오는 중…</span></div>
     <!-- 처음에는 **없는 숫자를 말하지 않는다**(P31-1). 예전에는 `0건` + 빈 목록으로 시작해,
          첫 로드 8.5초 동안 화면이 "받는 중"이 아니라 "발사가 0건"이라고 말했다. -->

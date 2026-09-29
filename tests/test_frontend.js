@@ -4888,6 +4888,19 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     [f.includes("필터"), f.includes("타임라인")], [true, true]);
   check("그때도 전체 건수를 말한다", f.includes("98건"), true);
   check("세 갈래가 서로 다른 문구다", new Set([none, q, f]).size, 3);
+
+  // P77 — 0건일 때 **검색어 모양에 따라** 왜 그런지 한 줄 더한다
+  const en1 = ctx.launchListEmptyNote(98, "zzz");
+  check("영문 한 단어에는 덧붙이지 않는다", [en1.includes("한글은"), en1.includes("모두")], [false, false]);
+  check("한글이면 알아듣는 범위와 영문 권고", q.includes("한글은") && q.includes("영문"), true);
+  const multi = ctx.launchListEmptyNote(98, "falcon  zzz");
+  check("여러 단어면 '모두' 를 말한다(공백 두 칸이어도)", [multi.includes("모두"), multi.includes("한글은")], [true, false]);
+  check("한글 여러 단어면 둘 다", ctx.launchListEmptyNote(98, "팰컨 누리호").split("<br />").length, 4);
+  // 툴팁이 여러 단어·한글을 알려 준다 — placeholder 는 툴바 폭 때문에 늘리지 않았다
+  const html = require("fs").readFileSync(require("path").join(__dirname, "..", "web", "index.html"), "utf8");
+  const tip = (id) => ((new RegExp('id="' + id + '"[^>]*title="([^"]*)"').exec(html)) || [, ""])[1];
+  check("발사 검색 툴팁이 한글·여러 단어 예시를 준다", /스페이스X/.test(tip("search")) && /모두/.test(tip("search")), true);
+  check("위성 검색 툴팁이 소유국·종류 예시를 준다", /소유국/.test(tip("sat-search")) && /로켓 몸체/.test(tip("sat-search")), true);
 }
 {
   const { ctx, el, state, map } = loadApp();

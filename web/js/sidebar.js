@@ -184,7 +184,14 @@ function launchListEmptyNote(total, query) {
     return "표시할 발사가 없습니다.<br />데이터를 아직 받지 못했습니다 — 툴바의 <b>↻ 갱신</b>을 눌러보세요.";
   }
   if (query) {
-    return `<b>${escapeHtml(query)}</b> 와 맞는 발사가 없습니다.<br />검색어를 지우면 ${total}건이 다시 보입니다.`;
+    // 검색어 모양에 따라 **왜 0건일 수 있는지**를 한 줄 더한다(P77). 한글은 별칭 표(`SEARCH_KO`)에
+    // 있는 이름만 알아듣고, 여러 단어는 전부 맞아야 한다 — 둘 다 모르면 "데이터가 없다"로 읽힌다.
+    const hints = [];
+    if (/[가-힣]/.test(query)) hints.push("한글은 주요 기관·로켓·나라 이름만 알아듣습니다 — 영문으로도 쳐 보세요.");
+    if (query.trim().split(/\s+/).length > 1) hints.push("여러 단어는 <b>모두</b> 들어간 발사만 찾습니다.");
+    return `<b>${escapeHtml(query)}</b> 와 맞는 발사가 없습니다.<br />` +
+      (hints.length ? hints.join("<br />") + "<br />" : "") +
+      `검색어를 지우면 ${total}건이 다시 보입니다.`;
   }
   return `조건에 맞는 발사가 없습니다.<br />툴바의 결과 필터나 타임라인을 확인해 보세요 (전체 ${total}건).`;
 }
