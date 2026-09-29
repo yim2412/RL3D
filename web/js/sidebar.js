@@ -115,6 +115,16 @@ function renderTonightRows(rows) {
 }
 
 /** 위성 목록 — satrecs(로드된 TLE) 기준. 이름·NORAD 로 걸러 보여준다. */
+/**
+ * 위성 한 개의 검색 대상 글 — 이름 · NORAD · SATCAT 의 소유국·종류(P76).
+ * SATCAT 은 이미 한국어로 받아 두는데(`satcat_codes.py`) 검색은 이름만 봤다 — `중국`(163)·
+ * `로켓 몸체`(91)·`국제우주정거장` 으로 치면 0건이었다. 메타가 없는 위성은 이름·번호만.
+ */
+function satSearchText(s) {
+  const m = satMeta(s.norad);
+  return m ? `${s.name} ${s.norad} ${m.owner || ""} ${m.type || ""}` : `${s.name} ${s.norad}`;
+}
+
 function renderSatList() {
   const cont = document.getElementById("sidebar-list");
   const countEl = document.getElementById("sidebar-count");
@@ -132,7 +142,7 @@ function renderSatList() {
   }
   const q = document.getElementById("sat-search").value.trim().toLowerCase();
   const list = visibleSats().filter((s) =>
-    matchesQuery(`${s.name} ${s.norad}`, q));
+    matchesQuery(satSearchText(s), q));
   countEl.textContent = `${list.length}개`;
   if (!list.length) {
     const allBands = BANDS.every((b) => satBands[b.key] !== false);

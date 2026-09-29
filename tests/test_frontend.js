@@ -4028,6 +4028,18 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
       ctx.renderSatList();
       check(`위성 검색 '${q}' — ${label}`, rows(), n);
     }
+    // P76 — SATCAT 의 소유국·종류(이미 한국어)로도 찾는다
+    state.satcat = { "25544": { owner: "국제우주정거장(공동)", type: "위성체" } };
+    for (const [q, n, label] of [["국제우주정거장", 1, "소유국"], ["zarya 위성체", 1, "이름 + 종류"],
+      ["중국", 0, "다른 소유국은 빠진다"]]) {
+      el("sat-search").value = q;
+      ctx.renderSatList();
+      check(`위성 검색 '${q}' — ${label}`, rows(), n);
+    }
+    state.satcat = null;
+    el("sat-search").value = "국제우주정거장";
+    ctx.renderSatList();
+    check("SATCAT 이 없으면 이름·번호만 본다(던지지 않는다)", rows(), 0);
     el("sat-search").value = "";
   }
 
