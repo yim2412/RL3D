@@ -125,6 +125,26 @@ function satSearchText(s) {
   return m ? `${s.name} ${s.norad} ${m.owner || ""} ${m.type || ""}` : `${s.name} ${s.norad}`;
 }
 
+/**
+ * 위성 목록이 비었을 때 **왜 비었는지**(P82). 순수 함수.
+ * 예전 판정은 궤도 대역 필터만 봤다 — 종류·소유국 필터로 전부 걸러져도 "검색 결과가 없습니다"
+ * (검색어가 없는데도)라고 했고, 대역을 끈 채 검색하면 검색어 얘기를 안 했다.
+ */
+function satListEmptyNote(query, visibleCount, filtersOn) {
+  const lines = [];
+  if (query && visibleCount > 0) {
+    lines.push(`<b>${escapeHtml(query)}</b> 와 맞는 위성이 없습니다.`,
+      "이름 · NORAD 번호 · 소유국 · 종류로 찾습니다.",
+      `검색어를 지우면 ${visibleCount}개가 보입니다.`);
+    if (filtersOn) lines.push("필터로 숨긴 위성은 검색에서도 빠집니다.");
+    return lines.join("<br />");
+  }
+  if (filtersOn) {
+    return "조건에 맞는 위성이 없습니다.<br />툴바 <b>그룹 ▾</b>의 궤도 대역 · 종류 · 소유국 필터를 확인해 보세요.";
+  }
+  return "표시할 위성이 없습니다.";
+}
+
 function renderSatList() {
   const cont = document.getElementById("sidebar-list");
   const countEl = document.getElementById("sidebar-count");
@@ -145,10 +165,10 @@ function renderSatList() {
     matchesQuery(satSearchText(s), q));
   countEl.textContent = `${list.length}개`;
   if (!list.length) {
-    const allBands = BANDS.every((b) => satBands[b.key] !== false);
-    cont.innerHTML = `<div class="sb-empty">${allBands
-      ? "검색 결과가 없습니다."
-      : "조건에 맞는 위성이 없습니다.<br />툴바 <b>그룹 ▾</b>의 궤도 대역 필터를 확인해 보세요."}</div>`;
+    const filtersOn = BANDS.some((b) => satBands[b.key] === false)
+      || Object.values(satTypesOff).some(Boolean) || Object.values(satOwnersOff).some(Boolean);
+    const q0 = document.getElementById("sat-search").value.trim();
+    cont.innerHTML = `<div class="sb-empty">${satListEmptyNote(q0, visibleSats().length, filtersOn)}</div>`;
     return;
   }
   cont.innerHTML = list.slice(0, SIDEBAR_CAP).map((s) =>

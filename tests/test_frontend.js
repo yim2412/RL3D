@@ -4086,6 +4086,25 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
       ctx.renderSatList();
       check(`위성 검색 '${q}' — ${label}`, rows(), n);
     }
+    // P82 — 비었을 때 왜 비었는지. 예전엔 대역 필터만 봐서, 소유국 필터로 다 걸러져도
+    // (검색어가 없는데도) "검색 결과가 없습니다" 라고 했다
+    state.satOwnersOff = { "국제우주정거장(공동)": true };
+    el("sat-search").value = "";
+    ctx.renderSatList();
+    const ownerOff = el("sidebar-list").innerHTML;
+    check("소유국 필터로 다 걸러지면 필터를 가리킨다(검색 얘기가 아니다)",
+      [ownerOff.includes("소유국 필터"), ownerOff.includes("검색")], [true, false]);
+    state.satOwnersOff = {};
+    el("sat-search").value = "zzz";
+    ctx.renderSatList();
+    const noHit = el("sidebar-list").innerHTML;
+    check("검색어가 안 맞으면 되비추고 무엇으로 찾는지·지우면 몇 개인지 말한다",
+      [noHit.includes("zzz"), noHit.includes("소유국 · 종류로 찾습니다"), noHit.includes("1개가 보입니다")], [true, true, true]);
+    const N = ctx.satListEmptyNote;
+    check("필터를 건 채 검색하면 둘 다 말한다", N("x", 3, true).includes("필터로 숨긴 위성은 검색에서도 빠집니다"), true);
+    check("필터 없이 검색하면 필터 얘기는 없다", N("x", 3, false).includes("필터"), false);
+    check("검색어는 이스케이프한다", N("<img>", 3, false).includes("<img>"), false);
+    check("필터가 다 가리면 검색어가 있어도 필터 얘기", N("x", 0, true).startsWith("조건에 맞는 위성이 없습니다"), true);
     state.satcat = null;
     el("sat-search").value = "국제우주정거장";
     ctx.renderSatList();
