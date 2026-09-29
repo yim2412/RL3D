@@ -264,11 +264,57 @@ function launchesToFC(list) {
 }
 
 // ── 필터 / 검색 / 타임라인 ────────────────────────────────────────────────────
+/**
+ * 한글 검색어 → 데이터(영문)의 조각. 화면은 한국어인데 LL2 이름은 전부 영문이라
+ * `스페이스X`·`팰컨`·`창정` 이 0건이었다(P75). 발사가 **이 영문 조각을 가지면** 오른쪽
+ * 한글 이름으로도 찾힌다. 목록은 2025 아카이브 341건 + 2026 100건의 실제 기관·로켓에서 뽑았다
+ * (기관 상위 12곳이 87% 다). 흔한 두 표기(팰컨/팔콘)는 둘 다 적는다.
+ */
+const SEARCH_KO = [
+  ["spacex", "스페이스X 스페이스엑스 미국"], ["falcon", "팰컨 팔콘"], ["starlink", "스타링크"],
+  ["starship", "스타십"], ["dragon", "드래곤"],
+  ["china aerospace", "중국 중국항천"], ["long march", "창정 장정 중국"], ["china rocket", "중국"],
+  ["cas space", "중국 중커 리젠"], ["kinetica", "리젠"], ["galactic energy", "중국 갤럭틱에너지"],
+  ["ceres", "세레스"], ["landspace", "중국 랜드스페이스"], ["zhuque", "주췌"], ["expace", "중국"],
+  ["kuaizhou", "콰이저우"], ["orienspace", "중국"], ["gravity", "그래비티"], ["i-space", "중국"],
+  ["hyperbola", "하이퍼볼라"], ["smart dragon", "스마트드래곤"],
+  ["rocket lab", "로켓랩 미국"], ["electron", "일렉트론"],
+  ["blue origin", "블루오리진 미국"], ["new shepard", "뉴셰퍼드"], ["new glenn", "뉴글렌"],
+  ["united launch alliance", "ULA 미국"], ["vulcan", "벌컨"], ["atlas", "아틀라스"],
+  ["northrop", "노스롭 미국"], ["minotaur", "미노타우르"], ["firefly", "파이어플라이 미국"],
+  ["roscosmos", "로스코스모스 러시아"], ["russian", "러시아"], ["soyuz", "소유즈"], ["angara", "앙가라"],
+  ["arianespace", "아리안스페이스 유럽"], ["ariane", "아리안"], ["avio", "유럽"], ["vega", "베가"],
+  ["isar", "이자르 유럽"], ["spectrum", "스펙트럼"],
+  ["indian space", "인도 ISRO"], ["gslv", "인도"], ["pslv", "인도"],
+  ["mitsubishi", "미쓰비시 일본"], ["japan aerospace", "일본 JAXA"], ["h3-", "H3 일본"], ["h-iia", "일본"],
+  ["korea aerospace", "한국 항우연"], ["nuri", "누리호 한국"], ["innospace", "이노스페이스 한국"],
+  ["hanbit", "한빛 한국"],
+  ["gilmour", "길모어 호주"], ["eris", "에리스"], ["israel aerospace", "이스라엘"], ["shavit", "샤비트"],
+];
+
+/**
+ * 발사 한 건의 검색 대상 글 — 영문 원문 + 걸리는 한글 별칭.
+ *
+ * **발사 객체마다 한 번만 만든다.** 별칭 57줄을 매번 훑으면 1,801건 필터가 키 한 번에
+ * 1.6 → 9.3ms 가 됐다(P75 실측) — 검색어를 둔 채 타임라인을 끌면 매 틱 이 경로를 타고,
+ * 그 예산은 4.17ms 다(P20-3). 새로 받은 발사는 새 객체라 캐시가 저절로 새로 찬다.
+ */
+const _searchTextCache = new WeakMap();
+function launchSearchText(d) {
+  const hit = _searchTextCache.get(d);
+  if (hit !== undefined) return hit;
+  const hay = `${d.name || ""} ${d.rocket || ""} ${d.provider || ""} ${d.mission_name || ""}`;
+  const low = hay.toLowerCase();
+  const ko = SEARCH_KO.filter(([en]) => low.includes(en)).map(([, k]) => k);
+  const text = (ko.length ? hay + " " + ko.join(" ") : hay).toLowerCase();
+  _searchTextCache.set(d, text);
+  return text;
+}
+
 function launchPasses(d, active, q) {
   if (!active.has(d.outcome)) return false;
   if (q) {
-    const hay = `${d.name || ""} ${d.rocket || ""} ${d.provider || ""} ${d.mission_name || ""}`;
-    if (!matchesQuery(hay, q)) return false;
+    if (!matchesQuery(launchSearchText(d), q)) return false;
   }
   if (timelineMax != null && d.net) {
     const t = new Date(d.net).getTime();

@@ -253,6 +253,27 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   el("search").value = "rocket lab";
   ctx.applyFilters();
   check("붙여 쓴 기관명도 그대로 찾는다", shownIds(), ["2"]);
+  // P75 — 한글로 친 검색. 데이터는 영문이라 실제 캐시 440건에서 `스페이스X`·`창정` 이 0건이었다.
+  for (const [q, ids, label] of [["스페이스X", ["1"], "기관"], ["창정", ["3"], "로켓 계열"],
+    ["팰컨 스타링크", ["1"], "한글 두 단어"], ["팔콘", ["1"], "다른 표기"], ["로켓랩", ["2"], "붙여 쓴 기관"],
+    ["스타링크 electron", [], "한글·영문 섞어도 AND"], ["중국", ["3"], "나라 이름"]]) {
+    el("search").value = q;
+    ctx.applyFilters();
+    check(`한글 검색 '${q}' — ${label}`, shownIds(), ids);
+  }
+  // 별칭 표의 영문 쪽은 **소문자여야** 걸린다(비교 대상을 소문자로 만든다) — 대문자로 적으면 조용히 죽은 줄이 된다
+  const KO = require("vm").runInContext("SEARCH_KO", ctx);
+  check("별칭 표(≥ 40줄)의 영문 조각이 전부 소문자다",
+    [KO.length >= 40, KO.filter(([en]) => en !== en.toLowerCase()).map(([en]) => en)], [true, []]);
+  {
+    // 발사 객체마다 한 번만 만든다(1,801건 기준 9.3 → 1.6ms) — 그래도 새 데이터는 새 글이어야 한다
+    const d1 = { name: "Falcon 9", rocket: "", provider: "SpaceX", mission_name: "" };
+    const t1 = ctx.launchSearchText(d1);
+    d1.provider = "바뀐 값";   // 같은 객체를 고쳐도 캐시가 돌려준다(앱은 객체를 고치지 않고 새로 받는다)
+    check("같은 객체는 캐시에서", ctx.launchSearchText(d1), t1);
+    check("새 객체는 새로 만든다",
+      ctx.launchSearchText({ name: "Electron", rocket: "", provider: "Rocket Lab", mission_name: "" }).includes("로켓랩"), true);
+  }
   check("matchesQuery — 빈 검색어는 전부 맞다",
     [ctx.matchesQuery("x", ""), ctx.matchesQuery("x", "   "), ctx.matchesQuery("", null)], [true, true, true]);
 
