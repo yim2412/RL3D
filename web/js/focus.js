@@ -44,7 +44,7 @@ function renderFocus(d) {
   box.innerHTML =
     `<button id="focus-close" class="focus-close" title="이 발사는 다시 띄우지 않음">✕</button>` +
     `<div class="focus-head">🚀 발사 임박 ${live}</div>` +
-    (d.patch ? `<img class="focus-patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : "") +
+    (d.patch ? `<img class="focus-patch" src="${escapeHtml(d.patch)}" alt="" data-hide-broken />` : "") +
     `<div id="focus-cd" class="focus-cd">${escapeHtml(countdownText(d))}</div>` +
     `<div class="focus-name">${escapeHtml(d.name)}</div>` +
     `<div id="focus-phase-slot">${phaseLineHtml(d, Date.now())}</div>` +

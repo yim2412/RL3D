@@ -259,6 +259,9 @@ function buildPage(open) {
   const utils = fs.readFileSync(path.join(WEB, "js", "utils.js"), "utf8");
 
   html = html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<link[^>]*>/g, "");
+  // CSP(F-015)는 아래에 주입하는 인라인 측정 스크립트를 막는다 — 그러면 결과가 없어 "페이지가 안 떴다"로 죽는다.
+  // 기하를 재는 데 CSP 는 무관하니 걷어 낸다. 걷는 데 실패하면 측정이 통째로 안 돌아 FAIL 로 드러난다.
+  html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "");
   for (const id of open) {
     const re = new RegExp('(id="' + id + '"[^>]*class="[^"]*?) hidden(")');
     html = html.replace(re, "$1$2");

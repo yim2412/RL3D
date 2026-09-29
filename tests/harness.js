@@ -251,7 +251,13 @@ function loadApp(options = {}) {
         },
       },
     },
-    addEventListener: (ev, fn) => { winHandlers[ev] = fn; },
+    // 캡처 단계 리스너는 `이름:capture` 로 **따로** 기억한다. 한 칸에 두면 뒤에 건 것이 앞의 것을 덮는다 —
+    // errors.js 가 같은 "error" 에 버블(앱 오류 보고)과 캡처(깨진 이미지 지우기)를 둘 다 걸자
+    // 오류 보고 테스트 10건이 빨개졌다(F-015). 실제 브라우저는 둘 다 가진다.
+    addEventListener: (ev, fn, opt) => {
+      const capture = opt === true || !!(opt && opt.capture);
+      winHandlers[capture ? ev + ":capture" : ev] = fn;
+    },
     removeEventListener() {},
     satellite: options.satellite || {},   // realSatellite 면 라이브러리가 아래에서 덮어쓴다
     maplibregl: options.maplibregl || {},

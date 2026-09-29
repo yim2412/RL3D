@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- CSP (감사 F-015). 인라인 스크립트·on* 속성을 막는다 — 이스케이프가 한 곳 뚫려도 주입한 스크립트가 안 돈다.
+       외부 접속은 배경 타일 하나(arcgisonline), 이미지는 LL2 CDN(https:). worker/child 의 blob: 은 MapLibre 워커.
+       위반은 errors.js 가 로그에 남긴다 — exe 스모크의 "WARNING 0줄" 이 곧 "위반 0" 이다. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://server.arcgisonline.com; worker-src blob:; child-src blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'" />
   <title>RL3D</title>
   <link rel="stylesheet" href="lib/maplibre-gl.css" />
   <link rel="stylesheet" href="style.css" />

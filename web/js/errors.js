@@ -166,6 +166,19 @@ window.addEventListener("error", function (e) {
   reportError("오류", e && e.message, e && e.filename, e && e.lineno,
     e && e.error && e.error.stack);
 });
+// 깨진 이미지는 지운다(발사 사진·패치). 예전엔 `onerror="this.remove()"` 인라인 속성이었는데
+// CSP(F-015)가 인라인 핸들러를 막는다. 이미지 로드 오류는 **버블링되지 않아** 캡처 단계에서 받는다 —
+// 위의 버블 단계 리스너에는 애초에 안 온다(그래서 앱 오류로 보고되지도 않는다).
+window.addEventListener("error", function (e) {
+  const t = e && e.target;
+  if (t && t.tagName === "IMG" && t.hasAttribute && t.hasAttribute("data-hide-broken")) t.remove();
+}, true);
+// CSP 위반은 **앱 결함**이다(정책에 없는 주소로 접속했거나 인라인 코드가 섞였다) — 조용히 막히기만 하면
+// 기능이 사라진 이유를 아무도 모른다. 로그에 남기면 exe 스모크의 WARNING 검사가 잡는다.
+document.addEventListener("securitypolicyviolation", function (e) {
+  reportError("CSP", (e.violatedDirective || "?") + " 위반 — 차단: " + (e.blockedURI || "inline"),
+    e.sourceFile, e.lineNumber);
+});
 window.addEventListener("unhandledrejection", function (e) {
   const reason = e && e.reason;
   const msg = reason && reason.message ? reason.message : String(reason);

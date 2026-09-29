@@ -377,9 +377,9 @@ function openPanel(d) {
   // 선만 그리고 가정을 안 적으면 실측처럼 읽힌다(이 항목의 유일한 전제 조건).
   const ascentInfo = ascentNoteHtml(ascentNote(drawAscentPath(d)));
   body.innerHTML = `
-    ${d.image ? `<img src="${escapeHtml(d.image)}" alt="" onerror="this.remove()" />` : ""}
+    ${d.image ? `<img src="${escapeHtml(d.image)}" alt="" data-hide-broken />` : ""}
     <h2>${escapeHtml(d.name)}</h2>
-    ${d.patch ? `<img class="patch" src="${escapeHtml(d.patch)}" alt="" onerror="this.remove()" />` : ""}
+    ${d.patch ? `<img class="patch" src="${escapeHtml(d.patch)}" alt="" data-hide-broken />` : ""}
     <span class="badge m-${d.outcome}">${escapeHtml(tr(STATUS_KO, d.status) || OUTCOME_LABEL[d.outcome])}</span>
     ${favBtnHtml("launch", d.id)}
     ${progs}

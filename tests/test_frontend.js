@@ -5643,6 +5643,43 @@ function fresh2(ctx, key, t) {
 }
 
 {
+  // F-015 — CSP 를 넣으면서 인라인 `onerror="this.remove()"` 를 캡처 리스너로 옮겼다
+  group("CSP (F-015) — 깨진 이미지 · 위반 로그 · 인라인 코드 없음");
+  const sent = [];
+  const { win, doc } = loadApp({ api: { log: (lvl, msg) => { sent.push([lvl, msg]); } } });
+  let removed = 0;
+  const img = (hide) => ({ tagName: "IMG", hasAttribute: (a) => hide && a === "data-hide-broken",
+    remove: () => { removed++; } });
+  check("window 에 캡처 단계 error 를 건다", win.has("error:capture"), true);
+  win.fire("error:capture", { target: img(true) });
+  win.fire("error:capture", { target: img(false) });   // 표시 안 한 이미지는 그대로 둔다
+  win.fire("error:capture", { target: { tagName: "SCRIPT", hasAttribute: () => true, remove: () => { removed++; } } });
+  check("표시한 깨진 이미지만 지운다", removed, 1);
+  check("이미지 로드 실패는 앱 오류로 보고하지 않는다", sent.length, 0);
+
+  check("document 에 securitypolicyviolation 을 건다", doc.has("securitypolicyviolation"), true);
+  doc.fire("securitypolicyviolation", { violatedDirective: "connect-src", blockedURI: "https://evil.example/x",
+    sourceFile: "http://127.0.0.1:1/js/map.js", lineNumber: 40 });
+  const line = (sent[0] || [])[1] || "";
+  check("위반은 로그에 남는다(레벨 error — exe 스모크가 잡는다)",
+    [(sent[0] || [])[0], line.includes("connect-src"), line.includes("evil.example"), line.includes("map.js:40")],
+    ["error", true, true, true]);
+
+  // 정적 — 인라인 on* 속성이 다시 생기면 CSP 가 조용히 막는다(기능만 사라진다)
+  const fs = require("fs"), path = require("path");
+  const WEBDIR = path.join(__dirname, "..", "web");
+  const sources = [["index.html", fs.readFileSync(path.join(WEBDIR, "index.html"), "utf8")]]
+    .concat(APP_FILES.map((f) => [f, fs.readFileSync(path.join(WEBDIR, "js", f), "utf8")]));
+  const inline = sources.flatMap(([f, src]) =>
+    [...src.replace(/^\s*(\/\/|\*).*$/gm, "").matchAll(/<[a-z][^>]*\son[a-z]+\s*=\s*["']/gi)].map((m) => f + ": " + m[0].slice(0, 40)));
+  check("HTML·JS 템플릿에 인라인 on* 속성이 없다(훑은 파일 ≥ 20)", [sources.length >= 20, inline], [true, []]);
+  const csp = (/<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(sources[0][1]) || [])[1] || "";
+  const scriptSrc = (/(?:^|;)\s*script-src([^;]*)/.exec(csp) || [])[1];
+  check("CSP 가 있고 script-src 는 'self' 만(인라인·eval 허용 없음)",
+    [csp.length > 0, scriptSrc && scriptSrc.trim()], [true, "'self'"]);
+}
+
+{
   group("브릿지가 아직 없을 때 난 오류는 쌓였다가 나간다");
   const { ctx, win } = loadApp();
   ctx.window.pywebview = {};        // 브릿지가 아직 준비되지 않은 상태

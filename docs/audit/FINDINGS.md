@@ -188,7 +188,7 @@
 - 설계 실측(2026-09-25): 지금까지 스키마를 올린 10번(v1~v10)이 **전부 발사 필드 변경**이었다(`git log -G`). 그때마다 TLE·SATCAT·update 도 버려졌다 — 기본 그룹 기준 Celestrak 4 + GitHub 1 요청. 단 2026-09-13 의 429 는 LL2 아카이브 재수신 탓이라 분리해도 줄지 않는다. 안: 이름으로 종류를 가린다(`launches`·`archive_*` / `tle_*` / `satcat_*` / `update`), 종류별 번호를 **전부 10 에서 시작**(전환 순간 일괄 무효화 없음), 모르는 이름은 테스트에서 실패. 사용자 결정 대기.
 - 요약: 판단용 숫자 — 스키마를 올린 직후 첫 실행 = LL2 2 + 불러온 아카이브 연도당 최대 5 + Celestrak 그룹 수 × 2 + GitHub 1. 발사 필드만 바뀐 경우 Celestrak·GitHub 몫은 낭비다. 출처: 독립 리뷰 발견 5.
 
-### F-015 · 영역: 보안 · 상태: 미처리
+### F-015 · 영역: 보안 · 상태: 완료
 - 위치: `web/index.html:4` — `<meta charset="utf-8" />`
 - 근거: 인용 — CSP 메타가 없고, 이미지 `onerror="this.remove()"` 인라인 핸들러가 있어 CSP 를 넣으려면 `unsafe-inline` 이 필요하다. p_xss: 렌더 45회 · 오염 도달 45회 · 날것 0건이라 지금 뚫린 곳은 없다.
 - 이력: [신규]
@@ -199,6 +199,7 @@
 - 대상: web/index.html, web/js/*.js
 - 설계 실측(2026-09-25): 실제 앱(`pythonw main.py`, 원격 디버깅 포트 + CDP)에서 `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://server.arcgisonline.com; worker-src blob:; child-src blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'` 을 넣고 대조군과 비교 — 브릿지·발사 99·위성 20·타일 전부 정상, 위반 0. pywebview 가 `new Function` 으로 브릿지를 만들지만 **`unsafe-eval` 없이도 살았다.** 되돌리는 확인: 주입한 `<img onerror>` 가 대조군에선 **실행**, CSP 판에선 **차단**(`script-src-attr` 위반 1). 넣으면 `onerror="this.remove()"` 3곳(focus.js:47 · panels.js:380·382)을 capture 단계 `error` 리스너로 바꿔야 한다. exe 에서는 아직 안 쟀다. 덤: 앱은 `file://` 이 아니라 pywebview 내장 서버 `http://127.0.0.1:<포트>` 로 열린다 — CLAUDE.md 의 설명이 틀렸다(→ P55 에서 문서·주석을 고쳤다. 포트는 실행마다 무작위). 사용자 결정 대기.
 - 요약: 방어 한 겹을 더할지의 결정. XSS 가 뚫려도 브릿지로 할 수 있는 일은 설정 덮어쓰기·http(s) 링크 열기 정도다. 출처: 독립 리뷰 발견 8.
+- 결과: 2026-09-29 사용자 결정(추천대로) — 넣었다(v1.67.7). 정책은 설계 실측 그대로. 인라인 `onerror` 3곳 → `data-hide-broken` + errors.js 의 **캡처 단계** `error` 리스너(이미지 로드 오류는 버블링되지 않는다 — 앱 오류로 보고되지도 않는다). `securitypolicyviolation` 을 로그(ERROR)로 남겨 **exe 스모크의 WARNING 검사가 곧 위반 검사**다. exe 대조군: `errors.js` 바로 뒤 인라인 `<script>` → `[CSP] script-src-elem 위반 — 차단: inline @ index.html:166` · 스모크 FAIL / 깨끗한 exe → 0줄 OK. **한계**: `errors.js` 보다 앞 요소의 위반은 리스너가 없어 못 잡는다(`<body>` 첫 줄에 넣은 인라인 핸들러는 스모크가 통과했다) — 정적 검사(HTML·JS 템플릿의 `on*=` 0건, `script-src` 가 `'self'` 만)가 그 자리를 막는다. 테스트 스텁이 이벤트당 핸들러 하나만 기억해 캡처 리스너가 기존 오류 보고를 덮었다(10건 FAIL) — 스텁이 캡처를 `이름:capture` 로 따로 기억하게 고쳤다. 7단언 · 되돌리는 변이 5 전부 FAIL. 레이아웃 테스트는 주입 스크립트 때문에 CSP 메타를 걷고 잰다.
 
 ### F-016 · 영역: 라이선스·귀속 · 상태: 완료
 - 위치: `build.bat:24` — `--add-data "web;web" main.py`
