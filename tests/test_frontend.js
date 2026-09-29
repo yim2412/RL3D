@@ -1669,6 +1669,24 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("탄도 비행은 선도 문구도 없다",
     [map.data("launch-track"), el("panel-body").innerHTML.includes("가정: 경사")],
     [{ type: "FeatureCollection", features: [] }, false]);
+
+  // P81 — 실제 데이터(2025 아카이브 + 2026, 440건)에서 영문 그대로 뜨던 궤도 5종 · 임무 종류 3종.
+  // 표에 넣는 것만 재면 **패널이 그 표를 쓰는지**는 안 잰다 — 패널을 실제로 열어 본다.
+  const KO_CASES = [
+    ["Geosynchronous Orbit", "Communications", "지구동기궤도(GSO)"],
+    ["Geosynchronous Transfer Orbit", "Communications", "지구동기천이궤도"],
+    ["Supersynchronous Transfer Orbit", "Communications", "초동기천이궤도(SSTO)"],
+    ["Heliocentric L1", "Heliophysics", "태양–지구 L1"], ["Asteroid", "Planetary Science", "소행성"],
+    ["Low Earth Orbit", "Biology", "생물학"], ["Suborbital", "Suborbital", "준궤도 비행"],
+    ["Heliocentric L1", "Heliophysics", "태양물리"],
+  ];
+  const leftEnglish = KO_CASES.filter(([orbit, type, ko]) => {
+    ctx.openPanel({ id: "k", name: "번역", outcome: "success", net: "2026-01-01T00:00:00Z",
+      orbit, mission_type: type, lat: 28.5, lng: -80.6 });
+    return !el("panel-body").innerHTML.includes(ko);
+  }).map(([o, t, ko]) => ko);
+  check("상세 패널이 새로 채운 궤도·임무 종류를 한국어로 보여 준다", leftEnglish, []);
+  ctx.closePanel();
 }
 
 // ── 로드 순서 일치 (P12-23) ──────────────────────────────────────────────────

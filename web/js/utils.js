@@ -329,6 +329,12 @@ const ORBIT_KO = {
   "Lunar Orbit": "달 궤도",
   "Mars Orbit": "화성 궤도",
   "Sun-Earth L2": "태양–지구 L2",
+  // P81 — 2025 아카이브 + 2026 실측에서 영문 그대로 뜨던 값(6건)
+  "Geosynchronous Orbit": "지구동기궤도(GSO)",
+  "Geosynchronous Transfer Orbit": "지구동기천이궤도",
+  "Supersynchronous Transfer Orbit": "초동기천이궤도(SSTO)",
+  "Heliocentric L1": "태양–지구 L1",
+  "Asteroid": "소행성",
   "Unknown": "미상",
 };
 const MISSION_TYPE_KO = {
@@ -346,6 +352,10 @@ const MISSION_TYPE_KO = {
   "Dedicated Rideshare": "전용 라이드셰어",
   "Mission Extension": "임무 연장",
   "Tourism": "우주 관광",
+  // P81 — 실측에서 영문 그대로 뜨던 값(5건)
+  "Suborbital": "준궤도 비행",
+  "Heliophysics": "태양물리",
+  "Biology": "생물학",
   "Unknown": "미상",
 };
 // 참여 기관의 성격(P15-5). 라이브 18곳 실측에 네 값만 나왔다.
