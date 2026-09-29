@@ -1824,6 +1824,29 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
       .includes("Brand New Event"), true);
   check("지난 것과 다음 것을 각각 표시한다",
     [html.includes("sq-past"), html.includes("sq-next")], [true, true]);
+  // P83 — 실제 순서표 4,915건 중 1,018건(20.7%)이 영문이었다. 가장 흔한 넷과 번호 붙은 SES/SECO 를 렌더로 잰다
+  const common = ctx.timelineHtml(withTl({ timeline: ["Startup", "Tank Press", "Prop Load", "Starlink Deployment",
+    "SES-3", "SECO-3", "Dragon Nosecode Open"].map((abbrev, i) => ({ t: i * 10, abbrev })) }), null);
+  check("실측에서 가장 흔했던 영문 이벤트가 한국어로 나온다",
+    ["엔진 시동", "탱크 가압", "추진제 주입", "스타링크 위성 전개", "2단 엔진 3차 점화", "2단 엔진 3차 정지", "드래곤 노즈콘 개방"]
+      .filter((ko) => !common.includes(ko)), []);
+  // **객체 리터럴의 같은 키는 조용히 뒤엣것이 이긴다.** 105줄 표에 한 줄을 또 적어도 오류가 없다
+  {
+    const src = require("fs").readFileSync(require("path").join(__dirname, "..", "web", "js", "utils.js"), "utf8");
+    const dupes = [];
+    let keyCount = 0;
+    for (const m of src.matchAll(/^const ([A-Z_]+_KO) = \{([\s\S]*?)\n\};/gm)) {
+      // 한 줄에 여러 키(`USA: "미국", CHN: …`)도 있다 — 처음 판은 줄 맨 앞 키만 읽어 COUNTRY_KO 중복을 놓쳤다.
+      // 주석을 걷고, 줄 처음이나 쉼표 뒤의 키를 모두 읽는다
+      const body = m[2].replace(/\/\/.*$/gm, "");
+      const keys = [...body.matchAll(/(?:^|,)\s*(?:"([^"]+)"|([A-Za-z_]\w*))\s*:/gm)].map((k) => k[1] || k[2]);
+      keyCount += keys.length;
+      const seen = new Set();
+      for (const k of keys) { if (seen.has(k)) dupes.push(m[1] + "." + k); seen.add(k); }
+    }
+    const tables = [...src.matchAll(/^const ([A-Z_]+_KO) = \{/gm)].length;
+    check("번역표(≥ 6개 · 키 ≥ 150)에 같은 키가 두 번 적히지 않았다", [tables >= 6, keyCount >= 150, dupes], [true, true, []]);
+  }
   check("net 이 초 단위 확정이면 시계도 적는다", html.includes("sq-clock"), true);
   check("net 이 날짜까지만이면 시계를 안 적는다",
     ctx.timelineHtml(withTl({ net_precision: "Day" }), 0).includes("sq-clock"), false);
