@@ -272,4 +272,28 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   }
 }
 
-done(26);   // 건수 하한 — 2026-09-24 실측(+ 제어 문자 2 + 아이콘 버튼 2)
+// ── README 의 단축키 줄 ↔ 도움말 표(P79) ─────────────────────────────────────
+// P73 이 도움말·키 처리·툴팁 셋을 맞췄는데 **네 번째 자리**(README)는 사람이 맞추고 있었다.
+// 도움말 표(`KEY_HELP`)를 정답으로 삼는다 — 그 표와 키 처리의 일치는 test_frontend 가 잰다.
+{
+  group("README 단축키 줄 ↔ 도움말 표 (P79)");
+  const keysJs = read("web/js/keys.js");
+  const table = /const KEY_HELP = \[([\s\S]*?)\n\];/.exec(keysJs);
+  const helpKeys = table
+    ? [...table[1].matchAll(/^\s*\["([^"]+)",/gm)].flatMap((m) => m[1].split(" ")).map((k) => k.toLowerCase())
+    : [];
+  const para = /⌨ \*\*키보드 단축키\*\*([\s\S]*?)(?:\n- |\n\n)/.exec(README);
+  const readmeKeys = para
+    ? [...para[1].matchAll(/`([^`]+)`(?:~`([^`]+)`)?/g)].flatMap(([, a, b]) => {
+      if (b && /^\d$/.test(a) && /^\d$/.test(b)) {   // `1`~`4` → 1 2 3 4
+        const out = []; for (let i = +a; i <= +b; i++) out.push(String(i)); return out;
+      }
+      return [a];
+    }).filter((k) => k !== "⋯").map((k) => k.toLowerCase())
+    : [];
+  check("도움말 표를 읽었다(≥ 16키 — 0 이면 정규식이 빗나간 것)", helpKeys.length >= 16, true);
+  check("README 단축키 줄의 키 집합 = 도움말 표",
+    [...new Set(readmeKeys)].sort(), [...new Set(helpKeys)].sort());
+}
+
+done(28);   // 건수 하한 — 2026-09-24 실측(+ 제어 문자 2 + 아이콘 버튼 2)
