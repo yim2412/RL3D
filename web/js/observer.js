@@ -98,6 +98,29 @@ const CITIES = [
 
 const PLACE_RESULT_MAX = 8;
 
+/**
+ * 발사장 영문 이름의 조각 → 한글 이름(P78). 발사장 이름은 LL2 원문(영문)이라 `케네디`·`바이코누르`·
+ * `나로` 로 0건이었다. 목록은 2025 아카이브 + 2026 발사의 실제 발사장 25곳에서 뽑았다. 영문 쪽은 소문자.
+ */
+const PAD_KO = [
+  ["cape canaveral", "케이프커내버럴 미국"], ["kennedy", "케네디 우주센터 미국"],
+  ["vandenberg", "반덴버그 미국"], ["starbase", "스타베이스 미국"], ["wallops", "월롭스 미국"],
+  ["van horn", "밴혼 미국"], ["jiuquan", "주취안 중국"], ["wenchang", "원창 중국"],
+  ["xichang", "시창 중국"], ["taiyuan", "타이위안 중국"], ["haiyang", "하이양 중국"],
+  ["mahia", "마히아 뉴질랜드 로켓랩"], ["guiana", "기아나 쿠루 유럽"],
+  ["plesetsk", "플레세츠크 러시아"], ["baikonur", "바이코누르 카자흐스탄 러시아"],
+  ["vostochny", "보스토치니 러시아"], ["satish dhawan", "사티시다완 스리하리코타 인도"],
+  ["tanegashima", "다네가시마 일본"], ["uchinoura", "우치노우라 일본"], ["naro", "나로 우주센터 고흥 한국"],
+  ["andøya", "안되야 노르웨이"], ["saxavord", "색사보드 영국"], ["alcântara", "알칸타라 브라질"],
+  ["bowen", "보웬 호주"], ["palmachim", "팔마침 이스라엘"],
+];
+
+/** 발사장 이름의 한글 별칭(없으면 ""). 순수 함수. */
+function padKo(name) {
+  const low = String(name || "").toLowerCase();
+  return PAD_KO.filter(([en]) => low.includes(en)).map(([, ko]) => ko).join(" ");
+}
+
 /** 위도·경도가 실제로 지구 위인가. 순수 함수. */
 function validLatLng(lat, lng) {
   return typeof lat === "number" && typeof lng === "number" &&
@@ -133,7 +156,7 @@ function searchPlaces(q, launches) {
   if (!query) return [];
   const out = [];
   for (const c of CITIES) {
-    if (c.ko.toLowerCase().includes(query) || c.en.toLowerCase().includes(query)) {
+    if (matchesQuery(`${c.ko} ${c.en}`, query)) {
       out.push({ kind: "city", name: c.ko, sub: c.en, lat: c.lat, lng: c.lng });
     }
   }
@@ -141,9 +164,12 @@ function searchPlaces(q, launches) {
   for (const d of launches || []) {
     if (!d || !d.location_name || !validLatLng(d.lat, d.lng)) continue;
     if (seen.has(d.location_name)) continue;
-    if (!d.location_name.toLowerCase().includes(query)) continue;
+    const ko = padKo(d.location_name);
+    if (!matchesQuery(`${d.location_name} ${ko}`, query)) continue;
     seen.add(d.location_name);
-    out.push({ kind: "pad", name: d.location_name, sub: "발사장", lat: d.lat, lng: d.lng });
+    // 한글 이름을 아는 발사장은 부제에 함께 적는다 — 한글로 쳐서 영문 이름이 나오면 맞게 찾았는지 헷갈린다
+    out.push({ kind: "pad", name: d.location_name, sub: ko ? `발사장 · ${ko.split(" ")[0]}` : "발사장",
+      lat: d.lat, lng: d.lng });
   }
   return out.slice(0, PLACE_RESULT_MAX);
 }

@@ -2364,8 +2364,23 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("부분 일치", ctx.searchPlaces("san", []).length > 0, true);
   check("이미 가진 발사장도 함께 찾는다(데이터가 있으니 요청이 0이다)",
     ctx.searchPlaces("kennedy", LAUNCHES).map((r) => [r.name, r.sub]),
-    [["Kennedy Space Center, FL, USA", "발사장"]]);
+    [["Kennedy Space Center, FL, USA", "발사장 · 케네디"]]);
   check("같은 발사장은 한 번만", ctx.searchPlaces("kennedy", LAUNCHES).length, 1);
+  // P78 — 발사장 이름은 영문이라 한글로 치면 0건이었다
+  const PADS = LAUNCHES.concat([
+    { location_name: "Baikonur Cosmodrome, Republic of Kazakhstan", lat: 45.9, lng: 63.3 },
+    { location_name: "Naro Space Center, South Korea", lat: 34.4, lng: 127.5 },
+    { location_name: "Unknown Test Range", lat: 10, lng: 10 },
+  ]);
+  const names = (q) => ctx.searchPlaces(q, PADS).map((r) => r.name);
+  check("한글 발사장 이름", [names("케네디"), names("바이코누르")],
+    [["Kennedy Space Center, FL, USA"], ["Baikonur Cosmodrome, Republic of Kazakhstan"]]);
+  check("나라로도(도시 목록의 같은 나라 도시는 없다)", names("카자흐스탄"), ["Baikonur Cosmodrome, Republic of Kazakhstan"]);
+  check("여러 단어 — 한글·영문 섞어도", names("나로 korea"), ["Naro Space Center, South Korea"]);
+  check("별칭이 없는 발사장은 부제가 그대로", ctx.searchPlaces("unknown", PADS).map((r) => r.sub), ["발사장"]);
+  check("도시도 여러 단어로(한글 + 영문)", ctx.searchPlaces("서울 seoul", []).map((r) => r.name), ["서울"]);
+  const PK = require("vm").runInContext("PAD_KO", ctx);
+  check("발사장 별칭 표(≥ 20줄)의 영문 조각이 전부 소문자", [PK.length >= 20, PK.filter(([en]) => en !== en.toLowerCase())], [true, []]);
   check("좌표 없는 발사장은 후보가 아니다", ctx.searchPlaces("좌표 없는", LAUNCHES), []);
   check("빈 검색어는 아무것도 안 낸다", [ctx.searchPlaces("", LAUNCHES), ctx.searchPlaces("  ", [])], [[], []]);
   check("결과는 상한까지만", ctx.searchPlaces("a", []).length <= 8, true);
