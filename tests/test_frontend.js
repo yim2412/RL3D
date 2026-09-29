@@ -926,6 +926,53 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("Ctrl/Alt/Meta 조합은 비켜난다",
     [K("r", { ctrlKey: true }), K("s", { altKey: true }), K("1", { metaKey: true })], [null, null, null]);
 
+  // P73 — **도움말(?)이 말하는 키와 실제로 듣는 키가 같은가.** 둘은 다른 자리(`KEY_HELP` 표와
+  // `keyAction` 의 if 줄)에 있어, 키를 더하면서 한쪽만 고치면 화면은 아무 말도 안 한다 —
+  // 도움말에 없는 단축키는 발견되지 않고, 도움말에만 있는 키는 눌러도 반응이 없다.
+  group("단축키 도움말 ↔ 실제 키 (P73)");
+  const HELP = require("vm").runInContext("KEY_HELP", ctx);
+  const helpKeys = HELP.flatMap(([k]) => k.split(" ")).map((k) => (k === "Esc" ? "Escape" : k.toLowerCase()));
+  const probeKeys = "abcdefghijklmnopqrstuvwxyz0123456789/?.,;'[]-=`\\".split("")
+    .concat(["Escape", "Enter", " ", "Tab", "F1", "F5", "ArrowLeft", "Delete"]);
+  const liveKeys = probeKeys.filter((k) => K(k) !== null);
+  check("훑은 키 중 동작이 있는 것이 도움말 항목 수와 맞다(≥ 16 — 0 이면 훑기가 빗나간 것)",
+    liveKeys.length >= 16, true);
+  check("도움말의 키 집합 = keyAction 이 듣는 키 집합",
+    [...helpKeys].sort(), [...liveKeys].sort());
+
+  // **버튼의 툴팁도 같은 말을 해야 한다.** 예전에는 B·C·R 만 `— 단축키 X` 를 달았고
+  // T·S·G·A·숫자 1~7 은 툴팁을 보고는 단축키를 알 수 없었다(2026-09-29 실측 7곳).
+  // 정답 표는 여기에 손으로 적는다 — 코드에서 긁어 오면 빠진 줄이 기대에서도 같이 빠진다.
+  const html = require("fs").readFileSync(require("path").join(__dirname, "..", "web", "index.html"), "utf8");
+  const titleOf = (needle, tag) => {
+    // needle 이 든 여는 태그, 또는 그 태그를 감싼 가장 가까운 여는 <label> 의 title
+    const at = html.indexOf(needle);
+    if (at < 0) return null;
+    const start = tag === "label" ? html.lastIndexOf("<label", at) : html.lastIndexOf("<", at);
+    const open = html.slice(start, html.indexOf(">", start) + 1);
+    const m = /title="([^"]*)"/.exec(open);
+    return m ? m[1] : "";
+  };
+  const TITLED = [
+    ["S", 'id="toggle-list"'], ["R", 'id="refresh"'], ["T", 'id="tz-btn"'],
+    ["B", 'id="basemap-btn"'], ["C", 'id="stats-btn"'], ["G", 'id="sat-groups-btn"'], ["A", 'id="arch-load"'],
+    ["1", 'value="upcoming"', "label"], ["2", 'value="success"', "label"], ["3", 'value="failure"', "label"],
+    ["4", 'value="partial"', "label"], ["5", 'id="toggle-sat"', "label"], ["6", 'id="toggle-terminator"', "label"],
+    ["7", 'id="toggle-heat"', "label"],
+  ];
+  const missing = TITLED.filter(([k, needle, tag]) => !(titleOf(needle, tag) || "").includes("단축키 " + k))
+    .map(([k, needle]) => k + " " + needle);
+  check("단축키가 있는 조작 요소 14개의 툴팁이 그 키를 말한다", missing, []);
+  check("정답 표가 도움말의 글자·숫자 키를 전부 덮는다",
+    TITLED.map(([k]) => k.toLowerCase()).sort(), helpKeys.filter((k) => /^[a-z0-9]$/.test(k)).sort());
+  // 🕓 는 JS 가 툴팁을 **다시 쓴다**(`setTimeZoneMode`) — index.html 만 보면 첫 화면 한 번뿐이다
+  ctx.setTimeZoneMode("utc");
+  const tzUtc = ctx.document.getElementById("tz-btn").title;
+  ctx.setTimeZoneMode("local");
+  const tzLocal = ctx.document.getElementById("tz-btn").title;
+  check("🕓 툴팁은 시간대를 바꿔 다시 써도 단축키 T 를 말한다",
+    [tzUtc.includes("단축키 T"), tzLocal.includes("단축키 T"), tzUtc !== tzLocal], [true, true, true]);
+
   group("Esc 우선순위 (escapeTarget)");
   const E = (o) => ctx.escapeTarget(o);
   check("아무것도 안 열렸으면 null", E({}), null);

@@ -19,17 +19,17 @@
   <div id="toolbar" class="toolbar">
     <input id="search" class="search" type="text" placeholder="🔍 발사명 · 로켓 · 기관 검색  ( / )" />
     <div class="filters" id="filters">
-      <label><input type="checkbox" class="flt" value="upcoming" checked /> <span class="dot d-upcoming"></span>예정</label>
-      <label><input type="checkbox" class="flt" value="success" checked /> <span class="dot d-success"></span>성공</label>
-      <label><input type="checkbox" class="flt" value="failure" checked /> <span class="dot d-failure"></span>실패</label>
-      <label><input type="checkbox" class="flt" value="partial" checked /> <span class="dot d-partial"></span>부분</label>
+      <label title="예정 발사 표시 — 단축키 1"><input type="checkbox" class="flt" value="upcoming" checked /> <span class="dot d-upcoming"></span>예정</label>
+      <label title="성공한 발사 표시 — 단축키 2"><input type="checkbox" class="flt" value="success" checked /> <span class="dot d-success"></span>성공</label>
+      <label title="실패한 발사 표시 — 단축키 3"><input type="checkbox" class="flt" value="failure" checked /> <span class="dot d-failure"></span>실패</label>
+      <label title="부분 실패한 발사 표시 — 단축키 4"><input type="checkbox" class="flt" value="partial" checked /> <span class="dot d-partial"></span>부분</label>
       <span class="sep"></span>
-      <label><input type="checkbox" id="toggle-terminator" checked /> 🌓 낮/밤</label>
-      <label title="발사 밀도 히트맵 — 과거 아카이브를 불러올수록 뚜렷해집니다"><input type="checkbox" id="toggle-heat" /> 🔥 밀도</label>
-      <label><input type="checkbox" id="toggle-sat" /> <span class="dot d-sat"></span>위성 <span id="sat-count" class="muted"></span></label>
-      <button id="sat-groups-btn" class="btn sm" title="위성 그룹 선택">그룹 ▾</button>
+      <label title="낮/밤 경계 오버레이 — 단축키 6"><input type="checkbox" id="toggle-terminator" checked /> 🌓 낮/밤</label>
+      <label title="발사 밀도 히트맵 — 과거 아카이브를 불러올수록 뚜렷해집니다 — 단축키 7"><input type="checkbox" id="toggle-heat" /> 🔥 밀도</label>
+      <label title="위성 레이어 — 단축키 5"><input type="checkbox" id="toggle-sat" /> <span class="dot d-sat"></span>위성 <span id="sat-count" class="muted"></span></label>
+      <button id="sat-groups-btn" class="btn sm" title="위성 그룹 선택 — 단축키 G">그룹 ▾</button>
     </div>
-    <button id="tz-btn" class="btn" title="시각 표시 시간대 전환 (현지 ↔ UTC)">🕓</button>
+    <button id="tz-btn" class="btn" title="시각 표시 시간대 전환 (현지 ↔ UTC) — 단축키 T">🕓</button>
     <!-- 툴바 오버플로 (P17-1) — 기본 창 1280px 에서 툴바가 두 줄로 밀려 둘을 접었다.
          라벨은 접힌 뒤에도 그대로 남긴다: 버튼으로만 발견하던 기능이라 아이콘만 남기면 길이 끊긴다.
          🕓 시간대는 접지 않았다 — 버튼 자체가 "지금 어느 시간대로 보고 있는가"를 상시 말한다(utils.js).
@@ -42,7 +42,7 @@
         <button id="stats-btn" class="btn" title="발사 통계 — 단축키 C">📊 통계</button>
       </div>
     </span>
-    <button id="toggle-list" class="btn" title="발사 목록 열기/닫기">☰ 목록</button>
+    <button id="toggle-list" class="btn" title="발사 목록 열기/닫기 — 단축키 S">☰ 목록</button>
     <button id="refresh" class="btn" title="캐시 무시 강제 갱신 (시간당 요청 제한 주의) — 단축키 R">↻ 갱신</button>
     <span id="freshness" class="freshness"></span>
   </div>
@@ -116,7 +116,7 @@
     <span class="sep"></span>
     <span class="tl-cap">과거</span>
     <select id="arch-year" class="arch-select" title="불러올 과거 연도"></select>
-    <button id="arch-load" class="btn sm" title="선택 연도의 발사를 불러옴(최초 1회 API 요청)">불러오기</button>
+    <button id="arch-load" class="btn sm" title="선택 연도의 발사를 불러옴(최초 1회 API 요청) — 단축키 A">불러오기</button>
   </div>
 
   <!-- 관측 위치 지정 팝오버 (P13-6) — 도시·발사장 검색 / 좌표 입력 / 지도 클릭 -->

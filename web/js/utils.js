@@ -108,8 +108,8 @@ function setTimeZoneMode(mode) {
     btn.textContent = "🕓" + (n || (timeZoneMode === "utc" ? "UTC" : "현지"));
     btn.classList.toggle("active", timeZoneMode === "utc");
     btn.title = timeZoneMode === "utc"
-      ? "시각을 UTC 로 보고 있습니다 — 눌러서 현지 시각으로"
-      : "시각을 현지 시각으로 보고 있습니다 — 눌러서 UTC 로";
+      ? "시각을 UTC 로 보고 있습니다 — 눌러서 현지 시각으로 (단축키 T)"
+      : "시각을 현지 시각으로 보고 있습니다 — 눌러서 UTC 로 (단축키 T)";
   }
 }
 
