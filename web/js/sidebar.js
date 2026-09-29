@@ -132,7 +132,7 @@ function renderSatList() {
   }
   const q = document.getElementById("sat-search").value.trim().toLowerCase();
   const list = visibleSats().filter((s) =>
-    !q || s.name.toLowerCase().includes(q) || String(s.norad).includes(q));
+    matchesQuery(`${s.name} ${s.norad}`, q));
   countEl.textContent = `${list.length}개`;
   if (!list.length) {
     const allBands = BANDS.every((b) => satBands[b.key] !== false);

@@ -267,8 +267,8 @@ function launchesToFC(list) {
 function launchPasses(d, active, q) {
   if (!active.has(d.outcome)) return false;
   if (q) {
-    const hay = `${d.name || ""} ${d.rocket || ""} ${d.provider || ""} ${d.mission_name || ""}`.toLowerCase();
-    if (!hay.includes(q)) return false;
+    const hay = `${d.name || ""} ${d.rocket || ""} ${d.provider || ""} ${d.mission_name || ""}`;
+    if (!matchesQuery(hay, q)) return false;
   }
   if (timelineMax != null && d.net) {
     const t = new Date(d.net).getTime();

@@ -36,6 +36,18 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/**
+ * 검색어가 이 글에 맞는가 — **단어마다 어딘가에 있으면** 맞다(순서·공백 수 무관). 순수 함수.
+ * 통째 부분문자열로 찾던 때는 `falcon starlink` 가 0건이었다(실제 이름은
+ * "Falcon 9 Block 5 | Starlink …" — 단어별로는 12건). 공백 두 칸만 쳐도 0건이 됐다(P74).
+ */
+function matchesQuery(hay, q) {
+  const words = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const h = String(hay || "").toLowerCase();
+  return words.every((w) => h.includes(w));
+}
+
 /** 라이브+아카이브 합본 재계산(라이브 id 우선, 아카이브 중복 제거). */
 // ── 겹치는 요청 (P26) ─────────────────────────────────────────────────────────
 /** 이 키의 요청을 지금 보내도 되나. 보낼 수 있으면 표시하고 true. */

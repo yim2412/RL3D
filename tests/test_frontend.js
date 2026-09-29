@@ -239,6 +239,22 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   el("search").value = "  ";
   ctx.applyFilters();
   check("공백만 입력하면 검색 없음으로 취급", shownIds(), ["1", "2", "3"]);
+  // P74 — 여러 단어는 **단어마다** 찾는다. 통째로 찾던 때 실제 캐시 99건에서
+  // `falcon starlink` 0건(단어별 12건) · 공백 두 칸 `spacex  starlink` 0건(13건)이었다.
+  el("search").value = "falcon starlink";
+  ctx.applyFilters();
+  check("여러 단어는 단어별로 (이름 사이에 '9 |' 가 끼어도)", shownIds(), ["1"]);
+  el("search").value = "starlink   FALCON";
+  ctx.applyFilters();
+  check("순서·공백 수·대소문자와 무관", shownIds(), ["1"]);
+  el("search").value = "falcon electron";
+  ctx.applyFilters();
+  check("단어는 전부 맞아야 한다(하나라도 없으면 빠진다)", shownIds(), []);
+  el("search").value = "rocket lab";
+  ctx.applyFilters();
+  check("붙여 쓴 기관명도 그대로 찾는다", shownIds(), ["2"]);
+  check("matchesQuery — 빈 검색어는 전부 맞다",
+    [ctx.matchesQuery("x", ""), ctx.matchesQuery("x", "   "), ctx.matchesQuery("", null)], [true, true, true]);
 
   el("search").value = "";
   state.timelineMax = new Date("2026-02-01T00:00:00Z").getTime();
@@ -3983,6 +3999,15 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
       el("sidebar-list").innerHTML.includes("ISS (ZARYA)"), true);
     check("빈 안내는 사라진다", el("sidebar-list").innerHTML.includes("sb-empty"), false);
     check("위성 수가 실제 수로 찍힌다", el("sidebar-count").textContent, "1개");
+    // P74 — 위성 검색도 단어별로(이름과 NORAD 를 섞어 쳐도 된다)
+    const rows = () => (el("sidebar-list").innerHTML.match(/class="sb-row"/g) || []).length;
+    for (const [q, n, label] of [["zarya 25544", 1, "이름 + NORAD"], ["iss  zarya", 1, "공백 두 칸"],
+      ["zarya 99999", 0, "한 단어가 없으면 빠진다"], ["25544", 1, "NORAD 만"]]) {
+      el("sat-search").value = q;
+      ctx.renderSatList();
+      check(`위성 검색 '${q}' — ${label}`, rows(), n);
+    }
+    el("sat-search").value = "";
   }
 
   // ── 강제 갱신은 위성도 같이 받는다 (boot.js) ───────────────────────────────
