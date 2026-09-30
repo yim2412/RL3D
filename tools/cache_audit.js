@@ -203,21 +203,23 @@ function makeRecs(ctx, tles) {
     return { norad: String(t.norad_id), name: t.name, rec: satellite.twoline2satrec(t.tle1, t.tle2) }; })`, ctx);
 }
 
-function audit(data) {
+/** hook(ctx): 검사 전에 앱 함수를 바꿔 끼운다(selftest 용). only: 돌릴 검사 이름 집합(없으면 전부). */
+function audit(data, hook, only) {
   const app = loadApp({ realSatellite: true });
   app.state.map = app.map;
   vm.runInContext("satcat = __sc", Object.assign(app.ctx, { __sc: data.satcat }));
   const recs = makeRecs(app.ctx, data.tles);
+  if (hook) hook(app.ctx);
+  const checks = [
+    ["번역 빈칸", () => checkTranslations(app.ctx, data)],
+    ["깨진 글자", () => checkBrokenText(app, data, recs)],
+    ["발사 숫자 대조", () => checkLaunchNumbers(data)],
+    ["위성 물리", () => checkSatPhysics(app.ctx)],
+    ["재진입 예보 불변식", () => checkDecayInvariant(app.ctx)],
+  ].filter(([name]) => !only || only.has(name));
   const quiet = console.error; console.error = () => {};
-  try {
-    return [
-      ["번역 빈칸", checkTranslations(app.ctx, data)],
-      ["깨진 글자", checkBrokenText(app, data, recs)],
-      ["발사 숫자 대조", checkLaunchNumbers(data)],
-      ["위성 물리", checkSatPhysics(app.ctx)],
-      ["재진입 예보 불변식", checkDecayInvariant(app.ctx)],
-    ];
-  } finally { console.error = quiet; }
+  try { return checks.map(([name, run]) => [name, run()]); }
+  finally { console.error = quiet; }
 }
 
 function report(results) {
@@ -251,11 +253,19 @@ function selftest(base) {
     console.log(`${caught ? "[OK]  " : "[FAIL]"} 카나리아 → ${name} 가 잡는다`);
     if (!caught) bad++;
   }
-  // 위성 물리·예보 불변식은 캐시 값을 못 바꾸니, 판정식에 모순을 심는 대신 "잰 것" 이 0 이 아닌지로 본다
+  // 위성 물리·예보 불변식은 캐시 값을 못 바꾸니 **앱의 계산 함수를 모순된 값을 내게 바꿔 끼운다** — 판정식이 망가져
+  // 늘 통과해도 "잰 것 > 0" 만 보면 모른다(처음 판이 그랬다). 첫 위성의 위도를 경사각 +10° 로, 예보를 시각과 무관한 50일로
+  const hooked = Object.fromEntries(audit(base, (ctx) => {
+    vm.runInContext(`(function(){
+      const realDetails = satDetails, first = __auditRecs[0].rec;
+      satDetails = function (rec) { const d = realDetails(rec); if (d && rec === first) d.lat = Math.min(90, d.incl + 10); return d; };
+      decayForecastDays = function () { return 50; };
+    })()`, ctx);
+  }, new Set(["위성 물리", "재진입 예보 불변식"])));
   for (const name of ["위성 물리", "재진입 예보 불변식"]) {
-    const ok = results[name].measured > 0;
-    console.log(`${ok ? "[OK]  " : "[FAIL]"} ${name} 가 실제로 잰다(잰 것 ${results[name].measured})`);
-    if (!ok) bad++;
+    const caught = hooked[name].problems.length > 0;
+    console.log(`${caught ? "[OK]  " : "[FAIL]"} 모순을 심은 계산 → ${name} 가 잡는다(문제 ${hooked[name].problems.length})`);
+    if (!caught) bad++;
   }
   return bad;
 }
