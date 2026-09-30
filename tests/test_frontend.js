@@ -3578,6 +3578,8 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     check("쉼표가 있으면 다국적", ctx.countryKo("USA,FR,JPN"), "다국적");
     check("하나면 그 나라 이름", ctx.countryKo("USA"), "미국");
     check("모르는 코드는 코드 그대로", ctx.countryKo("ZZZ"), "ZZZ");
+    // P95 — LL2 의 "모름"(주체 Unknown). 실제 캐시에 나왔다
+    check("??? 는 미상", ctx.countryKo("???"), "미상");
     check("빈 값은 빈 문자열", ctx.countryKo(""), "");
   }
 })();
