@@ -872,6 +872,36 @@ class TestSatcatCodes(unittest.TestCase):
         self.assertIsNone(satcat_codes.rcs_size(None))
         self.assertIsNone(satcat_codes.rcs_size("N/A"))
 
+    # P96 — 캐시 12,043기에서 **코드 그대로 뜨던** 것들. 표에서 빠지면 화면에 "THAI"·"WRAS" 가 다시 뜬다
+    OBSERVED_OWNERS = ("IM", "AB", "INDO", "AC", "UAE", "ABS", "MEX", "THAI", "MALA", "ARGN", "NOR",
+                       "EGYP", "GREC", "VTNM", "KAZ", "AZER", "RASC", "STCT", "NIG", "BOL", "FRIT", "TMMC",
+                       "LAOS", "BELA", "BUL", "ALG", "BGD", "GRSA", "ANG", "SWED", "PAKI", "RP", "SING",
+                       "ASRA", "POL")
+    OBSERVED_SITES = ("WRAS", "DLS", "KWAJ", "RLLB")
+
+    def test_observed_owner_and_site_codes_become_korean(self):
+        import re
+        hangul = re.compile("[가-힣]")
+        raw = [c for c in self.OBSERVED_OWNERS
+               if not hangul.search(satcat_codes.label(satcat_codes.OWNERS, c) or "")]
+        raw += [c for c in self.OBSERVED_SITES
+                if not hangul.search(satcat_codes.label(satcat_codes.LAUNCH_SITES, c) or "")]
+        self.assertEqual(raw, [], "코드 그대로 남는다")
+
+    def test_code_tables_have_no_duplicate_keys(self):
+        """dict 리터럴의 같은 키는 **조용히 뒤엣것이 이긴다**(JS 표의 P84 와 같다). 소스를 읽어 센다."""
+        import ast
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "satcat_codes.py"),
+                   encoding="utf-8").read()
+        dupes, tables = [], 0
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, ast.Dict):
+                tables += 1
+                keys = [k.value for k in node.keys if isinstance(k, ast.Constant)]
+                dupes += sorted({k for k in keys if keys.count(k) > 1})
+        self.assertGreaterEqual(tables, 4, "표를 못 읽었다 — 검사가 공허하다")
+        self.assertEqual(dupes, [])
+
     def test_label_returns_raw_code_when_unmapped(self):
         self.assertEqual(satcat_codes.label(satcat_codes.OWNERS, "NOPE"), "NOPE")
         self.assertIsNone(satcat_codes.label(satcat_codes.OWNERS, None))
