@@ -263,7 +263,10 @@ const FILL = {
 // 944 는 P86 에서 더했다: 사이드바를 연 채 936~956px 이면 `⋯` 가 툴바 첫 줄 오른쪽 끝이라 팝오버가 창 밖으로
 // 나갔다 — 나머지 넷은 그 구간을 비껴가 위치 보정(`placeToolbarMore`)을 지워도 초록이었다.
 // 크기는 **보이는 영역**이다(CDP 로 정확히 맞춘다). 예전 `--window-size` 는 실제로 가로 24·세로 92px 작게 쟀다
-const SIZES = [[900, 600], [944, 600], [1024, 700], [1280, 800], [1920, 1080]];
+// 884×561 은 P88 에서 더했다: 앱의 최소 창(`min_size=(900, 600)`, 테두리 포함)의 **실제 보이는 영역**이다
+// (2026-09-30 실측 · DPI 96. pywebview 가 min_size 에 DPI 배율을 곱하므로 CSS 기준으로는 배율과 무관하다).
+// 그 전의 가장 작은 크기 900×600 은 앱에서 닿을 수 있는 가장 작은 화면이 아니었다
+const SIZES = [[884, 561], [900, 600], [944, 600], [1024, 700], [1280, 800], [1920, 1080]];
 
 function buildPage(open) {
   let html = fs.readFileSync(path.join(WEB, "index.html"), "utf8");
@@ -700,6 +703,6 @@ runAll().then(() => {
     + ((Date.now() - started) / 1000).toFixed(1) + "초)");
   console.log("\n" + pass + " passed, " + failures.length + " failed");
   if (failures.length) process.exit(1);
-  const MIN_PASS = 95;   // 건수 하한 — 19장면 × 5크기(2026-09-30 실측). 주입 치환이 실패하면 0건 초록이 된다
+  const MIN_PASS = 114;   // 건수 하한 — 19장면 × 6크기(2026-09-30 실측). 주입 치환이 실패하면 0건 초록이 된다
   if (pass < MIN_PASS) { console.log(`FAIL 건수 하한: ${pass} < ${MIN_PASS}`); process.exit(1); }
 });
