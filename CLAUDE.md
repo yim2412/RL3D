@@ -31,6 +31,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(Edge 1회로 바꾼 뒤 5.6초 — P86) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·**발사 데이터 로그가 들어오는지(앱의 네트워크 최악 110초까지 — 상수를 `api_client` 에서 읽는다, P72·P99)**·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
+| `tools/cache_audit.js` | **실제 캐시로 그럴듯하게 틀린 화면을 찾는다**(P106) — 번역 빈칸 · 깨진 글자 · 발사 숫자 대조 · 위성 물리 · 재진입 예보 불변식을 `[OK]/[FAIL]` 과 **잰 개수**로. 데이터는 날마다 바뀌어 픽스처 테스트가 못 본다(하루에 세 번 값을 냈다: P95·P96·P103). 캐시가 PC 마다 달라 CI 밖. `--selftest` 는 카나리아를 심어 검사마다 FAIL 하는지 먼저 본다 |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |

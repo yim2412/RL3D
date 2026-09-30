@@ -79,6 +79,7 @@ const DECAY_SOON_DAYS = 30;       // 이 안이면 경고 색 + 배지. 실측 2
 const DECAY_SEARCH_STEPS = 14;    // 찾은 한 칸(최대 5일)을 1분 안쪽까지 좁힌다
 // 첫 죽음을 찾는 걸음(P103): 30일 안은 0.5일(경고 색의 경계 근처라 촘촘히), 그 밖은 5일.
 // 오래 사는 위성은 60 + 67 = 127번 전파한다 — 위 실측(16회 ≈ 0.24ms)으로 치면 약 1.9ms, 상세 패널을 열 때 두 번뿐이다
+const DECAY_MAX_PERIGEE_KM = 1000;   // 이보다 근지점이 높으면 예보를 계산하지 않는다(P106 · 실측 최대 535km)
 const DECAY_NEAR_DAYS = 30;
 const DECAY_STEP_NEAR = 0.5;
 const DECAY_STEP_FAR = 5;
@@ -88,14 +89,25 @@ const DECAY_STEP_FAR = 5;
 // 근처에서 몇 시간 안에 탄다. 그래서 "살아 있다" 에 이 고도를 더한다. 지구 중심 거리 − 적도 반지름으로 재므로
 // 극지방에선 실제 고도보다 최대 21km 낮게 나온다 — 재진입을 **조금 이르게** 말하는 쪽으로 틀린다.
 const REENTRY_ALT_KM = 100;
+// 판정은 **한 궤도에 걸친 4점의 평균 고도**로 한다(P106). 한 순간의 고도로 재면 100km 근처에서 궤도 위상에 따라
+// ±15km 오르내려 "처음 아래로 간 때" 가 흔들렸다 — 실측(예보가 있는 40기): 하루 뒤 다시 잰 예보가 1일에서 벗어난 정도가
+// 순간 고도 **최대 4.3일 · 90% 2.6일**(예보가 하루 사이에 늘기도 했다) → 4점 평균 **최대 0.17일 · 90% 0.11일**.
+// 2점 평균은 최대 1.2일, 순간 장반경은 최대 3.5일로 부족했다. 대가는 전파 4배다(패널을 열 때 한 번 — 재사용된다).
+const ALIVE_SAMPLES = 4;
 
-/** 그 시각에 **재진입 고도 위에서** SGP4 가 값을 내는가 — 아니면 이미 대기권 안이라는 뜻이다. */
+/** 그 시각부터 한 궤도 동안의 **평균 고도가 재진입 고도 위인가** — 아니면 이미 대기권 안이라는 뜻이다. */
 function sgp4Alive(rec, when) {
-  let pv;
-  try { pv = satellite.propagate(rec, when); } catch (_) { return false; }
-  if (!(pv && pv.position && isFinite(pv.position.x))) return false;
-  const p = pv.position;
-  return Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) - R_EARTH > REENTRY_ALT_KM;
+  const t0 = when instanceof Date ? when.getTime() : +when;
+  const periodMs = rec && rec.no > 0 ? (2 * Math.PI / rec.no) * 60000 : 0;
+  let sum = 0;
+  for (let k = 0; k < ALIVE_SAMPLES; k++) {
+    let pv;
+    try { pv = satellite.propagate(rec, new Date(t0 + k * periodMs / ALIVE_SAMPLES)); } catch (_) { return false; }
+    if (!(pv && pv.position && isFinite(pv.position.x))) return false;
+    const p = pv.position;
+    sum += Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+  }
+  return sum / ALIVE_SAMPLES - R_EARTH > REENTRY_ALT_KM;
 }
 
 /**
@@ -112,6 +124,11 @@ function decayForecastDays(rec, nowMs, maxDays) {
   // 된다(실시간 위치는 멀쩡하다: `propagate` 가 매번 다시 쓴다). 2026-09-14 에 테스트가
   // 잡았다. 쓸 수 있는 rec 인지는 궤도요소로 본다 — `orbitBand()` 와 같은 기준.
   if (!rec || !(rec.no > 0)) return null;
+  // 근지점이 높으면 1년 안에 떨어질 수 없다 — 걷지 않는다(P106). 4점 평균으로 바꾼 뒤 GEO·Galileo 는 심우주 전파(SDP4)가
+  // 비싸 **호출당 149ms**(최대 207ms)였다 — 패널을 열 때 체감된다. 실측(캐시 2,896기): 예보가 나오는 191기의 근지점은
+  // **최대 535km · 중앙 334km**. 문턱은 그 두 배 가까이로 둔다(1,000km 이상 641기가 바로 끝난다)
+  const pe = apsides(rec).perigee;
+  if (pe != null && pe > DECAY_MAX_PERIGEE_KM) return null;
   const t0 = nowMs == null ? Date.now() : nowMs;
   const hiDay = maxDays == null ? DECAY_HORIZON_DAYS : maxDays;
   const at = (d) => new Date(t0 + d * 86400000);

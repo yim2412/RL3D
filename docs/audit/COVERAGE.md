@@ -71,5 +71,6 @@
 | `tools/smoke_exe.py` | 측정 도구(P57 — exe 정상 종료 스모크) · 대조군 3종(강제 종료·옛 exe·과거 로그) | 정독 |
 | `tools/check_exe.py` | 측정 도구(감사 뒤 P50 — exe 번들 대조) | 정독 |
 | `tools/ci_local.py` | 측정 도구(감사 뒤 P51 — CI test 잡 로컬 실행) | 정독 |
+| `tools/cache_audit.js` | 측정 도구(감사 뒤 P106 — 실제 캐시 감사 · 카나리아 selftest) | 정독 |
 | `tools/licenses/maplibre-gl-js.LICENSE.txt` | 라이선스 원문 | 정독 |
 | `tools/licenses/satellite-js.LICENSE.md` | 라이선스 원문 | 정독 |
