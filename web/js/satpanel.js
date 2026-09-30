@@ -67,21 +67,35 @@ function apsidesText(d) {
 
 // ── 재진입 예보 (S16-2) ──────────────────────────────────────────────────────
 // P12-8(재진입 표시)은 *"지난 실행에 있던 NORAD 가 사라졌는가"* 를 기억해야 해서 보류됐다.
-// 그런데 **SGP4 자신이 답을 갖고 있다**: 대기권에 들어가면 값을 못 낸다. 그 첫 시점을
-// 이진 탐색으로 찾으면 **새 저장 구조 없이** 예보가 나온다.
+// 그런데 **SGP4 자신이 답을 갖고 있다**: 궤도가 내려간다. 재진입 고도(100km) 아래로 가는 첫 시점을
+// 찾으면 **새 저장 구조 없이** 예보가 나온다. ⚠ SGP4 가 "값을 못 내는" 시점을 쓰면 안 된다(P103) —
+// 대기권 아래로도 한참 값을 내고(40일 넘게), 그 뒤엔 엉터리 값을 다시 내 이진 탐색을 속인다.
 //
 // 실측(2026-09-14, 최신 TLE 2,926건): **190건(6.5%)** 에 365일 안 예보가 나온다
 // (30일 안 20건 · 가장 임박 1.0일 · 근지점 중앙 332km). GEO·MEO 는 0건이다.
 // 비용은 위성당 16회 propagate ≈ **0.24ms** — 상세 패널 한 건이면 무시할 수준이다.
 const DECAY_HORIZON_DAYS = 365;   // 이보다 먼 예보는 내지 않는다(불확실성이 값보다 크다)
 const DECAY_SOON_DAYS = 30;       // 이 안이면 경고 색 + 배지. 실측 20건이 여기 든다
-const DECAY_SEARCH_STEPS = 14;    // 365일을 0.02일까지 좁힌다
+const DECAY_SEARCH_STEPS = 14;    // 찾은 한 칸(최대 5일)을 1분 안쪽까지 좁힌다
+// 첫 죽음을 찾는 걸음(P103): 30일 안은 0.5일(경고 색의 경계 근처라 촘촘히), 그 밖은 5일.
+// 오래 사는 위성은 60 + 67 = 127번 전파한다 — 위 실측(16회 ≈ 0.24ms)으로 치면 약 1.9ms, 상세 패널을 열 때 두 번뿐이다
+const DECAY_NEAR_DAYS = 30;
+const DECAY_STEP_NEAR = 0.5;
+const DECAY_STEP_FAR = 5;
 
-/** 그 시각에 SGP4 가 값을 내는가 — 못 내면 이미 대기권 안이라는 뜻이다. */
+// **SGP4 는 대기권 아래로도 값을 낸다**(P103). 9일 낡은 TLE 의 Starlink 가 고도 **69km** 에서도 위치를 줬고,
+// 화면은 그 옆에 *"이대로면 약 1일 뒤 재진입"* 을 적었다 — 69km 면 이미 탔을 높이다. 실제 물체는 100km(카르만 선)
+// 근처에서 몇 시간 안에 탄다. 그래서 "살아 있다" 에 이 고도를 더한다. 지구 중심 거리 − 적도 반지름으로 재므로
+// 극지방에선 실제 고도보다 최대 21km 낮게 나온다 — 재진입을 **조금 이르게** 말하는 쪽으로 틀린다.
+const REENTRY_ALT_KM = 100;
+
+/** 그 시각에 **재진입 고도 위에서** SGP4 가 값을 내는가 — 아니면 이미 대기권 안이라는 뜻이다. */
 function sgp4Alive(rec, when) {
   let pv;
   try { pv = satellite.propagate(rec, when); } catch (_) { return false; }
-  return !!(pv && pv.position && isFinite(pv.position.x));
+  if (!(pv && pv.position && isFinite(pv.position.x))) return false;
+  const p = pv.position;
+  return Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) - R_EARTH > REENTRY_ALT_KM;
 }
 
 /**
@@ -101,9 +115,18 @@ function decayForecastDays(rec, nowMs, maxDays) {
   const t0 = nowMs == null ? Date.now() : nowMs;
   const hiDay = maxDays == null ? DECAY_HORIZON_DAYS : maxDays;
   const at = (d) => new Date(t0 + d * 86400000);
-  if (!sgp4Alive(rec, at(0))) return 0;        // 지금 이미 못 낸다
-  if (sgp4Alive(rec, at(hiDay))) return null;  // 상한까지 멀쩡하다
-  let lo = 0, hi = hiDay;
+  if (!sgp4Alive(rec, at(0))) return 0;        // 지금 이미 그 고도 아래다
+  // **처음 죽는 시점을 앞에서부터 걸어서 찾는다**(P103). 전에는 [0, 상한] 을 통째로 이진 탐색했는데, 그건 "살아 있다 →
+  // 죽었다" 가 한 번만 바뀐다고 가정한다. SGP4 는 재진입 뒤 **엉터리 값을 다시 낸다** — 실측: 8.3일에 100km 아래로
+  // 떨어진 Starlink 가 45일·50일에 13,470km·56,133km 를 냈고, 이진 탐색이 그걸 "살아 있다" 로 읽어 **"약 52일 뒤"**
+  // 라고 했다("재진입 임박" 배지도 놓쳤다). 한 칸을 찾은 뒤에만 그 안에서 좁힌다.
+  let lo = 0, hi = null;
+  for (let d = 0; d < hiDay;) {
+    const next = Math.min(hiDay, d + (d < DECAY_NEAR_DAYS ? DECAY_STEP_NEAR : DECAY_STEP_FAR));
+    if (!sgp4Alive(rec, at(next))) { lo = d; hi = next; break; }
+    d = next;
+  }
+  if (hi == null) return null;                 // 상한까지 멀쩡하다
   for (let i = 0; i < DECAY_SEARCH_STEPS; i++) {
     const mid = (lo + hi) / 2;
     if (sgp4Alive(rec, at(mid))) lo = mid; else hi = mid;
@@ -111,9 +134,28 @@ function decayForecastDays(rec, nowMs, maxDays) {
   return hi;
 }
 
+/**
+ * 지금 기준 예보 — 같은 궤도(rec)에 대해 **1분 안의 결과는 재사용**한다(P103). 상세 패널을 열면 예보 블록과
+ * 배지가 같은 계산을 두 번 했다. 앞에서부터 걷게 바꾼 뒤 실측 호출당 평균 7.4ms(캐시 2,896기)라 두 번이면 15ms 다.
+ * 1분 동안 예보 값은 0.0007일밖에 안 바뀐다.
+ */
+const DECAY_MEMO_MS = 60 * 1000;
+const decayMemo = new WeakMap();
+function decayForecastNow(rec) {
+  if (!rec || typeof rec !== "object") return decayForecastDays(rec);
+  const t = Date.now();
+  const m = decayMemo.get(rec);
+  if (m && t - m.t >= 0 && t - m.t < DECAY_MEMO_MS) return m.d;
+  const d = decayForecastDays(rec, t);
+  decayMemo.set(rec, { t, d });
+  return d;
+}
+
 /** 예보를 사람 말로 — 순수 함수. 먼 예보는 일 단위로 적으면 정밀해 보여서 거짓말이 된다. */
 function decayText(days) {
   if (days == null || !isFinite(days)) return null;
+  // 0 = **지금 이미** 재진입 고도 아래(P103). "하루 안에" 라고 하면 아직 떠 있는 것처럼 읽힌다
+  if (days <= 0) return "이미 재진입했을 수 있습니다";
   if (days < 1) return "이대로면 하루 안에 재진입";
   if (days < 100) return `이대로면 약 ${Math.round(days)}일 뒤 재진입`;
   return `이대로면 약 ${Math.round(days / 30.44)}개월 뒤 재진입`;
@@ -121,7 +163,7 @@ function decayText(days) {
 
 /** 재진입 예보 블록 — 예보가 없으면 빈 문자열(실측 93.5%가 여기다). */
 function decayBlock(rec) {
-  const days = decayForecastDays(rec);
+  const days = decayForecastNow(rec);
   const text = decayText(days);
   if (!text) return "";
   const soon = days <= DECAY_SOON_DAYS;
@@ -185,7 +227,8 @@ function satBadgeHtml(norad, rec) {
   if (m && m.decay_date) return `<span class="badge m-failure">재진입</span>`;
   // **이미 재진입한 것**과 **곧 할 것**은 다른 말이다(S16-2). SATCAT 의 `decay_date` 는
   // 우리가 쓰는 그룹에서 실측 0건이라(P12-8) 위 배지는 사실상 안 뜬다 — 이쪽이 실제로 뜬다.
-  const d = rec == null ? null : decayForecastDays(rec);
+  const d = rec == null ? null : decayForecastNow(rec);
+  if (d === 0) return `<span class="badge m-failure">재진입했을 수 있음</span>`;   // P103 — 지금 이미 그 고도 아래
   if (d != null && d <= DECAY_SOON_DAYS) return `<span class="badge m-failure">재진입 임박</span>`;
   if (m && m.type && m.type !== "위성체") return `<span class="badge m-partial">${escapeHtml(m.type)}</span>`;
   return `<span class="badge m-upcoming">위성</span>`;

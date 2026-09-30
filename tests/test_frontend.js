@@ -4629,6 +4629,8 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
 
   const NOW = SEP14_NOW;   // TLE 에포크 근처로 고정(묶음의 시계와 같은 값)
   const fc = (r) => ctx.decayForecastDays(r, NOW);
+  const fc2 = (r, t) => ctx.decayForecastDays(r, t);   // 시각을 직접 준다(P103)
+  const vm = require("vm");
 
   check("ISS 는 예보가 없다(기동으로 유지한다)", fc(iss), null);
   check("근지점 154km 는 예보가 나온다", fc(soon) != null, true);
@@ -4645,6 +4647,41 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   // 그건 직전 전파가 남긴 찌꺼기라(재진입 너머로 전파하면 6이 박힌다) 두 번째부터 null 이
   // 됐다. 테스트가 그걸 잡았다 — 한 번만 부르는 단언이었으면 영영 안 보였다.
   check("두 번 불러도 같은 값", fc(body), fc(body));
+
+  // P103 — **SGP4 는 재진입 뒤 엉터리 값을 다시 낸다.** 실제 캐시의 Starlink(9일 낡은 TLE): 8.3일에 100km 아래로
+  // 떨어지는데 45일·50일에 13,470km·56,133km 를 냈고, [0, 365] 통째 이진 탐색이 그걸 "살아 있다" 로 읽어 **52.8일**
+  // 이라 했다. 또 고도 69km 에서도 값을 내서 화면이 "고도 69 km" 옆에 "약 1일 뒤 재진입" 을 적었다
+  {
+    const sl = rec("1 45062U 20006U   26264.51134325  .01217187  83952-3  18286-2 0  9993",
+                   "2 45062  53.0291 350.5843 0001687 104.5498 255.5721 16.04257572367899");
+    const EP = (sl.jdsatepoch - 2440587.5) * 86400000;   // 에포크(2026-09-21 12:16Z)
+    const D = 86400000;
+    check("재진입 뒤의 엉터리 값에 속지 않는다(8.3일 근처 — 52일이 아니다)", fc2(sl, EP) > 7 && fc2(sl, EP) < 10, true);
+    // **시간이 Δ 흐르면 예보도 Δ 줄어야 한다** — 절대값을 몰라도 단언할 수 있는 불변식이다
+    check("5일 뒤 다시 재면 예보가 5일 줄어 있다", Math.abs((fc2(sl, EP) - fc2(sl, EP + 5 * D)) - 5) < 0.05, true);
+    // 보호가 없었다면: 9.1일 뒤에도 SGP4 는 **값을 낸다**(고도 69km) — 그래서 "살아 있다" 에 고도를 더했다
+    const pv = vm.runInContext("(function(r,t){ return satellite.propagate(r, new Date(t)); })", ctx)(sl, EP + 9.1 * D);
+    check("9.1일 뒤에도 SGP4 는 위치를 낸다(이게 전제다)", !!(pv && pv.position && isFinite(pv.position.x)), true);
+    check("그 시각엔 '이미 재진입했을 수 있다' 로 말한다",
+      [fc2(sl, EP + 9.1 * D), ctx.decayText(fc2(sl, EP + 9.1 * D))], [0, "이미 재진입했을 수 있습니다"]);
+    const later = loadApp({ realSatellite: true, now: EP + 9.1 * D });
+    const sl2 = later.ctx.satellite.twoline2satrec(
+      "1 45062U 20006U   26264.51134325  .01217187  83952-3  18286-2 0  9993",
+      "2 45062  53.0291 350.5843 0001687 104.5498 255.5721 16.04257572367899");
+    check("배지도 '재진입했을 수 있음'", later.ctx.satBadgeHtml("45062", sl2).includes("재진입했을 수 있음"), true);
+    // 앞에서부터 걷게 바꾼 뒤 호출당 실측 7.4ms — 패널 한 번에 예보 블록과 배지가 **같은 계산을 한 번만** 하게 한다
+    let calls = 0;
+    const real = vm.runInContext("decayForecastDays", later.ctx);
+    later.ctx.__countFc = (r, t, m) => { calls++; return real(r, t, m); };
+    vm.runInContext("decayForecastDays = function (r, t, m) { return __countFc(r, t, m); }", later.ctx);
+    later.state.map = later.map;
+    // 새 rec 으로 연다 — 위 배지 단언이 sl2 의 결과를 이미 남겨 두어 0회로 보인다
+    const sl3 = later.ctx.satellite.twoline2satrec(
+      "1 45062U 20006U   26264.51134325  .01217187  83952-3  18286-2 0  9993",
+      "2 45062  53.0291 350.5843 0001687 104.5498 255.5721 16.04257572367899");
+    later.ctx.openSatPanel({ norad: "45062", name: "STARLINK-1171", rec: sl3 });
+    check("상세 패널 한 번에 예보 계산은 한 번", calls, 1);
+  }
   // 위치도 **같은 고정 시각**에서 잰다(묶음의 `now`) — 고정 전에는 이 물체가 2026-09-27 경
   // 실제로 재진입해 이 단언이 날짜 때문에 FAIL 했다(예보가 맞았다는 뜻이기도 하다)
   check("예보를 낸 뒤에도 실시간 위치는 멀쩡하다",
