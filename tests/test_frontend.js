@@ -6596,6 +6596,58 @@ function fresh2(ctx, key, t) {
   check("패드 목록", ctx.padListHtml([vague], "").includes("2026년 중"), true);
 }
 
+// ── 정수 경계 바로 양옆 (P94) ─────────────────────────────────────────────────
+// 경계 변이(`<`↔`<=`)가 살려 둔 70줄 중 **정수이고 그 경계값이 실제로 나오는** 넷. 다른 테스트는 전부
+// 경계에서 멀리 떨어진 값만 써서, 연산자를 한 칸 옮겨도 초록이었다.
+{
+  group("정수 경계 바로 양옆 (P94)");
+  const vm = require("vm");
+  // ① 통과가 0건인데 "보이는 것만" 이 켜져 있으면 — `all.length >= 0` 이면 "통과는 0건 있지만…" 이 나온다
+  {
+    const { ctx, state, el } = loadApp();
+    state.selectedSat = { norad: "1", name: "A", rec: {} };
+    state.observer = { lat: 37.5, lng: 127 };
+    el("toggle-visible-only").checked = true;
+    ctx.computePasses = () => [];
+    ctx.showPasses();
+    const zero = el("pass-body").innerHTML;
+    const t0 = Date.now() + 3600 * 1000;
+    ctx.computePasses = () => [{ visible: false, start: t0, end: t0 + 300000, startAz: 0, endAz: 90, maxEl: 40 }];
+    ctx.showPasses();
+    check("통과 0건이면 '없다' 고만 말하고, 1건(안 보임)이면 '1건 있지만' 이라 말한다",
+      [zero.includes("예측된 통과가 없습니다"), zero.includes("0건 있지만"), el("pass-body").innerHTML.includes("통과는 1건")],
+      [true, false, true]);
+  }
+  // ② 브릿지 전 오류 대기열은 **정확히** 상한만큼 남는다(`>=` 면 하나 모자란다)
+  {
+    const { ctx } = loadApp();
+    vm.runInContext("window.pywebview = undefined; errState.queue.length = 0", ctx);
+    const cap = vm.runInContext("ERR_QUEUE_CAP", ctx);
+    for (let i = 0; i < cap + 5; i++) ctx.sendToLog("e" + i);
+    check("오류 대기열: 상한만큼 남기고 가장 오래된 것부터 버린다",
+      [vm.runInContext("errState.queue.length", ctx), vm.runInContext("errState.queue[0]", ctx)], [cap, "e5"]);
+  }
+  // ③ 정확히 24시간 늦으면 "1일" — 23시간까지는 시간으로
+  {
+    const { ctx } = loadApp();
+    check("늦은 시간 문구: 23시간 · 24시간 → 1일",
+      [ctx.lateText(23 * 3600000), ctx.lateText(24 * 3600000)], ["23시간", "1일"]);
+  }
+  // ④ 발사장 관점의 "패드별" 은 패드가 **2개부터**(1개면 총합과 같아 뺀다) — 정확히 2개에서 나와야 한다
+  {
+    const { ctx, state, el } = loadApp();
+    const L = (id, pad) => ({ id, name: id, outcome: "success", net: "2025-05-01T00:00:00Z", rocket: "R", provider: "P",
+      location_name: "경계 발사장", pad_name: pad });
+    state.allLaunches = [L("a", "SLC-40"), L("b", "LC-39A")];
+    ctx.showEntityStats("site", "경계 발사장");
+    const two = el("stats-body").innerHTML.includes("패드별");
+    state.allLaunches = [L("a", "SLC-40"), L("b", "SLC-40")];
+    ctx.showEntityStats("site", "경계 발사장");
+    check("발사장 관점 '패드별': 패드 2개면 보이고 1개면 안 보인다",
+      [two, el("stats-body").innerHTML.includes("패드별")], [true, false]);
+  }
+}
+
 // ── 겹치는 요청 (P26-1 · P26-2) ───────────────────────────────────────────────
 // 이 축의 버그도 예외가 안 난다. **요청 수만 조용히 늘고**(429 가 뜨고 나서야 안다),
 // 화면은 늦게 온 옛 응답으로 소리 없이 되돌아간다.
