@@ -21,7 +21,11 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFileSync } = require("child_process");
+const { execFile } = require("child_process");
+
+// 동시에 띄우는 Edge 수. 76회를 하나씩 띄우면 CI 에서 233초였다(2026-09-29 실측 · CI 전체의 70%).
+// 코어 수만큼 띄운다(러너 windows-latest 는 4코어). `LAYOUT_JOBS=1` 이면 예전처럼 하나씩
+const JOBS = Math.max(1, Number(process.env.LAYOUT_JOBS) || os.cpus().length);
 
 const WEB = path.join(__dirname, "..", "web");
 const EDGE_CANDIDATES = [
@@ -426,7 +430,7 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverflow,
+async function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverflow,
   contrast, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
@@ -462,12 +466,15 @@ function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverfl
     let dom = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        dom = execFileSync(edge, [
+        // 동시에 띄우므로 **프로필을 따로 준다** — 같은 프로필이면 뒤에 뜬 Edge 가 앞 것에 일을 넘기고 빈손으로 끝날 수 있다
+        dom = await new Promise((resolve, reject) => execFile(edge, [
           "--headless=new", "--disable-gpu", "--hide-scrollbars",
+          "--user-data-dir=" + path.join(dir, "profile"),
           "--window-size=" + w + "," + h,
           "--virtual-time-budget=3000",
           "--dump-dom", "file:///" + file.replace(/\\/g, "/"),
-        ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 120000 });
+        ], { encoding: "utf8", timeout: 120000, maxBuffer: 64 * 1024 * 1024 },
+        (err, stdout) => (err ? reject(err) : resolve(stdout))));
         break;
       } catch (e) {
         // 브라우저를 못 띄운 것(타임아웃·스폰 실패)만 다시 해 본다.
@@ -492,37 +499,59 @@ if (!edge) {
   process.exit(process.env.CI ? 1 : 0);
 }
 
-let pass = 0;
-const failures = [];
+// 전부 동시에 재고, **출력은 원래 순서대로** 찍는다(섞이면 어느 장면이 깨졌는지 읽기 어렵다)
+const tasks = [];
 for (const c of CASES) {
-  console.log("\n" + c.name);
   const page = buildPage(c.open);
-  for (const size of SIZES) {
+  for (const size of SIZES) tasks.push({ c, page, size });
+}
+async function runAll() {
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const t = tasks[next++];
+      const { c, page, size } = t;
+      try {
+        t.problems = await measure(edge, page, c.clickable, c.visible, c.mapThrough,
+          c.noOverlap, c.noOverflow, c.contrast, size);
+      } catch (e) {
+        t.error = e;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(JOBS, tasks.length) }, worker));
+}
+
+const started = Date.now();
+runAll().then(() => {
+  let pass = 0;
+  const failures = [];
+  let lastCase = null;
+  for (const t of tasks) {
+    const { c, size } = t;
+    if (c !== lastCase) { console.log("\n" + c.name); lastCase = c; }
     const label = size[0] + "x" + size[1];
-    let problems;
-    try {
-      problems = measure(edge, page, c.clickable, c.visible, c.mapThrough,
-        c.noOverlap, c.noOverflow, c.contrast, size);
-    } catch (e) {
-      failures.push(c.name + " " + label + " — 측정 실패: " + e.message);
-      console.log("  FAIL " + label + " — 측정 실패: " + e.message);
+    if (t.error) {
+      failures.push(c.name + " " + label + " — 측정 실패: " + t.error.message);
+      console.log("  FAIL " + label + " — 측정 실패: " + t.error.message);
       continue;
     }
-    if (problems.length === 0) {
+    if (t.problems.length === 0) {
       pass++;
       const n = (c.clickable || []).length + (c.visible || []).length
         + (c.contrast || []).length + (c.noOverflow || []).length
         + (c.noOverlap || []).length + (c.mapThrough ? 1 : 0);
       console.log("  OK   " + label + " — 검사 " + n + "건이 전부 통과");
     } else {
-      const lines = problems.map((p) => "#" + p.id + ": " + p.problem).join(" · ");
+      const lines = t.problems.map((p) => "#" + p.id + ": " + p.problem).join(" · ");
       failures.push(c.name + " " + label + " — " + lines);
       console.log("  FAIL " + label + " — " + lines);
     }
   }
-}
-
-console.log("\n" + pass + " passed, " + failures.length + " failed");
-if (failures.length) process.exit(1);
-const MIN_PASS = 52;   // 건수 하한 — 2026-09-24 실측. 주입 치환이 실패하면 0건 초록이 된다
-if (pass < MIN_PASS) { console.log(`FAIL 건수 하한: ${pass} < ${MIN_PASS}`); process.exit(1); }
+  console.log("\n(Edge " + tasks.length + "회 · 동시 " + JOBS + " · "
+    + ((Date.now() - started) / 1000).toFixed(1) + "초)");
+  console.log("\n" + pass + " passed, " + failures.length + " failed");
+  if (failures.length) process.exit(1);
+  const MIN_PASS = 52;   // 건수 하한 — 2026-09-24 실측. 주입 치환이 실패하면 0건 초록이 된다
+  if (pass < MIN_PASS) { console.log(`FAIL 건수 하한: ${pass} < ${MIN_PASS}`); process.exit(1); }
+});

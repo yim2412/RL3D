@@ -28,7 +28,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
-| `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(68초 절약) · `--build` |
+| `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(병렬화 뒤 31~57초 실측 — P85) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·**발사 데이터 로그가 들어오는지(최대 30초, P72)**·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
