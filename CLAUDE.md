@@ -30,7 +30,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
 | `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(Edge 1회로 바꾼 뒤 5.6초 — P86) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
-| `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·**발사 데이터 로그가 들어오는지(최대 30초, P72)**·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
+| `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·**발사 데이터 로그가 들어오는지(앱의 네트워크 최악 110초까지 — 상수를 `api_client` 에서 읽는다, P72·P99)**·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |

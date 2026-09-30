@@ -31,7 +31,14 @@ DEFAULT_EXE = os.path.join(ROOT, "dist", "RL3D.exe")
 LOG = os.path.join(os.environ.get("APPDATA", ""), "RL3D", "logs", "rl3d.log")
 TITLE_PREFIX = "RL3D v"
 WINDOW_TIMEOUT_S = 30     # 실측 1.6초(데운 상태). 콜드 스타트 여유
-DATA_TIMEOUT_S = 30       # 창 → 첫 발사 데이터 로그. 실측 0.8~17.5초(P58 뒤 20회 · WebGL 대기가 대부분)
+sys.path.insert(0, ROOT)
+import api_client  # noqa: E402 — 앱의 HTTP 한도를 한 곳에서 읽는다(숫자를 여기 따로 적으면 어긋난다)
+
+DATA_EXPECT_S = 30        # 창 → 첫 발사 데이터 로그. 실측 0.8~17.5초(P58 뒤 20회 · WebGL 대기가 대부분)
+# 네트워크가 느려도 앱은 **폴백으로 반드시 한 줄** 남긴다 — 그 최악까지는 기다린다(P99). 발사는 예정·지난 두 요청을
+# 차례로 하고, 요청마다 최악은 전체 마감 + 마지막 한 번 읽기다. 예전엔 30초로 끊어, LL2 가 느렸던 날(P96) "앱이 데이터
+# 단계까지 못 갔다" 는 FAIL 을 냈다 — 네트워크가 느린 것과 앱이 멈춘 것을 구분하지 못했다
+DATA_TIMEOUT_S = 2 * (api_client.HTTP_TOTAL_TIMEOUT + api_client.HTTP_TIMEOUT) + 10
 SETTLE_S = 1              # 데이터 로그 뒤 한숨 — 같은 틱의 다른 로그(위성 등)까지 받는다
 # 발사 데이터는 부트마다 한 번 반드시 온다 — 캐시·네트워크·한도 대기 중 어느 경로든 한 줄 남긴다(P72).
 # 예전엔 창 뒤 **5초 고정**으로 닫아, WebGL 대기가 길면 데이터 경로를 안 거친 채 통과했다(2026-09-27).
@@ -152,8 +159,11 @@ def run(exe, kill=False):
         while time.time() - t0 < DATA_TIMEOUT_S and not got:
             time.sleep(0.5)
             got = data_seen(t0)
-        say(got, "발사 데이터가 들어왔다 %.1f초" % (time.time() - t0) if got
-            else "%d초 안에 발사 데이터 로그가 없다 — 부트가 데이터 단계까지 못 갔다" % DATA_TIMEOUT_S)
+        took = time.time() - t0
+        say(got, ("발사 데이터가 들어왔다 %.1f초" % took
+                  + (" (느림 — 보통 %d초 안. 네트워크를 본다)" % DATA_EXPECT_S if took > DATA_EXPECT_S else ""))
+            if got else "%d초(앱의 네트워크 최악 + 10초) 안에 발사 데이터 로그가 없다 — 폴백도 안 탔다: "
+                        "앱이 데이터 단계에서 멈췄다" % DATA_TIMEOUT_S)
         time.sleep(SETTLE_S)
 
     t1 = time.time()
