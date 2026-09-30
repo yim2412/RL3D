@@ -4448,9 +4448,12 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     const orig = vm.runInContext("placeToolbarMore", ctx);
     ctx.__countPlace = () => { placed++; };
     vm.runInContext("placeToolbarMore = function () { __countPlace(); }", ctx);
+    // 여는 순간과 닫는 순간을 **따로** 센다 — 합계만 재면 조건이 뒤집혀 "닫을 때만 부른다" 도 1 이라
+    // 통과했다(P90 · 공용 변이 도구가 찾았다)
     ctx.toggleToolbarMore(true);
+    const afterOpen = placed;
     ctx.toggleToolbarMore(false);
-    check("팝오버를 열 때만 위치를 다시 잡는다", placed, 1);
+    check("팝오버를 열 때만 위치를 다시 잡는다 (열 때 1 · 닫을 때 0)", [afterOpen, placed - afterOpen], [1, 0]);
     ctx.__origPlace = orig;
     vm.runInContext("placeToolbarMore = __origPlace", ctx);
   }
