@@ -68,7 +68,12 @@ def satellite_group_catalog():
             for k, v in SATELLITE_GROUP_CATALOG.items()]
 
 USER_AGENT = "RL3D/0.1 (personal desktop app)"
-HTTP_TIMEOUT = 20  # 초
+HTTP_TIMEOUT = 20  # 초 — 소켓 동작 **한 번**(연결·한 번 읽기)의 한도
+# 응답 **전체**의 한도(P97). `urlopen(timeout=)` 은 한 번 읽기마다 새로 재서, 조금씩 흘려 보내는 서버에는
+# 끝없이 붙잡힌다 — 로컬 실측: 3초마다 1바이트 보내는 서버에 20초 한도로 **42초** 붙잡혔다. 그동안은
+# 캐시 폴백도 안 탄다(예외가 안 나므로). 실제 응답은 LL2 100건 약 330KB 가 2.7~7.4초였다.
+HTTP_TOTAL_TIMEOUT = 30  # 초
+HTTP_READ_CHUNK = 64 * 1024
 
 # 캐시: onefile exe 는 실행폴더가 임시라 %APPDATA% 아래 영구 위치가 필수
 APP_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "RL3D")
@@ -146,8 +151,20 @@ def _log_result(what, count, source, t0=None):
 def _http_get(url):
     """텍스트 응답을 반환. 실패는 예외로 올린다(상위에서 캐시 폴백)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    deadline = time.monotonic() + HTTP_TOTAL_TIMEOUT
+    chunks = []
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return resp.read().decode("utf-8")
+        while True:
+            # `read(n)` 은 n 바이트가 찰 때까지 기다린다 — 온 만큼만 돌려주는 `read1` 로 읽어야
+            # 조각 사이마다 마감을 볼 수 있다
+            chunk = resp.read1(HTTP_READ_CHUNK)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            if time.monotonic() > deadline:
+                # OSError 계열이라 호출하는 쪽의 NET_ERRORS 가 받아 캐시 폴백을 탄다
+                raise TimeoutError("응답이 %d초 안에 끝나지 않았다" % HTTP_TOTAL_TIMEOUT)
+    return b"".join(chunks).decode("utf-8")
 
 
 def _cache_path(name):

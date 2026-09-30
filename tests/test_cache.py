@@ -1693,6 +1693,77 @@ class TestAuditLowFixes(CacheTestBase):
 MIN_TESTS = 138   # 건수 하한 — 2026-09-27 실측. 수집이 조용히 비면 0건으로 통과한다
 
 
+class TestHttpTotalTimeout(unittest.TestCase):
+    """응답 **전체**에 마감이 있는가(P97). 실제 소켓을 127.0.0.1 에 열어 잰다 — 외부 네트워크는 없다.
+
+    `urlopen(timeout=20)` 은 한 번 읽기마다 새로 재서, 조금씩 흘려 보내는 서버에는 끝없이 붙잡혔다
+    (로컬 실측 42초 · 그동안 캐시 폴백도 안 탄다). 반대쪽도 잰다 — 조각으로 읽게 바꾸면서 **정상 응답을
+    잘라먹지 않는가**(길이 지정·chunked 둘 다, 조각이 여러 개가 되는 크기로).
+    """
+    BODY = ("가" * 50000 + "끝").encode("utf-8")   # 150KB — HTTP_READ_CHUNK(64KB)보다 커서 여러 조각이 된다
+
+    def _serve(self, handler_body):
+        import http.server
+        test = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                handler_body(self, test)
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return "http://127.0.0.1:%d/" % srv.server_address[1]
+
+    def test_dripping_server_is_cut_at_the_total_deadline(self):
+        def drip(h, _):
+            h.send_response(200)
+            h.send_header("Content-Length", "100000")
+            h.end_headers()
+            try:
+                for _ in range(50):          # 0.1초마다 1바이트 — 한 번 읽기 한도(20초)에는 절대 안 걸린다
+                    h.wfile.write(b" ")
+                    h.wfile.flush()
+                    time.sleep(0.1)
+            except OSError:
+                pass
+        url = self._serve(drip)
+        with mock.patch.object(api_client, "HTTP_TOTAL_TIMEOUT", 0.5):
+            t0 = time.time()
+            with self.assertRaises(TimeoutError):
+                api_client._http_get(url)
+            took = time.time() - t0
+        # **보호가 없었다면**: 50바이트를 다 받는 5초 뒤에야 (그것도 잘린 본문으로) 끝났다
+        self.assertLess(took, 3.0, "전체 마감이 안 걸렸다 — 한 번 읽기 한도만 보고 있다")
+        self.assertTrue(issubclass(TimeoutError, api_client.NET_ERRORS), "캐시 폴백이 받지 못하는 예외다")
+
+    def test_normal_response_is_read_whole_with_length(self):
+        def ok(h, t):
+            h.send_response(200)
+            h.send_header("Content-Length", str(len(t.BODY)))
+            h.end_headers()
+            h.wfile.write(t.BODY)
+        self.assertEqual(api_client._http_get(self._serve(ok)), self.BODY.decode("utf-8"))
+
+    def test_normal_response_is_read_whole_when_chunked(self):
+        def chunked(h, t):
+            h.send_response(200)
+            h.send_header("Transfer-Encoding", "chunked")
+            h.end_headers()
+            for i in range(0, len(t.BODY), 7000):
+                part = t.BODY[i:i + 7000]
+                h.wfile.write(b"%x\r\n%s\r\n" % (len(part), part))
+            h.wfile.write(b"0\r\n\r\n")
+        self.assertEqual(api_client._http_get(self._serve(chunked)), self.BODY.decode("utf-8"))
+
+
 if __name__ == "__main__":
     _res = unittest.main(verbosity=2, exit=False).result
     if len(sys.argv) == 1 and _res.testsRun < MIN_TESTS:
