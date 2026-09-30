@@ -254,6 +254,19 @@ class TestResultLogging(CacheTestBase):
             api_client.get_archive(2024)
         self.assertIn("잘림", chr(10).join(cm.output))
 
+    def test_truncation_warning_only_when_truncated(self):
+        """잘렸을 때만 **경고**를 남긴다(P92). 위 테스트는 결과 줄의 "잘림" 만 봐서, 경고 조건이 뒤집혀
+        *잘렸는데 경고가 없고, 끝까지 받았는데 "잘렸다" 고 경고하는* 로그도 통과했다(공용 변이 도구가 찾았다).
+        두 방향을 다 잰다 — 한쪽만 재면 "늘 경고한다" 나 "경고를 안 한다" 가 통과한다."""
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/next"))
+        with self.assertLogs("api_client", level="WARNING") as cm:
+            api_client.get_archive(2018)
+        self.assertTrue(any("상한" in m and "잘렸다" in m for m in cm.output), cm.output)
+
+        self.serve(_page(1, next_url=api_client.LL2_BASE + "/p2"), _page(1, next_url=None, tag="p2"))
+        with self.assertNoLogs("api_client", level="WARNING"):
+            api_client.get_archive(2017)
+
 
 class TestNetworkErrorKinds(CacheTestBase):
     """**연결이 끊기는 방식마다** 폴백이 도는가(P29-1).
