@@ -514,12 +514,27 @@ async function measure(edge, browser, page, clickable, visible, mapThrough, noOv
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function openBrowser(edge) {
+  // Node 20 에는 전역 WebSocket 이 없다(22 부터) — CI 가 20 이던 때 여기서 떨어졌다(P86 첫 CI)
+  if (typeof WebSocket === "undefined") throw new Error("이 Node(" + process.version + ")에는 WebSocket 이 없다");
   const profile = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-edge-"));
   const proc = spawn(edge, [
     "--headless=new", "--disable-gpu", "--hide-scrollbars",
     "--no-first-run", "--no-default-browser-check",
     "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank",
   ], { stdio: "ignore" });
+  // **여기서부터 실패하면 띄운 Edge 를 반드시 끈다.** 살아 있는 자식 프로세스는 Node 를 붙잡는다 —
+  // 첫 CI 에서 연결에 실패한 뒤 예전 방식으로 95건을 다 재고도 **17분간 안 끝났다**(취소했다)
+  try {
+    return await connect(proc, profile);
+  } catch (e) {
+    proc.kill();
+    for (let i = 0; i < 20 && proc.exitCode === null && proc.signalCode === null; i++) await sleep(100);
+    try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
+    throw e;
+  }
+}
+
+async function connect(proc, profile) {
   // 포트는 Edge 가 고른다(0) — 프로필 폴더의 DevToolsActivePort 에 "포트\n경로" 로 적는다
   const portFile = path.join(profile, "DevToolsActivePort");
   const t0 = Date.now();
@@ -527,7 +542,7 @@ async function openBrowser(edge) {
   while (true) {
     try { [port, wsPath] = fs.readFileSync(portFile, "utf8").split(/\r?\n/); } catch {}
     if (port && wsPath) break;
-    if (Date.now() - t0 > 60000) { proc.kill(); throw new Error("Edge 원격 디버깅 포트가 60초 안에 안 열렸다"); }
+    if (Date.now() - t0 > 60000) { throw new Error("Edge 원격 디버깅 포트가 60초 안에 안 열렸다"); }
     await sleep(100);
   }
   const ws = new WebSocket("ws://127.0.0.1:" + port + wsPath);
