@@ -558,6 +558,26 @@ function syncUiTop() {
   root.style.setProperty("--ui-top", uiTopFromToolbar(r.bottom) + "px");
 }
 
+/** 팝오버가 창 가장자리에서 떨어져 있을 최소 여백(px). */
+const POPOVER_EDGE_GAP = 8;
+
+/**
+ * 툴바 오버플로 팝오버(⋯)가 **창 오른쪽 밖으로 나가지 않게** 왼쪽으로 민다(P86).
+ * 팝오버는 `⋯` 의 왼쪽 끝에 붙어 오른쪽으로 펼쳐진다. 사이드바를 연 채 창 폭이 936~956px 이면
+ * `⋯` 가 툴바 첫 줄 오른쪽 끝에 놓여 **배경·통계 버튼이 화면 밖**이었다(실측 · 앱 최소 창 900px 안).
+ * CSS 로 오른쪽에 붙이면 892~932px 에서 왼쪽으로 넘쳐 더 나빴다 — 그래서 재서 민다.
+ * `syncUiTop` 처럼 utils.js 에 두는 것은 레이아웃 테스트가 실제 브라우저에서 이걸 부르기 때문이다.
+ */
+function placeToolbarMore() {
+  const box = document.getElementById("toolbar-more");
+  if (!box || typeof box.getBoundingClientRect !== "function" || !box.style) return;
+  box.style.left = "";
+  const r = box.getBoundingClientRect();
+  if (!r || !r.width) return;   // 닫혀 있으면 잴 것이 없다
+  const over = r.right - (window.innerWidth - POPOVER_EDGE_GAP);
+  if (over > 0) box.style.left = -Math.ceil(over) + "px";
+}
+
 // ── 오른쪽 패널은 한 번에 하나 (P36-1) ──────────────────────────────────────
 /**
  * 상세(`panel`) · 통과 예측(`pass-panel`) · 통계(`stats-panel`)는 **같은 클래스·같은

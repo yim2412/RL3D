@@ -58,8 +58,9 @@ function bindUI() {
   wire("sat-groups-btn", "click", toggleSatGroups);
   wire("more-btn", "click", () => toggleToolbarMore());
   wire("tz-btn", "click", toggleTimeZone);
-  wire("basemap-btn", "click", toggleBasemap);
-  wire("stats-btn", "click", showStats);
+  // 팝오버 안의 항목을 고르면 팝오버를 닫는다(P86 — 열린 채 남아 아래를 덮었다)
+  wire("basemap-btn", "click", () => { toggleBasemap(); toggleToolbarMore(false); });
+  wire("stats-btn", "click", () => { showStats(); toggleToolbarMore(false); });
   wire("stats-close", "click", () =>
     document.getElementById("stats-panel").classList.add("hidden"));
   wire("sat-track-btn", "click", toggleTracking);
@@ -98,8 +99,9 @@ function bindUI() {
   step("bindUpdateBadge", bindUpdateBadge);   // 새 버전 배지(P12-12)
   // 단축키(P12-14) — 판정은 keys.js 의 순수 함수가 한다
   step("keydown", () => document.addEventListener("keydown", handleKey));
+  step("outsideClick", () => document.addEventListener("click", closeToolbarMoreOnOutside));
   // 창 폭이 바뀌면 툴바가 두 줄이 된다 → 오버레이 상단을 다시 잡는다(P34-2)
-  step("resize", () => window.addEventListener("resize", syncUiTop));
+  step("resize", () => window.addEventListener("resize", () => { syncUiTop(); placeToolbarMore(); }));
   step("syncUiTop", syncUiTop);   // 첫 화면도 같은 기준으로 놓는다
 }
 

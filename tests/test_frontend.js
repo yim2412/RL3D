@@ -4424,6 +4424,36 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("⋯ 를 누르면 툴바 팝오버가 열린다", el("toolbar-more").hidden, false);
   el("more-btn").fire("click", {});
   check("다시 누르면 닫힌다", el("toolbar-more").hidden, true);
+  // P86 — 예전에는 ⋯·Esc 로만 닫혀, 좁은 창에서 사이드바 탭 위를 덮은 채 남았다.
+  // 바깥 클릭·항목 선택으로 닫히고, **안쪽 클릭(⋯ 자신이 문서로 올라온 것)은 닫지 않는다** — 둘 다 재야
+  // "늘 닫는다"(⋯ 를 눌러도 곧바로 닫혀 영영 안 열린다)가 통과하지 못한다
+  check("문서 클릭 배선이 붙어 있다", doc.has("click"), true);
+  el("more-btn").fire("click", {});
+  doc.fire("click", { target: { closest: (sel) => (sel === ".more-wrap" ? {} : null) } });
+  check("팝오버 안쪽 클릭은 닫지 않는다", el("toolbar-more").hidden, false);
+  doc.fire("click", { target: { closest: () => null } });
+  check("바깥을 누르면 닫힌다", el("toolbar-more").hidden, true);
+  el("more-btn").fire("click", {});
+  el("basemap-btn").fire("click", {});
+  check("배경 지도를 고르면 닫힌다", el("toolbar-more").hidden, true);
+  el("more-btn").fire("click", {});
+  el("stats-btn").fire("click", {});
+  check("통계를 고르면 닫히고 통계가 열린다", [el("toolbar-more").hidden, el("stats-panel").hidden], [true, false]);
+  el("stats-panel").classList.add("hidden");
+  // 창 밖으로 나가지 않게 미는 것(placeToolbarMore)은 레이아웃 테스트가 실제 브라우저에서 잰다.
+  // 여기서는 **열 때 그걸 부르는지**만 잰다 — 레이아웃 테스트는 함수를 직접 불러 이 배선을 못 본다
+  {
+    const vm = require("vm");
+    let placed = 0;
+    const orig = vm.runInContext("placeToolbarMore", ctx);
+    ctx.__countPlace = () => { placed++; };
+    vm.runInContext("placeToolbarMore = function () { __countPlace(); }", ctx);
+    ctx.toggleToolbarMore(true);
+    ctx.toggleToolbarMore(false);
+    check("팝오버를 열 때만 위치를 다시 잡는다", placed, 1);
+    ctx.__origPlace = orig;
+    vm.runInContext("placeToolbarMore = __origPlace", ctx);
+  }
 
   // 접힌 버튼의 단축키가 **같은 함수**를 부르는지 — 팝오버를 열지 않고도 되어야 한다.
   const basemapBefore = state.basemap;

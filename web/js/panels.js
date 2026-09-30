@@ -483,4 +483,17 @@ function toggleToolbarMore(show) {
   const box = document.getElementById("toolbar-more");
   const on = show === undefined ? box.classList.contains("hidden") : show;
   box.classList.toggle("hidden", !on);
+  if (on) placeToolbarMore();
+}
+
+/**
+ * 팝오버 **바깥**을 누르면 닫는다(P86). 예전에는 `⋯`·Esc 로만 닫혀, 사이드바를 연 채 창이 좁으면
+ * (892~932px) 팝오버가 **사이드바 탭 위를 덮은 채 계속 떠 있었다** — 탭을 누르면 배경 지도가 바뀌었다.
+ */
+function closeToolbarMoreOnOutside(e) {
+  const box = document.getElementById("toolbar-more");
+  if (!box || box.classList.contains("hidden")) return;
+  const t = e && e.target;
+  if (t && typeof t.closest === "function" && t.closest(".more-wrap")) return;
+  toggleToolbarMore(false);
 }

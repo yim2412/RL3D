@@ -28,7 +28,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `.mutate.json` | **변이 점검 설정**(P44). 공용 도구 `~/.claude/tools/mutate.js` 가 이 파일을 읽어 인자 없이 돈다 — 무엇을 망가뜨리고(`preset`) 무엇으로 재는지(`test`)가 여기 있다 |
 | `tools/build_ne_land.py` | 오프라인 배경용 Natural Earth 육지 폴리곤 생성(P17-2). 네트워크가 필요하고, 결과(`web/lib/ne_land.js`)는 커밋한다 |
 | `tools/build_licenses.py` | `THIRD_PARTY_LICENSES.txt` 생성(감사 F-016). `build.bat` 이 빌드 때 부르고 exe 에 넣는다. JS 원문은 `tools/licenses/`, 파이썬은 빌드 venv 메타데이터에서. **의존성을 더하면 `BUNDLED` 에도** — 빠지면 `--check` 가 FAIL |
-| `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(병렬화 뒤 31~57초 실측 — P85) · `--build` |
+| `tools/ci_local.py` | **푸시 전에** CI `test` 잡을 로컬에서 그대로 돈다(P51). 단계는 `tests.yml` 에서 읽는다 — 손으로 적으면 CI 에 단계를 더할 때 뒤처진다. `--skip 레이아웃`(Edge 1회로 바꾼 뒤 5.6초 — P86) · `--build` |
 | `tools/check_exe.py` | 빌드된 exe 에 `web/` 전부와 라이선스 전문이 **들어갔는지**, 그리고 **소스와 같은 내용·버전인지** 대조(P50·P54 — 이름만 보면 옛 exe 도 통과한다). 기대 목록은 소스 트리에서 만든다. CI `build` 잡과 릴리스 전에 돈다 |
 | `tools/smoke_exe.py` | 빌드한 exe 를 2번 모니터에 띄웠다가 **WM_CLOSE 로 정상 종료**(P57). 창·제목 버전·보조 모니터·**발사 데이터 로그가 들어오는지(최대 30초, P72)**·이번 실행 로그의 WARNING·남은 프로세스·남은 `_MEI` 를 `[OK]/[FAIL]`. `--kill` 은 대조군(강제 종료 → `_MEI` 가 남아 FAIL). CI 에서는 안 돈다(러너에 WebView2 없음) |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
@@ -256,7 +256,10 @@ build.bat          # exe 빌드 → dist\RL3D.exe
 - **화면에 새 오버레이를 붙였거나 위치·크기 CSS 를 건드렸으면 `node tests/test_layout.js`** —
   실제 `index.html`·`style.css`·`utils.js` 를 합쳐 **헤드리스 Edge**(WebView2 와 같은 Chromium)에
   띄우고, 조작해야 하는 요소마다 **중심점에서 `elementFromPoint`** 를 불러 *정말 그것이 잡히는지*
-  를 잰다(창 900×600·1024×700·1280×800·1920×1080). 마우스는 안 쓴다 — 좌표 판정만 브라우저가 한다.
+  를 잰다(보이는 영역 900×600·944×600·1024×700·1280×800·1920×1080). 마우스는 안 쓴다 — 좌표 판정만 브라우저가 한다.
+  **Edge 는 한 번만 띄우고 원격 디버깅(CDP)으로 탭마다 크기를 맞춘다**(P86 — 장면마다 띄우던 때 CI 에서 214~593초).
+  ⚠ 예전 `--window-size=900,600` 은 **보이는 영역을 876×508 로** 만들었다(가로 24·세로 92px 작다). 적힌 크기를
+  안 재고 있었고, 그 틈(892~956px)에 `⋯` 팝오버 결함 둘이 숨어 있었다. 크기를 넘기는 방식을 바꾸면 **실제 `innerWidth` 를 찍어 본다**.
   **스텁 DOM 에는 좌표가 없어 이 부류는 1,209건이 전부 초록인 채로 살아 있었다**(2026-09-23):
   상세 패널이 타임라인 위쪽 34px 을 덮어 **과거 연도 선택과 `불러오기` 버튼이 창 크기와 무관하게
   클릭을 못 받았고**, 창을 1,085px 보다 좁히면 사이드바 탭 넷이 툴바 뒤로 들어가 **탭을 누르면

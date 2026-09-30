@@ -21,11 +21,13 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 
-// 동시에 띄우는 Edge 수. 76회를 하나씩 띄우면 CI 에서 233초였다(2026-09-29 실측 · CI 전체의 70%).
-// 코어 수만큼 띄운다(러너 windows-latest 는 4코어). `LAYOUT_JOBS=1` 이면 예전처럼 하나씩
+// 동시에 여는 탭(또는 `LAYOUT_MODE=launch` 에서 Edge) 수. 코어 수만큼(러너 windows-latest 는 4코어).
+// `LAYOUT_JOBS=1` 이면 하나씩
 const JOBS = Math.max(1, Number(process.env.LAYOUT_JOBS) || os.cpus().length);
+
+const LAUNCH_EACH = process.env.LAYOUT_MODE === "launch";
 
 const WEB = path.join(__dirname, "..", "web");
 const EDGE_CANDIDATES = [
@@ -187,8 +189,11 @@ const CASES = [
     // 툴바 오버플로(P17-1)는 툴바 아래로 펼쳐진다 — 사이드바 탭과 같은 자리다.
     name: "툴바 오버플로 팝오버 (사이드바 열림)",
     open: ["sidebar", "toolbar-more"],
+    // `tab-launches` 는 뺐다(P86): 창 폭 892~932px 에서는 `⋯` 가 툴바 둘째 줄 왼쪽 끝이라 **열린 메뉴**가
+    // 발사 탭 위로 내려온다. 보이는 메뉴가 잠시 아래를 덮는 것은 메뉴의 정상 동작이고, 이제 바깥을 누르거나
+    // 항목을 고르면 닫힌다(test_frontend 가 잰다). 예전에는 안 닫혀서 덮은 채 남았다 — 그게 결함이었다.
     clickable: ["basemap-btn", "stats-btn", "more-btn", "refresh",
-      "tab-launches", "tab-tonight", "tl-range"],
+      "tab-tonight", "tl-range"],
   },
   {
     // 단축키 도움말(P12-14)은 화면 한가운데 — 무엇 위에든 떠야 한다.
@@ -255,7 +260,10 @@ const FILL = {
 };
 
 /** 앱이 실제로 허용하는 창 크기. 900x600 은 `main.py` 의 `min_size` 다. */
-const SIZES = [[900, 600], [1024, 700], [1280, 800], [1920, 1080]];
+// 944 는 P86 에서 더했다: 사이드바를 연 채 936~956px 이면 `⋯` 가 툴바 첫 줄 오른쪽 끝이라 팝오버가 창 밖으로
+// 나갔다 — 나머지 넷은 그 구간을 비껴가 위치 보정(`placeToolbarMore`)을 지워도 초록이었다.
+// 크기는 **보이는 영역**이다(CDP 로 정확히 맞춘다). 예전 `--window-size` 는 실제로 가로 24·세로 92px 작게 쟀다
+const SIZES = [[900, 600], [944, 600], [1024, 700], [1280, 800], [1920, 1080]];
 
 function buildPage(open) {
   let html = fs.readFileSync(path.join(WEB, "index.html"), "utf8");
@@ -294,6 +302,7 @@ function buildPage(open) {
     "<script>",
     "(function(){",
     "  syncUiTop();",   // 실제 앱과 같은 경로로 --ui-top 을 잡는다
+    "  placeToolbarMore();",   // 열린 ⋯ 팝오버를 창 안으로 민다(P86 · 앱은 열 때 부른다)
     "  var out = [], vw = innerWidth, vh = innerHeight;",
     "  (window.__CLICKABLE || []).forEach(function(id){",
     "    var el = document.getElementById(id);",
@@ -430,7 +439,7 @@ function buildPage(open) {
   return html.replace("</body>", probe + "\n</body>");
 }
 
-async function measure(edge, page, clickable, visible, mapThrough, noOverlap, noOverflow,
+async function measure(edge, browser, page, clickable, visible, mapThrough, noOverlap, noOverflow,
   contrast, [w, h]) {
   // 한글 사용자명 경로(`C:\Users\준\`)를 Edge 에 넘기면 `ERR_FILE_NOT_FOUND` 가 난다
   // (2026-09-23 실측 — 인코딩해도 마찬가지였다). ASCII 경로에 쓴다.
@@ -463,6 +472,11 @@ async function measure(edge, page, clickable, visible, mapThrough, noOverlap, no
     // 그래서 **띄우지 못한 경우에만** 한 번 다시 해 본다. 측정이 실제로 끝나서 나온
     // 결과(가려짐·넘침)는 **절대 재시도하지 않는다** — 재시도로 진짜 실패를 숨기면
     // 이 테스트는 있으나 마나가 된다.
+    if (browser) {
+      const text = await browser.render("file:///" + file.replace(/\\/g, "/"), w, h);
+      if (text == null) throw new Error("측정 결과가 없다 (페이지가 안 떴다)");
+      return JSON.parse(text);
+    }
     let dom = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -491,6 +505,112 @@ async function measure(edge, page, clickable, visible, mapThrough, noOverlap, no
   }
 }
 
+/**
+ * **Edge 를 한 번만 띄운다**(P86). 76장면마다 Edge 를 새로 띄우던 동안 CI 에서 이 단계가 233초였고
+ * (전체의 70%), 동시 4개로 띄워도 214.5초였다(P85 — 러너 4코어에서 기동 자체가 CPU 를 다 먹었다).
+ * 이제 원격 디버깅(CDP)으로 한 브라우저 안에 탭을 열어 창 크기만 바꿔 잰다. Node 내장 WebSocket 을
+ * 쓰므로 새 의존성이 없다. `LAYOUT_MODE=launch` 면 예전처럼 장면마다 띄운다(대조·비상용).
+ */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function openBrowser(edge) {
+  const profile = fs.mkdtempSync(path.join("C:\\Users\\Public", "rl3d-edge-"));
+  const proc = spawn(edge, [
+    "--headless=new", "--disable-gpu", "--hide-scrollbars",
+    "--no-first-run", "--no-default-browser-check",
+    "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank",
+  ], { stdio: "ignore" });
+  // 포트는 Edge 가 고른다(0) — 프로필 폴더의 DevToolsActivePort 에 "포트\n경로" 로 적는다
+  const portFile = path.join(profile, "DevToolsActivePort");
+  const t0 = Date.now();
+  let port, wsPath;
+  while (true) {
+    try { [port, wsPath] = fs.readFileSync(portFile, "utf8").split(/\r?\n/); } catch {}
+    if (port && wsPath) break;
+    if (Date.now() - t0 > 60000) { proc.kill(); throw new Error("Edge 원격 디버깅 포트가 60초 안에 안 열렸다"); }
+    await sleep(100);
+  }
+  const ws = new WebSocket("ws://127.0.0.1:" + port + wsPath);
+  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error("CDP 연결 실패")); });
+  let nextId = 1;
+  const pending = new Map();
+  const waiters = [];
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.id && pending.has(msg.id)) {
+      const { res, rej } = pending.get(msg.id);
+      pending.delete(msg.id);
+      msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
+      return;
+    }
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      const w = waiters[i];
+      if (w.method === msg.method && w.sessionId === msg.sessionId) { waiters.splice(i, 1); w.res(msg.params); }
+    }
+  };
+  // Edge 가 도중에 죽으면 답이 영영 안 온다 — 기다리던 요청을 전부 실패로 돌려 테스트가 멈추지 않게 한다
+  // 닫힌 뒤 보내는 요청은 **오류 없이 버려진다** — 그래서 끊긴 뒤에는 곧바로 실패시킨다.
+  // (Edge 를 일부러 죽여 보니 이 둘이 없을 때 테스트가 보고 없이 60초 뒤 처리 안 된 예외로 쓰러졌다)
+  let closedErr = null;
+  ws.onclose = () => {
+    closedErr = new Error("CDP 연결이 끊겼다 (Edge 가 내려갔다)");
+    for (const { rej } of pending.values()) rej(closedErr);
+    pending.clear();
+    for (const w of waiters.splice(0)) w.rej(closedErr);
+  };
+  const send = (method, params = {}, sessionId) => new Promise((res, rej) => {
+    if (closedErr) { rej(closedErr); return; }
+    const id = nextId++;
+    pending.set(id, { res, rej });
+    ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+  });
+  const waitFor = (method, sessionId, ms) => new Promise((res, rej) => {
+    // 받으면 타이머를 지운다 — 안 지우면 측정이 6초에 끝나도 **프로세스가 60초 더 산다**(P86 실측 65.9초)
+    if (closedErr) { rej(closedErr); return; }
+    const w = { method, sessionId, res: (v) => { clearTimeout(timer); res(v); },
+      rej: (e) => { clearTimeout(timer); rej(e); } };
+    waiters.push(w);
+    const timer = setTimeout(() => {
+      const i = waiters.indexOf(w);
+      if (i >= 0) { waiters.splice(i, 1); rej(new Error(method + " 를 " + ms / 1000 + "초 안에 못 받았다")); }
+    }, ms);
+  });
+
+  /** 파일 하나를 w×h 창으로 열어 RESULT 의 글자를 돌려준다. */
+  async function render(fileUrl, w, h) {
+    const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+    try {
+      const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
+      await send("Emulation.setDeviceMetricsOverride",
+        { width: w, height: h, deviceScaleFactor: 1, mobile: false }, sessionId);
+      await send("Page.enable", {}, sessionId);
+      const loaded = waitFor("Page.loadEventFired", sessionId, 60000);
+      loaded.catch(() => {});   // navigate 가 먼저 실패하면 아무도 안 받는다 — 처리 안 된 예외로 프로세스가 죽는다
+      await send("Page.navigate", { url: fileUrl }, sessionId);
+      await loaded;
+      const r = await send("Runtime.evaluate", {
+        expression: "(function(){var e=document.getElementById('RESULT');return e?e.textContent:null})()",
+        returnByValue: true,
+      }, sessionId);
+      return r.result.value;
+    } finally {
+      await send("Target.closeTarget", { targetId }).catch(() => {});
+    }
+  }
+
+  async function close() {
+    try { await send("Browser.close"); } catch {}
+    try { ws.close(); } catch {}
+    // 프로필 폴더는 Edge 가 완전히 내려간 뒤에야 지워진다
+    for (let i = 0; i < 50 && proc.exitCode === null; i++) await sleep(100);
+    if (proc.exitCode === null) proc.kill();
+    for (let i = 0; i < 20; i++) {
+      try { fs.rmSync(profile, { recursive: true, force: true }); break; } catch { await sleep(250); }
+    }
+  }
+  return { render, close };
+}
+
 // ── 실행 ──────────────────────────────────────────────────────────────────────
 const edge = findEdge();
 if (!edge) {
@@ -505,21 +625,34 @@ for (const c of CASES) {
   const page = buildPage(c.open);
   for (const size of SIZES) tasks.push({ c, page, size });
 }
+let browser = null;
+let mode = "";
 async function runAll() {
+  if (!LAUNCH_EACH) {
+    // 브라우저를 못 띄우면 예전 방식으로 — 느려질 뿐 재는 것은 같다
+    try { browser = await openBrowser(edge); mode = "Edge 1회 · 탭"; } catch (e) {
+      console.log("  (원격 디버깅으로 못 띄워 장면마다 띄웁니다 — " + e.message + ")");
+    }
+  }
+  if (!browser) mode = "Edge " + tasks.length + "회";
   let next = 0;
   const worker = async () => {
     while (next < tasks.length) {
       const t = tasks[next++];
       const { c, page, size } = t;
       try {
-        t.problems = await measure(edge, page, c.clickable, c.visible, c.mapThrough,
+        t.problems = await measure(edge, browser, page, c.clickable, c.visible, c.mapThrough,
           c.noOverlap, c.noOverflow, c.contrast, size);
       } catch (e) {
         t.error = e;
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(JOBS, tasks.length) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(JOBS, tasks.length) }, worker));
+  } finally {
+    if (browser) await browser.close();
+  }
 }
 
 const started = Date.now();
@@ -548,10 +681,10 @@ runAll().then(() => {
       console.log("  FAIL " + label + " — " + lines);
     }
   }
-  console.log("\n(Edge " + tasks.length + "회 · 동시 " + JOBS + " · "
+  console.log("\n(" + mode + " " + tasks.length + "장면 · 동시 " + JOBS + " · "
     + ((Date.now() - started) / 1000).toFixed(1) + "초)");
   console.log("\n" + pass + " passed, " + failures.length + " failed");
   if (failures.length) process.exit(1);
-  const MIN_PASS = 52;   // 건수 하한 — 2026-09-24 실측. 주입 치환이 실패하면 0건 초록이 된다
+  const MIN_PASS = 95;   // 건수 하한 — 19장면 × 5크기(2026-09-30 실측). 주입 치환이 실패하면 0건 초록이 된다
   if (pass < MIN_PASS) { console.log(`FAIL 건수 하한: ${pass} < ${MIN_PASS}`); process.exit(1); }
 });
