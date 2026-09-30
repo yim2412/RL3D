@@ -6711,6 +6711,22 @@ function fresh2(ctx, key, t) {
   }
 }
 
+// ── 하네스: vm 밖의 Date (P107) ───────────────────────────────────────────────
+// satellite.js 는 `instanceof Date` 로 호출 형식을 가른다. 밖(node)에서 만든 Date 는 그 검사를 못 통과해 조용히
+// NaN 이 됐다(2026-10-01 두 번 — 속도 검사가 전부 통과로 셌다). 하네스가 앱 realm 의 Date 로 바꿔 넘기는지 잰다
+{
+  group("하네스: vm 밖의 Date 도 전파된다 (P107)");
+  const { ctx } = loadApp({ realSatellite: true });
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26257.14321681  .00004666  00000+0  92466-4 0  9990",
+    "2 25544  51.6309 219.8284 0004930 139.3822 220.7535 15.49107075585544");
+  const outer = new Date(Date.UTC(2026, 8, 14, 12));   // 이 파일(=vm 밖)에서 만든 Date
+  const pv = ctx.satellite.propagate(rec, outer);
+  const r = pv && pv.position ? Math.hypot(pv.position.x, pv.position.y, pv.position.z) : NaN;
+  check("밖에서 만든 Date 로도 ISS 의 지구 중심 거리가 6,700~6,900km", r > 6700 && r < 6900, true);
+  check("gstime 도 숫자다", isFinite(ctx.satellite.gstime(outer)), true);
+}
+
 // ── 겹치는 요청 (P26-1 · P26-2) ───────────────────────────────────────────────
 // 이 축의 버그도 예외가 안 난다. **요청 수만 조용히 늘고**(429 가 뜨고 나서야 안다),
 // 화면은 늦게 온 옛 응답으로 소리 없이 되돌아간다.

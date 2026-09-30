@@ -171,6 +171,17 @@ const SAT_LIB = path.join(__dirname, "..", "web", "lib", "satellite.min.js");
 function injectSatelliteLib(ctx) {
   vm.runInContext(fs.readFileSync(SAT_LIB, "utf8"), ctx, { filename: "satellite.min.js" });
   if (!ctx.satellite) throw new Error("satellite.js 를 로드하지 못했습니다");
+  // **vm 밖에서 만든 Date 는 앱 realm 의 Date 로 바꿔 넘긴다**(P107). satellite.js 는 `instanceof Date` 로 호출
+  // 형식을 가르는데, 밖의 Date 는 그 검사를 통과하지 못해 **다른 형식으로 읽혀 조용히 NaN** 이 된다. 2026-10-01 에
+  // 두 번 당했다 — 물리 대조의 속도 검사가 전부 NaN 이라 **전부 통과**로 셌고, 고도 추적은 전부 "죽음" 이었다.
+  // 메모리에 "안에서 만든다" 를 적었지만 규칙은 행동하는 순간에 읽히지 않는다 — 기억할 필요를 없앤다.
+  const InnerDate = vm.runInContext("Date", ctx);
+  const toInner = (x) => (x instanceof Date && !(x instanceof InnerDate) ? new InnerDate(x.getTime()) : x);
+  for (const k of Object.keys(ctx.satellite)) {
+    const f = ctx.satellite[k];
+    if (typeof f !== "function") continue;
+    ctx.satellite[k] = function (...args) { return f.apply(this, args.map(toInner)); };
+  }
 }
 
 /**
