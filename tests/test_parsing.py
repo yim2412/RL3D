@@ -774,7 +774,9 @@ class TestDevWindowPos(unittest.TestCase):
         self.assertEqual(self.pos("1"), ((1920 - 1280) // 2, (1080 - 800) // 2))
 
     def test_out_of_range_or_garbage_falls_back_to_first_secondary(self):
-        for sel in ("9", "0", "abc", ""):
+        # "3" 은 모니터 2대일 때 **경계 바로 바깥**(idx == len)이다(P93). "9" 만 재는 동안은 `idx < len` 을
+        # `<=` 로 바꿔도 통과했다 — 그러면 범위 밖 접근이 `except` 에 삼켜져 **주 모니터**(OS 기본)에 뜬다
+        for sel in ("3", "9", "0", "abc", ""):
             with self.subTest(sel=sel):
                 self.assertEqual(self.pos(sel)[0], 1920 + (1920 - 1280) // 2)
 
