@@ -4455,6 +4455,40 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     vm.runInContext("placeToolbarMore = __origPlace", ctx);
   }
 
+  // P87 — 위성 그룹·관측 위치 팝오버도 여는 버튼·Esc 로만 닫혔다. 셋을 같은 규칙으로 잰다.
+  // 가짜 클릭 대상: `closest(sel)` 이 실제처럼 **쉼표로 나열된 선택자**도 알아듣는다
+  // (`"#sat-obs-btn, #tonight-obs-btn"` 을 한 선택자로 비교하면 안쪽 클릭이 늘 바깥이 된다)
+  const clickAt = (...marks) => ({ target: {
+    isConnected: true,
+    closest: (sel) => (sel.split(",").some((s) => marks.includes(s.trim())) ? {} : null),
+  } });
+  const OUT = clickAt();
+  {
+    const g = el("sat-groups");
+    g.classList.remove("hidden");
+    doc.fire("click", clickAt("#sat-groups-btn"));
+    check("위성 그룹: 여는 버튼 클릭은 닫지 않는다", g.hidden, false);
+    doc.fire("click", clickAt("#sat-groups"));
+    check("위성 그룹: 팝오버 안(체크박스) 클릭은 닫지 않는다", g.hidden, false);
+    doc.fire("click", OUT);
+    check("위성 그룹: 바깥을 누르면 닫힌다", g.hidden, true);
+
+    const o = el("obs-popover");
+    ctx.openObsPopover();
+    // "오늘 밤" 탭의 `관측지 설정` 버튼도 이걸 연다 — 그 클릭이 문서로 올라와 **열자마자 닫히면** 안 된다
+    doc.fire("click", clickAt("#tonight-obs-btn"));
+    check("관측 위치: 오늘 밤 탭의 여는 버튼 클릭은 닫지 않는다", o.hidden, false);
+    doc.fire("click", clickAt("#sat-obs-btn"));
+    doc.fire("click", clickAt("#obs-popover"));
+    check("관측 위치: 제어줄 버튼·팝오버 안 클릭은 닫지 않는다", o.hidden, false);
+    doc.fire("click", { target: { isConnected: false, closest: () => null } });
+    check("다시 그려져 문서에서 떨어진 대상은 판단하지 않는다", o.hidden, false);
+    // 둘이 같이 열려 있으면 바깥 클릭 한 번에 둘 다 닫힌다
+    g.classList.remove("hidden");
+    doc.fire("click", OUT);
+    check("관측 위치·위성 그룹: 바깥 클릭 한 번에 둘 다 닫힌다", [o.hidden, g.hidden], [true, true]);
+  }
+
   // 접힌 버튼의 단축키가 **같은 함수**를 부르는지 — 팝오버를 열지 않고도 되어야 한다.
   const basemapBefore = state.basemap;
   doc.fire("keydown", { key: "b", target: { tagName: "BODY" }, preventDefault() {} });

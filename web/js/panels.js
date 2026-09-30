@@ -487,13 +487,29 @@ function toggleToolbarMore(show) {
 }
 
 /**
- * 팝오버 **바깥**을 누르면 닫는다(P86). 예전에는 `⋯`·Esc 로만 닫혀, 사이드바를 연 채 창이 좁으면
- * (892~932px) 팝오버가 **사이드바 탭 위를 덮은 채 계속 떠 있었다** — 탭을 누르면 배경 지도가 바뀌었다.
+ * 바깥을 누르면 닫히는 팝오버들 — `box` 안이나 여는 버튼(`keep`) 위의 클릭은 **바깥이 아니다**
+ * (여는 버튼을 바깥으로 치면 열자마자 닫힌다). P86 에서 `⋯` 를 고치고 보니 나머지 둘도 여는 버튼·Esc 로만
+ * 닫혔다(P87) — 셋이 같아 보이면 같게 닫혀야 한다.
  */
-function closeToolbarMoreOnOutside(e) {
-  const box = document.getElementById("toolbar-more");
-  if (!box || box.classList.contains("hidden")) return;
+const OUTSIDE_CLOSE_POPOVERS = [
+  { box: "toolbar-more", keep: ".more-wrap", close: () => toggleToolbarMore(false) },
+  { box: "sat-groups", keep: "#sat-groups-btn", close: () => document.getElementById("sat-groups").classList.add("hidden") },
+  { box: "obs-popover", keep: "#sat-obs-btn, #tonight-obs-btn", close: () => closeObsPopover() },
+];
+
+/**
+ * 팝오버 **바깥**을 누르면 닫는다(P86·P87). 예전에는 `⋯`·Esc 로만 닫혀, 사이드바를 연 채 창이 좁으면
+ * (892~932px) `⋯` 팝오버가 **사이드바 탭 위를 덮은 채 계속 떠 있었다** — 탭을 누르면 배경 지도가 바뀌었다.
+ */
+function closePopoversOnOutside(e) {
   const t = e && e.target;
-  if (t && typeof t.closest === "function" && t.closest(".more-wrap")) return;
-  toggleToolbarMore(false);
+  if (!t || typeof t.closest !== "function") return;
+  // 누른 요소가 그새 다시 그려져 문서에서 떨어졌으면 안인지 바깥인지 알 수 없다 — 닫지 않는다
+  if (t.isConnected === false) return;
+  for (const p of OUTSIDE_CLOSE_POPOVERS) {
+    const box = document.getElementById(p.box);
+    if (!box || box.classList.contains("hidden")) continue;
+    if (t.closest("#" + p.box) || t.closest(p.keep)) continue;
+    p.close();
+  }
 }

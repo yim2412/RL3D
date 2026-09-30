@@ -99,7 +99,7 @@ function bindUI() {
   step("bindUpdateBadge", bindUpdateBadge);   // 새 버전 배지(P12-12)
   // 단축키(P12-14) — 판정은 keys.js 의 순수 함수가 한다
   step("keydown", () => document.addEventListener("keydown", handleKey));
-  step("outsideClick", () => document.addEventListener("click", closeToolbarMoreOnOutside));
+  step("outsideClick", () => document.addEventListener("click", closePopoversOnOutside));
   // 창 폭이 바뀌면 툴바가 두 줄이 된다 → 오버레이 상단을 다시 잡는다(P34-2)
   step("resize", () => window.addEventListener("resize", () => { syncUiTop(); placeToolbarMore(); }));
   step("syncUiTop", syncUiTop);   // 첫 화면도 같은 기준으로 놓는다
