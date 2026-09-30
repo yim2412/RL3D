@@ -719,6 +719,13 @@ class TestRequestBudget(unittest.TestCase):
         self.assertEqual(api_client.TTL_ARCHIVE_CURRENT, 6 * 60 * 60, "올해 아카이브는 6시간")
         self.assertEqual(api_client.TTL_UPDATE, 24 * 60 * 60, "업데이트 확인은 하루 1회")
 
+    def test_http_limits_are_what_the_docs_say(self):
+        """HTTP 한도 둘(P97·P98). 전체 마감을 줄이면 실제 응답(LL2 100건 2.7~7.4초 실측)이 **잘려 조용히 캐시로만**
+        돌고, 늘리면 느린 서버에 그만큼 붙잡힌다 — 어느 쪽도 오류가 안 난다."""
+        self.assertEqual(api_client.HTTP_TIMEOUT, 20, "한 번 읽기는 20초")
+        self.assertEqual(api_client.HTTP_TOTAL_TIMEOUT, 30, "응답 전체는 30초")
+        self.assertGreater(api_client.HTTP_TOTAL_TIMEOUT, 7.4 * 3, "실측 최장 응답의 세 배는 넘어야 한다")
+
     def test_launch_requests_stay_under_the_hourly_cap(self):
         """발사 폴링이 한도 안에 드는가 — **한 번 받을 때 두 요청**(upcoming + previous)이다."""
         per_fetch = 2

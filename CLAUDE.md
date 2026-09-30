@@ -82,7 +82,7 @@ build.bat          # exe 빌드 → dist\RL3D.exe
   2026-09-24 에 실제로 당했고(CI 4건 빨강 · 로컬은 초록) `~/.claude/mutate.lock` 을 보는
   `PreToolUse` 훅으로 막았다. 사고가 나면 **`git grep "!(!"`·`git grep __noMutate` 로
   HEAD 를 전수 검색**한다 — 변이 흔적은 기계로 찾을 수 있다.
-- **TTL·상한 상수를 바꾸면 `tests/test_cache.py` 의 `TestRequestBudget` 도 같이 고친다**(P47).
+- **TTL·상한·HTTP 한도 상수를 바꾸면 `tests/test_cache.py` 의 `TestRequestBudget` 도 같이 고친다**(P47 · HTTP 는 P98).
   그 테스트는 값을 **숫자로 못 박아** 둔다 — 고치라는 뜻이 아니라, 고칠 때 **왜 바꾸는지**를
   한 번 묻게 하려는 것이다. 2026-09-24 실측: `TTL_LAUNCHES` 를 15분 → 6시간으로 바꿔도
   **테스트가 전부 통과했다**(다른 테스트가 `TTL + 1` 로 **상수를 참조**해 경계를 잡는다).
