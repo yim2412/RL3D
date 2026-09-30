@@ -1830,22 +1830,25 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("실측에서 가장 흔했던 영문 이벤트가 한국어로 나온다",
     ["엔진 시동", "탱크 가압", "추진제 주입", "스타링크 위성 전개", "2단 엔진 3차 점화", "2단 엔진 3차 정지", "드래곤 노즈콘 개방"]
       .filter((ko) => !common.includes(ko)), []);
-  // **객체 리터럴의 같은 키는 조용히 뒤엣것이 이긴다.** 105줄 표에 한 줄을 또 적어도 오류가 없다
+  // **객체 리터럴의 같은 키는 조용히 뒤엣것이 이긴다.** 105줄 표에 한 줄을 또 적어도 오류가 없다.
+  // 처음 판(P83)은 utils.js 의 `*_KO` 만 봤고, 한 줄에 여러 키(`USA: "미국", CHN: …`)를 놓쳤다.
+  // 지금은 23개 파일의 최상위 `const 대문자 = {` 표 전부를 **깊이를 세며** 읽는다 — 줄 단위 정규식은
+  // 중첩 객체의 `why:`·`value:` 를 같은 층 키로 세어 중복 오탐을 냈다(ORBIT_INCLINATION·KEY_TOGGLES)
   {
-    const src = require("fs").readFileSync(require("path").join(__dirname, "..", "web", "js", "utils.js"), "utf8");
+    const fs = require("fs"), path = require("path");
+    const dir = path.join(__dirname, "..", "web", "js");
     const dupes = [];
-    let keyCount = 0;
-    for (const m of src.matchAll(/^const ([A-Z_]+_KO) = \{([\s\S]*?)\n\};/gm)) {
-      // 한 줄에 여러 키(`USA: "미국", CHN: …`)도 있다 — 처음 판은 줄 맨 앞 키만 읽어 COUNTRY_KO 중복을 놓쳤다.
-      // 주석을 걷고, 줄 처음이나 쉼표 뒤의 키를 모두 읽는다
-      const body = m[2].replace(/\/\/.*$/gm, "");
-      const keys = [...body.matchAll(/(?:^|,)\s*(?:"([^"]+)"|([A-Za-z_]\w*))\s*:/gm)].map((k) => k[1] || k[2]);
-      keyCount += keys.length;
-      const seen = new Set();
-      for (const k of keys) { if (seen.has(k)) dupes.push(m[1] + "." + k); seen.add(k); }
+    let tables = 0, keyCount = 0;
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".js"))) {
+      const src = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const m of src.matchAll(/^const ([A-Z][A-Z0-9_]*) = \{/gm)) {
+        const keys = topLevelKeys(src, m.index + m[0].length);
+        tables++;
+        keyCount += keys.length;
+        keys.forEach((k, i) => { if (keys.indexOf(k) !== i) dupes.push(f + ":" + m[1] + "." + k); });
+      }
     }
-    const tables = [...src.matchAll(/^const ([A-Z_]+_KO) = \{/gm)].length;
-    check("번역표(≥ 6개 · 키 ≥ 150)에 같은 키가 두 번 적히지 않았다", [tables >= 6, keyCount >= 150, dupes], [true, true, []]);
+    check("상수 표(≥ 16개 · 키 ≥ 220)에 같은 키가 두 번 적히지 않았다", [tables >= 16, keyCount >= 220, dupes], [true, true, []]);
   }
   check("net 이 초 단위 확정이면 시계도 적는다", html.includes("sq-clock"), true);
   check("net 이 날짜까지만이면 시계를 안 적는다",
@@ -6892,3 +6895,39 @@ function fresh2(ctx, key, t) {
 }
 
 })();
+
+/** 객체 리터럴 `{` 바로 뒤부터 **같은 층**의 키만 모은다(중첩·문자열·주석은 건너뛴다). */
+function topLevelKeys(src, start) {
+  const keys = [];
+  let i = start, depth = 0, expectKey = true;
+  const keyAt = (k, end) => {
+    let n = end;
+    while (/\s/.test(src[n])) n++;
+    if (src[n] === ":") keys.push(k);
+    expectKey = false;
+  };
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/") { i = src.indexOf("\n", i); if (i < 0) break; continue; }
+    if (c === "/" && src[i + 1] === "*") { i = src.indexOf("*/", i) + 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      while (src[j] !== c) { if (src[j] === "\\") j++; j++; }
+      if (depth === 0 && expectKey) keyAt(src.slice(i + 1, j), j + 1);
+      i = j + 1;
+      continue;
+    }
+    if ("{[(".includes(c)) { depth++; expectKey = false; i++; continue; }
+    if ("}])".includes(c)) { if (depth === 0) return keys; depth--; i++; continue; }
+    if (depth === 0 && c === ",") { expectKey = true; i++; continue; }
+    if (depth === 0 && expectKey && /[A-Za-z_$]/.test(c)) {
+      const id = /^[\w$]+/.exec(src.slice(i))[0];
+      keyAt(id, i + id.length);
+      i += id.length;
+      continue;
+    }
+    if (!/\s/.test(c)) expectKey = false;
+    i++;
+  }
+  return keys;
+}
