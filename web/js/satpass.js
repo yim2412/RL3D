@@ -156,13 +156,29 @@ function fmtPassTime(ms) {
   return f ? f.format(new Date(ms)) : "";
 }
 
+/**
+ * 행에 찍을 시각·최대고도·분 — **셋이 같은 구간**을 말하게 한다(P108).
+ *
+ * 가시 통과는 "언제 보이기 시작하는가"가 알고 싶은 값이라 시각·고도는 조명 구간을 썼는데, 분만 통과
+ * 전체였다. 그래서 "☀ 19:11 · 22분" 이 실제로는 2분만 보였고, 새벽에 그림자에서 나오는 통과는
+ * 시작+분이 통과 끝을 넘어갔다(2026-10-02 실측 서울 저궤도: 보이는 통과 229건 중 105건 분이 다름 ·
+ * 53건 끝을 넘김 · 정지궤도는 "18:40부터 1440분").
+ */
+function passShown(p) {
+  const vis = p.visible && p.visStart !== undefined;
+  const from = vis ? p.visStart : p.start;
+  const to = vis && p.visEnd !== undefined ? p.visEnd : p.end;
+  return {
+    when: from,
+    el: vis && p.visMaxEl !== undefined ? p.visMaxEl : p.maxEl,
+    dur: Math.max(1, Math.round((to - from) / 60000)),
+  };
+}
+
 /** 통과 1건을 목록 행으로. 가시 통과는 ☀ 로 표시하고 조명 구간 시각을 앞세운다. */
 function passRow(p, name) {
   const dir = `${azToCompass(p.startAz)}→${azToCompass(p.endAz)}`;
-  const dur = Math.max(1, Math.round((p.end - p.start) / 60000));
-  // 가시 통과는 "언제 보이기 시작하는가"가 알고 싶은 값이다 — 통과 시작이 아니라 조명 시작.
-  const when = p.visible && p.visStart !== undefined ? p.visStart : p.start;
-  const el = p.visible && p.visMaxEl !== undefined ? p.visMaxEl : p.maxEl;
+  const { when, el, dur } = passShown(p);
   const mark = p.visible ? `<span class="pass-vis" title="관측자가 어둡고 위성이 햇빛을 받는다">☀</span>` : "";
   const dim = p.visible ? "" : " pass-row-dim";
   return `<div class="pass-row${dim}">` +

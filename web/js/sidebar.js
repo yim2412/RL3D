@@ -102,9 +102,8 @@ function renderTonightRows(rows) {
   }
   cont.innerHTML = rows.map((r) => {
     const p = r.pass;
-    const when = p.visStart !== undefined ? p.visStart : p.start;
-    const el = Math.round(p.visMaxEl !== undefined ? p.visMaxEl : p.maxEl);
-    const dur = Math.max(1, Math.round((p.end - p.start) / 60000));
+    const shown = passShown(p);   // 시각·고도·분이 같은 구간을 말한다(P108)
+    const when = shown.when, el = Math.round(shown.el), dur = shown.dur;
     const dir = `${azToCompass(p.startAz)}→${azToCompass(p.endAz)}`;
     return `<button class="sb-row" data-norad="${escapeHtml(String(r.norad))}">` +
       `<span class="dot d-sat"></span>` +

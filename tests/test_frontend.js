@@ -6727,6 +6727,53 @@ function fresh2(ctx, key, t) {
   check("gstime 도 숫자다", isFinite(ctx.satellite.gstime(outer)), true);
 }
 
+// ── 통과 행의 시각·고도·분이 같은 구간을 말한다 (P108) ─────────────────────────
+// 시각·고도는 보이는 구간인데 분만 통과 전체였다 — "☀ 19:31 · 22분" 이 실제로는 2분만 보였다(실측 서울 229건 중 105건).
+// 두 화면(통과 예측 패널 · "오늘 밤" 목록)을 **실제로 그려서** 잰다 — 헬퍼만 부르면 한쪽이 안 쓰는 것을 못 본다
+{
+  group("통과 행: 보이는 통과의 분은 보이는 구간 (P108)");
+  const { ctx, state, el } = loadApp({ realSatellite: true });
+  const T = Date.UTC(2026, 9, 2, 10, 0);
+  const MIN = 60000;
+  // 그림자에서 늦게 나오는 통과: 22분 떠 있고 마지막 2분만 보인다
+  const late = { start: T, end: T + 22 * MIN, visStart: T + 20 * MIN, visEnd: T + 22 * MIN, visible: true,
+    maxEl: 40, visMaxEl: 12, startAz: 0, endAz: 180, maxAz: 90 };
+  const dim = { start: T, end: T + 8 * MIN, visible: false, maxEl: 30, startAz: 0, endAz: 180, maxAz: 90 };
+  const row = ctx.passRow(late, null);
+  check("패널: 보이는 2분을 찍는다", row.includes("· 2분"), true);
+  check("패널: 통과 전체 22분을 찍지 않는다", row.includes("22분"), false);
+  check("패널: 고도도 보이는 구간 것", row.includes("최대고도 12°"), true);
+  check("패널: 안 보이는 통과는 통과 전체 분", ctx.passRow(dim, null).includes("· 8분"), true);
+  // 반대쪽 — 처음부터 보이다가 3분 만에 그림자로 들어간다(저녁 통과의 흔한 모양). 위 통과만 재면 끝(visEnd)을 안 본다
+  const early = { start: T, end: T + 10 * MIN, visStart: T, visEnd: T + 3 * MIN, visible: true,
+    maxEl: 50, visMaxEl: 50, startAz: 0, endAz: 180, maxAz: 90 };
+  check("패널: 그림자로 들어가는 통과는 보이는 3분", ctx.passRow(early, null).includes("· 3분"), true);
+
+  state.observer = { lat: 37.5665, lng: 126.978, label: "서울" };
+  ctx.renderTonightRows([{ name: "LATE", norad: "1", pass: late }]);
+  const side = el("sidebar-list").innerHTML;
+  check("오늘 밤 목록: 보이는 2분을 찍는다", side.includes("· 2분"), true);
+  check("오늘 밤 목록: 통과 전체 22분을 찍지 않는다", side.includes("22분"), false);
+
+  // 실제 전파로: 찍힌 시작 + 찍힌 분이 통과 끝을 넘지 않는다(반올림 1분 허용)
+  const rec = ctx.satellite.twoline2satrec(
+    "1 25544U 98067A   26257.14321681  .00004666  00000+0  92466-4 0  9990",
+    "2 25544  51.6309 219.8284 0004930 139.3822 220.7535 15.49107075585544");
+  const SEOUL = { lat: 37.5665, lng: 126.978 };
+  const s0 = Date.UTC(2026, 8, 14, 0);
+  // 이 TLE 는 하루 내내 그림자 경계에 걸친 통과가 없다(9/12~16 실측 0) — 관측자가 **통과 도중에** 어두워지게 만든다
+  const base = ctx.sunTable(SEOUL, s0, s0 + 24 * 3600e3, 30000);
+  const lit = ctx.computePasses(rec, SEOUL, 24, 30, 10, base.map((e) => ({ t: e.t, unit: e.unit, dark: true })))
+    .filter((p) => p.visible);
+  const dusk = lit.length ? (lit[0].start + lit[0].end) / 2 : Infinity;
+  const table = base.map((e) => ({ t: e.t, unit: e.unit, dark: e.t >= dusk }));
+  const vis = ctx.computePasses(rec, SEOUL, 24, 30, 10, table).filter((p) => p.visible);
+  const partial = vis.filter((p) => p.visStart > p.start || p.visEnd < p.end);
+  check("실제 ISS: 그림자에 걸친 가시 통과가 있다(아래 단언이 공허하지 않다)", partial.length > 0, true);
+  check("실제 ISS: 시작+분이 통과 끝을 넘지 않는다",
+    vis.every((p) => { const s = ctx.passShown(p); return s.when + s.dur * MIN <= p.end + MIN; }), true);
+}
+
 // ── 겹치는 요청 (P26-1 · P26-2) ───────────────────────────────────────────────
 // 이 축의 버그도 예외가 안 난다. **요청 수만 조용히 늘고**(429 가 뜨고 나서야 안다),
 // 화면은 늦게 온 옛 응답으로 소리 없이 되돌아간다.
