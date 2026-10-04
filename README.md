@@ -256,7 +256,8 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 
 ## 라이선스
 
-[MIT](LICENSE)
+[PolyForm Noncommercial 1.0.0](LICENSE) — 비상업 목적의 사용·수정·공유는 자유, 상업적 이용은 금지된다.
+2026-10-05 전에 공개된 커밋은 그때의 MIT 조건이 그대로 남는다.
 
 번들된 서드파티 라이브러리는 각자의 라이선스를 따른다 — MapLibre GL JS(BSD-3-Clause), satellite.js(MIT),
 그리고 exe 에 함께 들어가는 파이썬 패키지(pywebview·pythonnet 등). **전문은 [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt)**
