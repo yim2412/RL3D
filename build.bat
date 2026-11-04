@@ -24,7 +24,8 @@ REM Third-party license texts ship inside the exe (audit F-016).
 "%PY%" tools\build_licenses.py
 if errorlevel 1 goto :err
 REM web folder is bundled and loaded via _MEIPASS (resource_path).
-"%PY%" -m PyInstaller --noconfirm --onefile --windowed --name RL3D --add-data "web;web" --add-data "THIRD_PARTY_LICENSES.txt;." main.py
+REM LICENSE carries the project's own terms and Required Notice (P110).
+"%PY%" -m PyInstaller --noconfirm --onefile --windowed --name RL3D --add-data "web;web" --add-data "THIRD_PARTY_LICENSES.txt;." --add-data "LICENSE;." main.py
 if errorlevel 1 goto :err
 
 echo.

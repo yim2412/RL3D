@@ -26,6 +26,7 @@ from PyInstaller.archive.readers import CArchiveReader
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_EXE = os.path.join(ROOT, "dist", "RL3D.exe")
 LICENSE = "THIRD_PARTY_LICENSES.txt"
+PROJECT_LICENSE = "LICENSE"   # 이 앱의 조건(PolyForm). 배포물과 함께 가야 하는 고지(Required Notice)가 여기 있다
 # 이보다 적으면 기대 목록을 만드는 쪽이 틀린 것이다(현재 web/ 29개) — 목록이 비면 검사도 0건으로 초록이다
 MIN_WEB_FILES = 20
 
@@ -44,6 +45,7 @@ def expected_entries(root=ROOT):
         out[LICENSE] = os.path.getsize(lic)
     else:
         out[LICENSE] = None   # 소스에 없어도 exe 에는 있어야 한다(build.bat 이 만든다)
+    out[PROJECT_LICENSE] = os.path.getsize(os.path.join(root, PROJECT_LICENSE))
     return out
 
 
@@ -72,10 +74,10 @@ def check(exe_path, root=ROOT):
         lines.append("[FAIL] exe 에 빠진 파일 %d개: %s" % (len(missing), ", ".join(missing[:8])))
     else:
         lines.append("[OK] 번들 %d개 전부 들어 있다(web %d · 라이선스)" % (len(want), web_count))
-    # 들어 있어도 옛것일 수 있다 — 내용을 소스와 대조한다(라이선스는 빌드가 만들므로 제외)
+    # 들어 있어도 옛것일 수 있다 — 내용을 소스와 대조한다(서드파티 라이선스는 빌드가 만들므로 제외)
     stale = []
     for k in sorted(want):
-        if k.startswith("web\\") and k in have:
+        if (k.startswith("web\\") or k == PROJECT_LICENSE) and k in have:
             with open(os.path.join(root, k.replace("\\", os.sep)), "rb") as f:
                 if arc.extract(k) != f.read():
                     stale.append(k)
@@ -83,7 +85,7 @@ def check(exe_path, root=ROOT):
         ok = False
         lines.append("[FAIL] 소스와 내용이 다른 파일 %d개(옛 exe?): %s" % (len(stale), ", ".join(stale[:8])))
     else:
-        lines.append("[OK] web 파일 내용이 소스와 같다")
+        lines.append("[OK] web 파일과 LICENSE 내용이 소스와 같다")
     ver = source_version(root)
     main_code = arc.extract("main") if "main" in have else b""
     if not ver or ver.encode() not in main_code:
