@@ -1686,7 +1686,36 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     return !el("panel-body").innerHTML.includes(ko);
   }).map(([o, t, ko]) => ko);
   check("상세 패널이 새로 채운 궤도·임무 종류를 한국어로 보여 준다", leftEnglish, []);
+
+  // P109 — 2026 아카이브를 처음 받아 나온 값. 목록을 표에서 긁으면 항목을 지울 때 같이 사라지므로 손으로 적는다.
+  // 표에 없으면 tr 이 원문을 내보내 예외 없이 영문이 뜬다 — 패널을 실제로 그려 한글이 나오는지 잰다.
+  ctx.openPanel({ id: "k2", name: "번역", outcome: "success", net: "2026-01-01T00:00:00Z",
+    orbit: "Lunar flyby", mission_type: "Space Situational Awareness", lat: 28.5, lng: -80.6 });
+  check("상세 패널이 P109 의 궤도·임무 종류를 한국어로 보여 준다",
+    ["달 근접 비행", "우주 상황 인식"].filter((ko) => !el("panel-body").innerHTML.includes(ko)), []);
   ctx.closePanel();
+
+  const P109_EVENTS = ["Pad Clear", "Stage 4 Separation", "Countdown Start", "Built-In Hold", "Resume T-Clock",
+    "Launch Team On Stations", "Test Director Briefing", "Prop Load Preparations", "All Stages Replenish",
+    "RS-25 Preparations", "GLS Activation", "Rocket Cavity Inerting", "Short Purge", "TPS Scan", "Stage Pad Rescue",
+    "Pad Closeout", "Core Stage Power On", "Core Stage Batteries Charging", "Core Stage LOX Transfer Chill",
+    "Core Stage LOX Prop Chill", "Core Stage LOX Slow Fill", "Core Stage LOX Fast Fill", "Core Stage LOX Topping",
+    "Core Stage LOX Replenish", "Core Stage LH2 Chill", "Core Stage LH2 Slow Fill", "Core Stage LH2 Fast Fill",
+    "Core Stage LH2 Topping", "Core Stage LH2 Replenish", "ICPS Power On", "ICPS Power Off", "ICPS LOX Prop Chill",
+    "ICPS LOX Fast Fill", "ICPS LOX Topping", "ICPS LOX Replenish", "ICPS LOX Vent & Relief Test", "ICPS LH2 Chill",
+    "ICPS LH2 Fast Fill", "ICPS LH2 Topping", "ICPS LH2 Replenish", "ICPS LH2 Vent & Relief Test", "Orion Power On",
+    "Orion Batteries Charging", "Orion Comms On", "Orion Comms Transition", "Orion Cold Soak", "Orion Boarding",
+    "Flight Crew To Pad", "Closeout Crew Assemble", "Closeout Crew To White Room", "Visors Down", "Hatch Closure",
+    "Hatch Seal Checks", "Hatch Closeouts", "LAS Hatch Closure"];
+  check("P109 이벤트 목록이 55종이다(빠뜨리면 아래 검사가 줄어든다)", new Set(P109_EVENTS).size, 55);
+  const leftEnglishEvents = P109_EVENTS.filter((abbrev) => {
+    const html = ctx.timelineHtml({ timeline: [{ t: -60, abbrev, desc: "" }] }, 0);
+    return !/[가-힣]/.test(String(html).replace(/<[^>]+>/g, "")) || html.includes(abbrev);
+  });
+  check("순서표가 P109 이벤트를 한국어로 그린다", leftEnglishEvents, []);
+  // 처음 "발사대 인원 철수" 로 옮겼다가 Vikram-I T+0:10(이륙 뒤)에 맞지 않는 것을 실제 데이터를 읽고 알았다
+  check("Pad Clear 는 이륙 전후 어느 쪽에도 맞는 말이다",
+    /인원|철수|이탈/.test(ctx.timelineHtml({ timeline: [{ t: 10, abbrev: "Pad Clear", desc: "" }] }, 0)), false);
 }
 
 // ── 로드 순서 일치 (P12-23) ──────────────────────────────────────────────────

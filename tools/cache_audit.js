@@ -48,6 +48,23 @@ function loadCache() {
   return { launches, tles, satcat };
 }
 
+/**
+ * 무엇을 쟀는지의 한 줄 — 캐시 나이와 빠진 아카이브. 2026-11-05 에 한 달 묵은 캐시(올해 아카이브 없음)로 전부 [OK] 가 나왔고,
+ * 받아서 다시 재니 번역 빈칸 57건이 있었다(P109). 낡은 것은 결함이 아니라 FAIL 로 두지 않고, 초록을 낡은 데이터의 초록으로 읽게 한다.
+ */
+function freshnessLine(now = Date.now()) {
+  const files = fs.existsSync(CACHE) ? fs.readdirSync(CACHE) : [];
+  const age = (re) => {
+    const days = files.filter((f) => re.test(f)).map((f) => (now - fs.statSync(path.join(CACHE, f)).mtimeMs) / 86400000);
+    return days.length ? Math.max(...days) : null;
+  };
+  const txt = (d) => (d == null ? "없음" : d < 1 ? "1일 안" : Math.floor(d) + "일");
+  const year = new Date(now).getUTCFullYear();
+  const notes = [`발사 ${txt(age(/^launches\.json$/))}`, `가장 낡은 TLE ${txt(age(/^tle_.*\.json$/))}`, `SATCAT ${txt(age(/^satcat_.*\.json$/))}`];
+  if (!files.includes(`archive_${year}.json`)) notes.push(`⚠ ${year} 아카이브 없음 — 올해 발사의 값을 못 잰다`);
+  return "캐시 나이: " + notes.join(" · ");
+}
+
 // ── 검사 ─────────────────────────────────────────────────────────────────────
 // 각 검사는 { measured, problems[] } 를 돌려준다. measured 가 0 이면 그 자체로 FAIL 이다(재지 않은 것).
 
@@ -274,6 +291,7 @@ if (require.main === module) {
   if (!fs.existsSync(CACHE)) { console.log(`[FAIL] 캐시 폴더가 없다: ${CACHE} — 앱을 한 번 실행해 캐시를 만든다`); process.exit(2); }
   const data = loadCache();
   console.log(`캐시: 발사 ${data.launches.length}건 · 위성 TLE ${data.tles.length}기 · SATCAT ${Object.keys(data.satcat).length}기`);
+  console.log(freshnessLine());
   const t0 = Date.now();
   const fail = SELFTEST ? selftest(data) : report(audit(data));
   console.log(`\n${fail ? "[FAIL]" : "[OK]"} cache_audit${SELFTEST ? " --selftest" : ""} (${((Date.now() - t0) / 1000).toFixed(1)}초)`);
