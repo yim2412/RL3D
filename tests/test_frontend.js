@@ -2768,7 +2768,10 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   const C = ctx.computeTonight(state.observer, undefined, undefined, FIXED_NOW);
   const peak = (rows) => rows.map((r) => r.norad + ":" + Math.round(r.pass.maxEl)).join(",");
   check("같은 시각을 주면 언제 불러도 결과가 같다", peak(A), peak(C));
-  check("시각이 8초만 달라도 결과가 달라진다(그래서 고정해야 한다)", peak(A) !== peak(B), true);
+  // 시작 시각은 표본 격자를 따라 여전히 달라진다. 최대고도는 P111 이 꼭대기를 다듬어 더는 흔들리지 않는다(예전: 8초 차이에 67→63)
+  check("시각이 8초 달라지면 통과 시작 표본이 달라진다", A.some((r, i) => B[i] && r.pass.start !== B[i].pass.start), true);
+  check("시각이 8초 달라도 최대고도는 0.2° 안에서 같다",
+    A.length === B.length && A.every((r, i) => Math.abs(r.pass.maxEl - B[i].pass.maxEl) < 0.2), true);
 }
 {
   // 렌더가 **실제로 쪼개 도는가.** setTimeout 을 테스트가 들고 있다가 직접 돌린다 —
@@ -5611,6 +5614,78 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   const southAz = look(geoRec, { lat: -35, lng: subLng }, G0).az;
   near("같은 경도 남쪽에서 방위 = 0(정북)", Math.min(southAz, 360 - southAz), 0, 0.5);
   check("azToCompass 가 방위를 한글로", [180, 0, 90, 270].map(ctx.azToCompass), ["남", "북", "동", "서"]);
+}
+
+// ── 최대고도 — 독립 구현과 대조 (P111) ───────────────────────────────────────
+// 기준값은 Skyfield 1.55 로 낸 것을 박았다(같은 TLE · 앱과 같은 정의 · 꼭대기 앞뒤 0.25초 격자). 2026-11-05 대조에서
+// 30초 표본은 꼭대기를 건너뛰어 항상 낮았다: 통과 1,742건 중 18.9% 가 정수 표시가 달랐고 최대 12.89° 차이.
+{
+  const { ctx } = loadApp({ now: Date.parse("2026-11-05T00:00:00Z"), realSatellite: true });
+  group("최대고도 — Skyfield 대조 (P111)");
+  const T0 = Date.parse("2026-11-05T00:00:00Z"), STEP = 30, STEP_MS = STEP * 1000;
+  const SL3 = ["1 13819U 83010B   26308.38816975  .00012553  00000+0  20256-3 0  9993",
+               "2 13819  81.1000  66.8453 0013331 284.1323  75.8443 15.52650935395065"];
+  const CASES = [
+    { name: "SL-3 R/B@키토", tle: SL3, obs: { lat: -0.18, lng: -78.47 }, at: 66665000, maxEl: 89.06, sampledBelow: 3 },
+    { name: "SL-3 R/B@서울", tle: SL3, obs: { lat: 37.5665, lng: 126.978 }, at: 15960000, maxEl: 86.61, sampledBelow: 3 },
+    { name: "STARLINK-1063@시드니", obs: { lat: -33.87, lng: 151.21 }, at: 65955000, maxEl: 83.84, visMaxEl: 83.84,
+      tle: ["1 44768U 19074BH  26308.37266696  .00178917  00000+0  14570-2 0  9995",
+            "2 44768  53.1455 149.2450 0000662 182.2467 177.8548 15.69593395385521"] },
+    // 오르는 도중 그림자로 들어가는 통과 — 보이는 구간의 꼭대기는 그림자 경계다(표본만 보면 57.19°)
+    { name: "SL-8 R/B@트롬쇠", obs: { lat: 69.65, lng: 18.96 }, at: 5535000, maxEl: 75.26, visMaxEl: 67.17, visSampled: 57.19,
+      tle: ["1 19257U 88053B   26308.44177544  .00000108  00000+0  43467-4 0  9999",
+            "2 19257  74.0494  30.5090 0019433 154.6491 283.6834 14.39014925 10970"] },
+    { name: "ISS@서울", obs: { lat: 37.5665, lng: 126.978 }, at: 69965000, maxEl: 71.51,
+      tle: ["1 25544U 98067A   26308.36953014  .00005228  00000+0  10236-3 0  9991",
+            "2 25544  51.6329 326.3987 0007186 346.7494  13.3304 15.49173979593483"] },
+    // 반대 방향 — 오르다가 끝 경계에 닿는다(끝 경계를 안 찾으면 26.24°)
+    { name: "SWAS@트롬쇠", obs: { lat: 69.65, lng: 18.96 }, at: 68705000, maxEl: 48.74, visMaxEl: 32.38, visSampled: 26.24,
+      tle: ["1 25560U 98071A   26308.32197595  .00002924  00000+0  18416-3 0  9992",
+            "2 25560  69.8957 225.9272 0004355   2.1403 357.9780 15.10355381518421"] },
+    // 경계에서 위성은 아직 햇빛을 받지만 관측자 하늘이 밝아져 보이지 않게 된다 — 어둠 조건을 빼면 26.28° 로 기준을 넘는다
+    { name: "SL-8 R/B@트롬쇠(박명)", obs: { lat: 69.65, lng: 18.96 }, at: 52390000, maxEl: 41.90, visMaxEl: 25.47, visAtMost: 25.47, visTol: 0.6,   // 실측 0.56° — 경계 시각의 초 단위 차이
+      tle: ["1 02802U 67045B   26308.28115549  .00000123  00000+0  41682-4 0  9998",
+            "2 02802  74.0102 260.5790 0064886 211.2250 148.5048 14.45734900123645"] },
+    // 두 탐색의 범위가 달라 처리 없이는 보이는 구간 최대가 전체 최대를 0.0006° 넘는 실제 사례
+    { name: "DMSP F17@트롬쇠", obs: { lat: 69.65, lng: 18.96 }, at: 22045000, maxEl: 88.25, visMaxEl: 88.25,
+      tle: ["1 29522U 06050A   26308.45984859  .00000089  00000+0  68417-4 0  9998",
+            "2 29522  98.7421 312.1938 0010457  21.1928 338.9677 14.15021341 32268"] },
+  ];
+  const overlap = (list, at) => list.find((p) => p.start <= T0 + at + 120000 && p.end >= T0 + at);
+  for (const c of CASES) {
+    const rec = ctx.satellite.twoline2satrec(c.tle[0], c.tle[1]);
+    const gd = { latitude: c.obs.lat * Math.PI / 180, longitude: c.obs.lng * Math.PI / 180, height: 0 };
+    const p = overlap(ctx.computePasses(rec, c.obs, 24, STEP, 10, null, T0), c.at);
+    check(`${c.name}: 통과가 있다`, !!p, true);
+    if (!p) continue;
+    check(`${c.name}: 최대고도가 기준의 0.1° 안`, Math.abs(p.maxEl - c.maxEl) <= 0.1, true);
+    if (c.sampledBelow) {
+      // 보호를 뜯으면 무엇이 일어나는가 — 표본 최대가 정말 기준보다 낮아야 이 사례가 재는 것이 있다
+      let sampled = -90;
+      for (let t = p.start; t <= p.end; t += STEP_MS) sampled = Math.max(sampled, ctx.lookAt(rec, gd, t).el);
+      check(`${c.name}: 표본 최대만 보면 ${c.sampledBelow}° 넘게 낮다`, c.maxEl - sampled > c.sampledBelow, true);
+    }
+    if (c.visMaxEl !== undefined) {
+      const tol = c.visTol || 0.5;
+      check(`${c.name}: 보이는 구간 최대고도가 기준의 ${tol}° 안`, Math.abs(p.visMaxEl - c.visMaxEl) <= tol, true);
+    }
+    if (c.visSampled !== undefined) {
+      check(`${c.name}: 표본만 보던 값(${c.visSampled}°)보다 그림자 경계까지 올라갔다`, p.visMaxEl - c.visSampled > 5, true);
+    }
+    if (c.visAtMost !== undefined) {
+      check(`${c.name}: 안 보이는 구간까지 올라가지 않는다`, p.visMaxEl <= c.visAtMost, true);
+    }
+    check(`${c.name}: 계산용 필드가 결과에 남지 않는다`, [p.peakT, p.visPeakT], [undefined, undefined]);
+    check(`${c.name}: 보이는 구간 최대가 전체 최대를 넘지 않는다`, !(p.visMaxEl > p.maxEl), true);
+  }
+  // 창 끝에서 진행 중인 통과도 다듬는다 — 루프 뒤의 별도 경로다
+  const c0 = CASES[0];
+  const rec0 = ctx.satellite.twoline2satrec(c0.tle[0], c0.tle[1]);
+  const whole = overlap(ctx.computePasses(rec0, c0.obs, 24, STEP, 10, null, T0), c0.at);
+  const cutHours = ((whole.start + whole.end) / 2 + 40000 - T0) / 3600000;
+  const cut = ctx.computePasses(rec0, c0.obs, cutHours, STEP, 10, null, T0).pop();
+  check("창 끝에서 끊긴 통과도 끝이 창 안이다", cut.end <= T0 + cutHours * 3600000, true);
+  check("창 끝에서 끊긴 통과도 최대고도가 기준의 0.1° 안", Math.abs(cut.maxEl - c0.maxEl) <= 0.1, true);
 }
 
 // ── 통과 계산의 시간축 (P21-2) ────────────────────────────────────────────────
