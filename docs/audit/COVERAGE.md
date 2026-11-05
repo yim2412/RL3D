@@ -72,5 +72,7 @@
 | `tools/check_exe.py` | 측정 도구(감사 뒤 P50 — exe 번들 대조) | 정독 |
 | `tools/ci_local.py` | 측정 도구(감사 뒤 P51 — CI test 잡 로컬 실행) | 정독 |
 | `tools/cache_audit.js` | 측정 도구(감사 뒤 P106 — 실제 캐시 감사 · 카나리아 selftest) | 정독 |
+| `tools/refresh_cache.py` | 측정 보조(감사 뒤 P112 — 재감사 전 전 그룹 갱신) | 정독 |
+| `tools/tle_drift.js` | 측정 도구(감사 뒤 P112 — TLE 나이별 오차 · selftest) | 정독 |
 | `tools/licenses/maplibre-gl-js.LICENSE.txt` | 라이선스 원문 | 정독 |
 | `tools/licenses/satellite-js.LICENSE.md` | 라이선스 원문 | 정독 |
