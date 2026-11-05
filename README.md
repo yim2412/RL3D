@@ -250,8 +250,9 @@ python tests/test_parsing.py --update # 골든 갱신(픽스처를 새로 받은
 |---|---|
 | 01 | [고장이 아닌데 고장으로 보였다](docs/notes/01-not-broken-but-it-looked-broken.md) — 정상 동작의 조합이 빈 화면을 만드는 일곱 가지 경로 |
 | 02 | [공허하게 통과한 검사들](docs/notes/02-checks-that-passed-vacuously.md) — 좌표가 전부 `NaN` 인데 `every()` 가 참이었다 |
+| 03 | [테스트를 재는 도구가 양쪽으로 거짓말을 했다](docs/notes/03-the-mutation-tool-lied-both-ways.md) — 변이 도구가 안 잡혔다고도, 잡혔다고도 잘못 말한 일곱 가지 길 |
 
-고르고 남은 후보 **34건**과 왜 안 골랐는지는 [`CANDIDATES.md`](docs/notes/CANDIDATES.md).
+고르고 남은 후보와 왜 안 골랐는지는 [`CANDIDATES.md`](docs/notes/CANDIDATES.md).
 다섯 프로젝트의 공개 색인은 <https://yim2412.github.io> 에 있다.
 
 ## 라이선스
