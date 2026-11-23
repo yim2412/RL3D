@@ -21,17 +21,17 @@
 /* 대비를 낮춘 종이 톤 (2026-09-05). 흰 배경 + 검정 글자는 16:1 이라 눈이 아프다.
    지금은 약 9:1 — WCAG AA(4.5:1)는 넉넉히 넘으면서 오래 봐도 덜 피곤하다. */
 :root{
-  --bg:#f6f2ea; --fg:#33302a; --dim:#6e6960; --faint:#95908a;
+  --bg:#f6f2ea; --fg:#33302a; --dim:#6e6960; --faint:#716c66; --on-accent:#fff;
   --line:#eae3d7; --soft:#efe8db; --card:#fdfbf7; --code:#efe9de;
   --shadow:0 1px 2px rgba(60,45,25,.05),0 10px 26px -14px rgba(60,45,25,.18);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
-  --bg:#17181b; --fg:#d7d3ca; --dim:#9b968c; --faint:#736e66;
+  --bg:#17181b; --fg:#d7d3ca; --dim:#9b968c; --faint:#8d8880; --on-accent:#17181b;
   --line:#26282c; --soft:#1e2024; --card:#1e2024; --code:#212327;
   --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 30px -16px rgba(0,0,0,.75);
 }}
 :root[data-theme=dark]{
-  --bg:#17181b; --fg:#d7d3ca; --dim:#9b968c; --faint:#736e66;
+  --bg:#17181b; --fg:#d7d3ca; --dim:#9b968c; --faint:#8d8880; --on-accent:#17181b;
   --line:#26282c; --soft:#1e2024; --card:#1e2024; --code:#212327;
   --shadow:0 1px 2px rgba(0,0,0,.35),0 12px 30px -16px rgba(0,0,0,.75);
 }
@@ -63,8 +63,8 @@ h1{font-size:clamp(32px,5.4vw,44px);line-height:1.3;letter-spacing:-.01em;
   border-radius:100px;border:1px solid var(--line);background:var(--card);
   box-shadow:var(--shadow);transition:transform .13s ease,border-color .13s ease}
 .cta a:hover{transform:translateY(-1px);border-color:var(--accent);color:var(--accent)}
-.cta a.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.cta a.primary:hover{color:#fff;opacity:.88}
+.cta a.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.cta a.primary:hover{color:var(--on-accent);opacity:.88}
 
 section{padding:62px 0;border-bottom:1px solid var(--line)}
 h2{font:600 13.5px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;
@@ -137,7 +137,7 @@ footer p{color:var(--faint);max-width:44em;line-height:1.8}
     <div class="stack"><span>Python</span><span>pywebview</span><span>MapLibre GL</span><span>satellite.js</span><span>PyInstaller</span></div>
     <div class="cta">
       <a class="primary" href="https://github.com/yim2412/RL3D">저장소 보기</a>
-      <a href="https://github.com/yim2412/RL3D/tree/main/docs/notes">개발 노트 2편</a>
+      <a href="https://github.com/yim2412/RL3D/tree/main/docs/notes">개발 노트 3편</a>
       <a href="https://github.com/yim2412/RL3D/blob/main/docs/notes/CANDIDATES.md">노트 후보 목록</a>
       <a href="https://yim2412.github.io">다섯 프로젝트 색인</a>
     </div>
@@ -214,7 +214,7 @@ footer p{color:var(--faint);max-width:44em;line-height:1.8}
       <a href="https://yim2412.github.io/domynion/"><b>Domynion</b><span>실시간 영토 확장 + 증강 드래프트</span></a>
       <a href="https://yim2412.github.io/joint-defense-sim/"><b>합동 통합방어 시뮬레이터</b><span>다층 방어 · 몬테카를로 판정</span></a>
       <a href="https://yim2412.github.io/Argus/"><b>Argus</b><span>PC 성능 이상 탐지 · 원인 귀인</span></a>
-      <a href="https://yim2412.github.io/fifa-match-tracker/"><b>피파 전적 관리</b><span>FC 온라인 감독모드 분석</span></a>
+      <a href="https://yim2412.github.io/fifa-match-tracker/"><b>감독모드 전적 분석</b><span>승률 · 선수 지표 · 전술 상성</span></a>
     </div>
   </div>
 </section>
