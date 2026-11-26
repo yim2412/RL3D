@@ -40,6 +40,26 @@ const JS_FILES = fs.readdirSync(path.join(ROOT, "web", "js")).filter((f) => f.en
   });
   check("끝 블록이 있는데 제목이 '착수 전' 인 절", contradictions, []);
   check("Phase 절을 실제로 찾았다(정규식이 헛돌지 않았다)", heads.length > 10, true);
+
+  // 끝 블록 없이 **표의 항목 표시로만** 끝난 절도 있다(P14~18 은 `✅ **P14-1**` 처럼 줄마다 적었다).
+  // 2026-11-26 에 그런 절 다섯이 `착수 전` 제목인 채였다 — 위 검사는 끝 블록만 봐서 못 봤다.
+  // 항목 줄 = 첫 칸에 `**P14-1**`·`**S16-3**` 같은 굵은 ID. ✅(끝) 이나 ❌(기각) 이 없으면 아직 열린 항목이다.
+  const ITEM = /^\|([^|]*\*\*[A-Z]\d+(?:\.\d+)?-\d+[a-z]?\*\*[^|]*)\|/;
+  const allDone = [], started = [];
+  let itemRows = 0;
+  heads.forEach((start, n) => {
+    const end = n + 1 < heads.length ? heads[n + 1] : lines.length;
+    const cells = lines.slice(start, end).map((l) => (l.match(ITEM) || [])[1]).filter(Boolean);
+    itemRows += cells.length;
+    const open = cells.filter((c) => !/[✅❌]/.test(c));
+    const id = "Phase " + lines[start].match(/^### Phase (\d+)/)[1];
+    if (/착수 전/.test(lines[start]) && cells.length && !open.length) allDone.push(id);
+    // `— 착수 전` 으로 **시작하는** 제목은 하나도 시작하지 않았다는 말이다. 끝난 항목이 하나라도 있으면 틀린 말이다
+    if (/^### Phase \d+ — 착수 전/.test(lines[start]) && cells.some((c) => /✅/.test(c))) started.push(id);
+  });
+  check("항목이 전부 ✅·❌ 인데 제목이 '착수 전' 인 절", allDone, []);
+  check("끝난 항목이 있는데 제목이 '— 착수 전' 으로 시작하는 절", started, []);
+  check("항목 줄을 실제로 찾았다(0 이면 정규식이 빗나간 것)", itemRows > 40, true);
 }
 
 // ── CLAUDE.md: 파일 표가 실제 트리와 같아야 한다 ────────────────────────────
