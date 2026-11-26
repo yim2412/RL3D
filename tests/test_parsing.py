@@ -877,7 +877,7 @@ class TestSatcatCodes(unittest.TestCase):
                        "EGYP", "GREC", "VTNM", "KAZ", "AZER", "RASC", "STCT", "NIG", "BOL", "FRIT", "TMMC",
                        "LAOS", "BELA", "BUL", "ALG", "BGD", "GRSA", "ANG", "SWED", "PAKI", "RP", "SING",
                        "ASRA", "POL")
-    OBSERVED_SITES = ("WRAS", "DLS", "KWAJ", "RLLB")
+    OBSERVED_SITES = ("WRAS", "DLS", "KWAJ", "RLLB", "STARB")
 
     def test_observed_owner_and_site_codes_become_korean(self):
         import re

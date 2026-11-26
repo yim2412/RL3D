@@ -76,6 +76,8 @@ LAUNCH_SITES = {
     # P96 — 캐시에서 코드 그대로 뜨던 4종(8기). 뜻은 celestrak.org/satcat/launchsites.php
     "RLLB": "마히아(뉴질랜드)", "WRAS": "미국 서부 공역(공중 발사)",
     "DLS": "돔바롭스키(러시아)", "KWAJ": "콰절린 환초(마셜제도)",
+    # 2026-11-26 — Starship 이 실어 올린 Starlink 51기. Celestrak 원문 "Starbase, Texas, USA"
+    "STARB": "스타베이스(미국)",
 }
 
 # RCS(레이더 반사 단면적, m²) 구간. Celestrak 의 SMALL/MEDIUM/LARGE 기준을 따른다.

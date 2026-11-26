@@ -467,6 +467,9 @@ const TIMELINE_KO = {
   "Starship Landing Burn": "스타십 착륙 연소",
   "Starship Landing Burn Shutdown": "스타십 착륙 연소 종료",
   "Starship Landing": "스타십 착수·착륙",
+  // Flight 15 순서표 — 궤도에서 세 번(T+5266·26135·74515초) "조기 귀환이 필요한지 상태 점검", 착륙 뒤 T+81154초 타워 포획
+  "Starship Return Check": "스타십 귀환 대비 상태 점검",
+  "Starship Catch": "스타십 타워 포획",
   "Excitement Guaranteed": "관전 포인트",
   "Battery Hotswap": "배터리 전원 전환",
   "Orbital Insertion Burn Start": "궤도 진입 연소 시작",
