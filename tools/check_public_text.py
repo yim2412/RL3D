@@ -17,7 +17,7 @@ DEFAULT_TARGETS = ["README.md", "CHANGELOG.md"]
 DASH_MAX = {"README.md": 1, "CHANGELOG.md": 163}   # README 의 1 은 제목 부제(규칙 2 가 허용). CHANGELOG 는 고치는 중
 # 0 이어야 하는 위반의 임시 상한(RL3D 만의 추가 · P114). 2,047줄 CHANGELOG 를 바퀴마다 나눠 고치는 동안
 # CI 가 고친 만큼을 지키게 한다. 줄표 상한처럼 내리기만 하고, 0 이 되면 항목을 지운다(여기 없으면 0)
-HARD_MAX = {"CHANGELOG.md": 163}
+HARD_MAX = {"CHANGELOG.md": 157}
 # 어색한 말 · 이중 피동(국립국어원 기준)
 BANNED = ("먹혔", "먹힌", "되어집", "되어져", "잊혀지")
 # 이 표시가 있는 줄은 안 본다(규칙 문서 안의 "나쁜 예" 같은 곳)
@@ -61,8 +61,12 @@ def check_text(text):
 
 
 def over_cap(n_hard, dash, hard_cap, dash_cap):
-    """상한을 넘었나. 상한과 같으면 통과, 하나라도 넘으면 실패."""
-    return n_hard > hard_cap or dash > dash_cap
+    """상한과 다른가. 같으면 통과, 넘어도 실패, **남아도 실패**.
+
+    남는 상한을 알림으로만 두었더니 내리는 것을 잊고 위반 6건만큼 느슨한 채로 커밋했다(2026-11-26, P114).
+    상한은 내리기만 하는 것이라, 남은 만큼이 곧 다시 늘어도 모르는 폭이다.
+    """
+    return n_hard != hard_cap or dash != dash_cap
 
 
 def _files(args):
@@ -95,9 +99,10 @@ def selftest():
     ok = len(hard) == 4 and dash == 1
     # 상한 판정: 같으면 통과, 넘으면 실패, 위반과 줄표는 따로 본다
     cases = [((352, 0, 352, 0), False), ((353, 0, 352, 0), True), ((0, 2, 0, 1), True),
-             ((0, 1, 0, 1), False), ((1, 0, 0, 5), True)]
+             ((0, 1, 0, 1), False), ((1, 0, 0, 5), True),
+             ((351, 0, 352, 0), True), ((0, 0, 0, 1), True)]   # 남는 상한도 실패
     cap_ok = all(over_cap(*a) == want for a, want in cases)
-    print(("[OK]" if cap_ok else "[FAIL]") + " 상한 판정: 같으면 통과 · 넘으면 실패")
+    print(("[OK]" if cap_ok else "[FAIL]") + " 상한 판정: 같으면 통과 · 넘거나 남으면 실패")
     ok = ok and cap_ok
     # 실제 경로(파일 읽기 → 상한 찾기 → 판정)가 상한 밖의 위반 1건에 실패하는가. 상한 조회를 끊어도 판정 함수는 멀쩡하다
     import contextlib, io, tempfile
@@ -130,10 +135,10 @@ def main(argv):
         failed |= bad
         note = f"줄표 {dash}/상한 {cap}"
         if dash < cap:
-            note += " (줄었습니다. DASH_MAX 를 지금 개수로 내려 주세요)"
+            note += " (줄었습니다. DASH_MAX 를 지금 개수로 내려야 통과합니다)"
         hnote = f"위반 {len(hard)}" + (f"/임시 상한 {hcap}" if hcap else "")
         if len(hard) < hcap:
-            hnote += " (줄었습니다. HARD_MAX 를 지금 개수로 내려 주세요)"
+            hnote += " (줄었습니다. HARD_MAX 를 지금 개수로 내려야 통과합니다)"
         print(("[FAIL]" if bad else "[OK]") + f" {f.as_posix()}: {hnote} · {note}")
         for no, msg in hard[:15]:
             print(f"       {no}: {msg}")
