@@ -29,6 +29,9 @@ const AGE_BUCKETS = [1, 3, 7, 14, 30, Infinity];   // 일. 앱의 낡음 경고 
 const SHIFT_PROBE_DEG = 1;        // selftest 가 평균근점이각을 밀 각도
 const SHIFT_PROBE_WIDE_DEG = 90;
 const SHIFT_PROBE_TOL_SEC = 2;
+// 자주 기동하는 군집은 저궤도에서 따로 센다. 기동은 어떤 전파로도 예측되지 않아, 섞으면 저궤도 칸이 그 군집의 기동 빈도를 잰다
+// (2026-11-26 저궤도 14~30일 2,129쌍 중 대부분이 Starlink 였다). 앱의 낡음 경고는 ISS 같은 관측 대상을 위한 것이다
+const MANEUVERING_PREFIXES = ["STARLINK"];
 
 /** TLE 1행의 에포크 → ms. SGP4 라이브러리와 무관하게 읽는다 — 같은 값을 재는 데 재는 대상을 쓰지 않는다. */
 function epochMs(tle1) {
@@ -132,16 +135,23 @@ function bucketLabel(i) {
 }
 function bucketIndex(age) { return AGE_BUCKETS.findIndex((hi) => age < hi); }
 
+/** 표의 행 묶음: 저궤도는 기동 군집을 떼어 낸다. */
+function groupOf(r) {
+  if (r.band === "leo" && MANEUVERING_PREFIXES.some((p) => String(r.name || "").toUpperCase().startsWith(p))) return "leo-기동군집";
+  return ["leo", "meo", "geo"].includes(r.band) ? r.band : "기타";
+}
+const GROUP_ORDER = ["leo", "leo-기동군집", "meo", "geo", "기타"];
+
 function printTable({ rows, failed }) {
   console.log(`대조 ${rows.length}쌍 · 전파 실패 ${failed}쌍(재진입 등)`);
   console.log("대역 · 나이 | 쌍 | 시각 차이 중앙/95%/최대(초) | 위치 차이 중앙/95%(km)");
-  for (const band of ["leo", "meo", "geo", null]) {
-    const inBand = rows.filter((r) => (band === null ? !["leo", "meo", "geo"].includes(r.band) : r.band === band));
+  for (const group of GROUP_ORDER) {
+    const inBand = rows.filter((r) => groupOf(r) === group);
     AGE_BUCKETS.forEach((_, i) => {
       const b = inBand.filter((r) => bucketIndex(r.age) === i);
       if (!b.length) return;
       const s = b.map((r) => r.shiftSec), km = b.map((r) => r.km);
-      console.log(`${band || "기타"} · ${bucketLabel(i)} | ${b.length} | ${quant(s, .5).toFixed(1)} / ${quant(s, .95).toFixed(1)} / ${Math.max(...s).toFixed(1)} | ${quant(km, .5).toFixed(1)} / ${quant(km, .95).toFixed(1)}`);
+      console.log(`${group} · ${bucketLabel(i)} | ${b.length} | ${quant(s, .5).toFixed(1)} / ${quant(s, .95).toFixed(1)} / ${Math.max(...s).toFixed(1)} | ${quant(km, .5).toFixed(1)} / ${quant(km, .95).toFixed(1)}`);
     });
   }
   const worst = [...rows].sort((a, b) => b.shiftSec - a.shiftSec).slice(0, 5);
@@ -200,6 +210,12 @@ function selftest() {
   const behind = driftOf(ctx, pushedBy(360 - SHIFT_PROBE_DEG), iss);
   say(!!behind && behind.alongKm < 0, "뒤처진 위성은 진행 방향 차이가 음수다");
   say(!!got && got.band === "leo", `대역을 읽는다(${got && got.band})`);
+  say(groupOf({ band: "leo", name: "Starlink-1007" }) === "leo-기동군집" && groupOf({ band: "leo", name: "ISS (ZARYA)" }) === "leo"
+    && groupOf({ band: "meo", name: "STARLINK-X" }) === "meo" && groupOf({ band: undefined, name: "X" }) === "기타",
+    "저궤도의 기동 군집만 따로 묶는다(이름 대소문자 무관 · 다른 대역은 그대로)");
+  // 표는 GROUP_ORDER 순서로만 찍는다 — 묶음이 거기 없으면 그 행들이 말없이 표에서 빠진다
+  const sampleGroups = ["leo", "meo", "geo", "heo", undefined].flatMap((band) => ["STARLINK-1", "ISS"].map((name) => groupOf({ band, name })));
+  say(sampleGroups.every((g) => GROUP_ORDER.includes(g)), "모든 묶음이 표 순서에 있다(빠지면 그 행이 안 찍힌다)");
 
   // 짝짓기와 구간 나누기 — 에포크를 이틀 앞당긴 기록은 1~3일 칸에 한 번만 들어가야 한다
   const dayText = (day - 2).toFixed(8).padStart(12, "0");
