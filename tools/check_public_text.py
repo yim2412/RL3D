@@ -14,10 +14,10 @@ from pathlib import Path
 DEFAULT_TARGETS = ["README.md", "CHANGELOG.md"]
 # 줄표(—) 상한. 파일마다 지금 개수를 적고, 고쳐서 줄면 상한도 내린다(0 을 향해).
 # 여기 없는 파일은 0 이다.
-DASH_MAX = {"README.md": 1, "CHANGELOG.md": 212}   # README 의 1 은 제목 부제(규칙 2 가 허용). CHANGELOG 는 고치는 중
+DASH_MAX = {"README.md": 1, "CHANGELOG.md": 163}   # README 의 1 은 제목 부제(규칙 2 가 허용). CHANGELOG 는 고치는 중
 # 0 이어야 하는 위반의 임시 상한(RL3D 만의 추가 · P114). 2,047줄 CHANGELOG 를 바퀴마다 나눠 고치는 동안
 # CI 가 고친 만큼을 지키게 한다. 줄표 상한처럼 내리기만 하고, 0 이 되면 항목을 지운다(여기 없으면 0)
-HARD_MAX = {"CHANGELOG.md": 212}
+HARD_MAX = {"CHANGELOG.md": 163}
 # 어색한 말 · 이중 피동(국립국어원 기준)
 BANNED = ("먹혔", "먹힌", "되어집", "되어져", "잊혀지")
 # 이 표시가 있는 줄은 안 본다(규칙 문서 안의 "나쁜 예" 같은 곳)
