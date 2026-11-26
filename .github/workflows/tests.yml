@@ -60,10 +60,10 @@ jobs:
       - name: 문서 회귀 테스트 (문서 ↔ 코드 대조)
         run: node tests/test_docs.js
 
-      - name: 공개 글 말투 (README · CHANGELOG 는 고치는 중)
+      - name: 공개 글 말투 (README · CHANGELOG, 상한 래칫)
         run: |
           python tools/check_public_text.py --selftest
-          python tools/check_public_text.py README.md
+          python tools/check_public_text.py
 
       - name: 레이아웃 회귀 테스트 (헤드리스 Edge 기하)
         # 스텁 DOM 에는 좌표가 없어, "버튼이 다른 오버레이에 가려 클릭을 못 받는다"는
