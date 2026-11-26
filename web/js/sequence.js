@@ -1,6 +1,6 @@
 /* RL3D — 발사 순서표 (P13-1).
  *
- * LL2 `timeline` 은 리프토프 기준 상대시각으로 된 이벤트 목록이다(추진제 로딩 → 점화 →
+ * LL2 `timeline` 은 리프트오프 기준 상대시각으로 된 이벤트 목록이다(추진제 로딩 → 점화 →
  * Max-Q → MECO → 단분리 → 착륙). **보류된 Phase 4(실시간 텔레메트리)에 가장 가까운 대체**다 —
  * 실측 중계는 못 받지만, "지금이 어느 단계인가"는 시각만으로 말할 수 있다.
  *
@@ -16,15 +16,15 @@ function tMinus(sec) {
   const body = h > 0
     ? `${h}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
     : `${m}:${String(ss).padStart(2, "0")}`;
-  // 0 은 리프토프 순간이다 — `T-0:00` 도 `T+0:00` 도 아닌 `T±0:00` 이 정직하다
+  // 0 은 리프트오프 순간이다 — `T-0:00` 도 `T+0:00` 도 아닌 `T±0:00` 이 정직하다
   return (sec === 0 ? "T±" : sec < 0 ? "T-" : "T+") + body;
 }
 
 /**
  * 지금 어느 단계인가 — { past, next } (각각 이벤트 또는 null). 순수 함수.
  *
- * `elapsed` 는 리프토프 기준 경과 초(음수 = 아직 전). 경계에서는 **같은 시각 이벤트를
- * 지난 것으로** 본다: 리프토프 순간에 `Liftoff` 가 "다음"으로 남아 있으면 틀려 보인다.
+ * `elapsed` 는 리프트오프 기준 경과 초(음수 = 아직 전). 경계에서는 **같은 시각 이벤트를
+ * 지난 것으로** 본다: 리프트오프 순간에 `Liftoff` 가 "다음"으로 남아 있으면 틀려 보인다.
  */
 function currentPhase(timeline, elapsed) {
   const list = timeline || [];
@@ -89,7 +89,7 @@ function timelineHtml(d, nowElapsed) {
 }
 
 
-/** 이 발사의 "지금 경과 초"(리프토프 기준). net 을 모르면 null — 강조를 하지 않는다. */
+/** 이 발사의 "지금 경과 초"(리프트오프 기준). net 을 모르면 null — 강조를 하지 않는다. */
 function launchElapsed(d) {
   const base = netMs(d && d.net);
   return base == null ? null : (Date.now() - base) / 1000;

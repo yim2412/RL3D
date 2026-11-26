@@ -1797,15 +1797,15 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
 }
 
 // ── 발사 순서표 (P13-1) ──────────────────────────────────────────────────────
-// 조용히 깨지는 자리: "지금 어느 단계" 판정의 경계(리프토프 순간)와, net 이 부정확한
+// 조용히 깨지는 자리: "지금 어느 단계" 판정의 경계(리프트오프 순간)와, net 이 부정확한
 // 발사에 절대 시각을 붙이는 것. 둘 다 화면에는 그럴듯한 목록이 그대로 나온다.
 // **시각은 전부 주입한다** — Date.now() 에 기대면 오전엔 통과하고 저녁엔 실패한다.
 {
   const { ctx, state, el, map } = loadApp();
   group("T± 표기 (tMinus)");
   const T = (s) => ctx.tMinus(s);
-  check("리프토프 전", T(-3000), "T-50:00");
-  check("리프토프 후", T(138), "T+2:18");
+  check("리프트오프 전", T(-3000), "T-50:00");
+  check("리프트오프 후", T(138), "T+2:18");
   check("한 시간을 넘으면 시:분:초", T(3743), "T+1:02:23");
   check("0 은 T± (전도 후도 아니다)", T(0), "T±0:00");
   check("한 자리 초도 두 자리로", T(58), "T+0:58");
@@ -1825,7 +1825,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("아직 아무것도 안 지났으면 past 는 null", P(-4000), [null, "GO for Prop Load"]);
   check("중간 — 아직 안 온 이벤트가 next 다", P(-10), ["GO for Prop Load", "Ignition"]);
   check("점화를 지난 뒤", P(-1), ["Ignition", "Liftoff"]);
-  // 경계 — 리프토프 순간에 Liftoff 가 "다음"으로 남아 있으면 틀려 보인다
+  // 경계 — 리프트오프 순간에 Liftoff 가 "다음"으로 남아 있으면 틀려 보인다
   check("같은 시각 이벤트는 지난 것으로 본다", P(0), ["Liftoff", "Max-Q"]);
   check("마지막을 지나면 next 는 null", P(9999), ["MECO", null]);
   check("빈 순서표에서도 죽지 않는다", P.call(null, 0) && ctx.currentPhase(null, 0).past, null);
@@ -1847,7 +1847,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
   check("순서표가 없으면 아무것도 안 그린다(없는 게 정상인 필드다)",
     ctx.timelineHtml(withTl({ timeline: [] }), 0), "");
   check("이벤트 수만큼 줄이 생긴다", (html.match(/class="sq-row/g) || []).length, 5);
-  check("표에 있는 이름은 한국어로", html.includes("리프토프"), true);
+  check("표에 있는 이름은 한국어로", html.includes("리프트오프"), true);
   check("표에 없는 이름은 원문 그대로(표가 낡아도 화면이 안 빈다)",
     ctx.timelineHtml(withTl({ timeline: [{ t: 0, abbrev: "Brand New Event" }] }), null)
       .includes("Brand New Event"), true);
@@ -1890,7 +1890,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
 
   group("집중 화면 한 줄 (phaseLineHtml)");
   const L = (sec) => ctx.phaseLineHtml(withTl(), base + sec * 1000);
-  check("리프토프 직후", [L(1).includes("리프토프"), L(1).includes("최대 동압")], [true, true]);
+  check("리프트오프 직후", [L(1).includes("리프트오프"), L(1).includes("최대 동압")], [true, true]);
   check("남은 시간을 초로 적는다", L(1).includes("57초 뒤"), true);
   check("순서표가 없으면 빈 문자열", ctx.phaseLineHtml(withTl({ timeline: [] }), base), "");
   // new Date(null) 은 NaN 이 아니라 epoch 0 이다 — 막지 않으면 1970년 기준으로 "MECO 지남"이 찍힌다
@@ -2166,7 +2166,7 @@ const SEP14_NOW = Date.parse("2026-09-14T12:00:00Z");       // 2026-09-14 에 �
     el("focus").innerHTML.includes("focus-phase-slot"), true);
   check("T-30분이면 첫 이벤트가 아직 안 지났다",
     el("focus").innerHTML.includes("추진제 주입 승인"), true);
-  // 매초 갱신 경로 — 카운트다운만 갱신하면 리프토프 뒤 카드가 멈춘 것처럼 보인다
+  // 매초 갱신 경로 — 카운트다운만 갱신하면 리프트오프 뒤 카드가 멈춘 것처럼 보인다
   const slot = el("focus-phase-slot");
   slot.innerHTML = "";
   ctx.updateFocus();

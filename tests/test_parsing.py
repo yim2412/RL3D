@@ -137,7 +137,7 @@ class LaunchParsing(unittest.TestCase):
         """ISO-8601 기간 → 초. 읽을 수 없으면 None(그 이벤트는 버린다)."""
         f = api_parsing.parse_relative_time
         self.assertEqual(f("-PT50M"), -3000)
-        self.assertEqual(f("P0D"), 0)          # 리프토프 순간
+        self.assertEqual(f("P0D"), 0)          # 리프트오프 순간
         self.assertEqual(f("PT58S"), 58)
         self.assertEqual(f("PT1H2M23S"), 3743)
         self.assertEqual(f("-PT36M33S"), -2193)
@@ -172,7 +172,7 @@ class LaunchParsing(unittest.TestCase):
                          ["GO for Prop Load", "Liftoff", "Max-Q"])
 
     def test_timeline_drops_unreadable_entries(self):
-        """읽을 수 없는 시각은 **버린다** — 0 으로 두면 리프토프 순간에 정체불명 이벤트가 낀다."""
+        """읽을 수 없는 시각은 **버린다** — 0 으로 두면 리프트오프 순간에 정체불명 이벤트가 낀다."""
         item = {"timeline": [
             {"relative_time": "nonsense", "type": {"abbrev": "정체불명"}},
             {"relative_time": "PT10S", "type": {}},              # 이름이 없다

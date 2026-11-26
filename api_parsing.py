@@ -45,7 +45,7 @@ MAX_UPDATES = 6      # 발사 소식도 최신 몇 건만 — 캐시 파일이 �
 MAX_TIMELINE = 60    # 발사 순서표(P13-1). 실측 최대 32개(Starship) — 상한은 폭주 방지용이다
 
 
-# ISO-8601 기간(`-PT50M` · `P0D` · `PT1H2M23S`) → 초. 앞의 `-` 는 리프토프 이전이다.
+# ISO-8601 기간(`-PT50M` · `P0D` · `PT1H2M23S`) → 초. 앞의 `-` 는 리프트오프 이전이다.
 _DURATION_RE = re.compile(
     r"^(?P<sign>-)?P(?:(?P<days>\d+)D)?(?:T(?:(?P<h>\d+)H)?(?:(?P<m>\d+)M)?(?:(?P<s>\d+(?:\.\d+)?)S)?)?$"
 )
@@ -54,7 +54,7 @@ _DURATION_RE = re.compile(
 def parse_relative_time(text):
     """`-PT50M` → -3000. 읽을 수 없으면 None.
 
-    **None 은 "모른다"는 뜻이고 그 이벤트는 버린다** — 0 으로 두면 리프토프 순간에
+    **None 은 "모른다"는 뜻이고 그 이벤트는 버린다** — 0 으로 두면 리프트오프 순간에
     정체불명의 이벤트가 끼어든다(시각을 지어내는 쪽이 빠뜨리는 쪽보다 나쁘다).
     """
     m = _DURATION_RE.match((text or "").strip())
@@ -69,7 +69,7 @@ def parse_relative_time(text):
 
 
 def _parse_timeline(item):
-    """발사 순서표 → [{t, abbrev, desc}] (t = 리프토프 기준 초). 시간순 정렬.
+    """발사 순서표 → [{t, abbrev, desc}] (t = 리프트오프 기준 초). 시간순 정렬.
 
     **응답이 정렬돼 있다고 가정하지 않는다** — 순서가 어긋나면 "다음 이벤트" 판정이
     조용히 틀리고, 화면에는 그럴듯한 목록이 그대로 나온다.

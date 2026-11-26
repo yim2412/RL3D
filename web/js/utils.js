@@ -396,7 +396,7 @@ const TIMELINE_KO = {
   "GO for Launch": "발사 승인",
   "Flame Deflector Activation": "화염 유도판 가동",
   "Ignition": "점화",
-  "Liftoff": "리프토프",
+  "Liftoff": "리프트오프",
   "Max-Q": "최대 동압(Max-Q)",
   "MECO": "1단 엔진 정지(MECO)",
   "Stage 1 Separation": "1단 분리",

@@ -82,7 +82,7 @@ function updateFocus() {
     const cdEl = document.getElementById("focus-cd");
     if (cdEl) cdEl.textContent = countdownText(d);
     // 순서표가 있으면 "지금 어느 단계"도 매초 갱신한다 — 카운트다운만 움직이면
-    // 리프토프 뒤에는 카드가 멈춘 것처럼 보인다(P13-1).
+    // 리프트오프 뒤에는 카드가 멈춘 것처럼 보인다(P13-1).
     const phEl = document.getElementById("focus-phase-slot");
     if (phEl) phEl.innerHTML = phaseLineHtml(d, Date.now());
   }
