@@ -36,16 +36,49 @@ def _is_formal(m):
     return b == "니" and bool(a) and (ord(a) - 0xAC00) % 28 == 17
 
 
+def _strip_inline_code(line, open_):
+    """인라인 코드를 지운 줄과, 줄 끝에서 코드가 아직 열려 있는지.
+
+    마크다운의 인라인 코드는 줄을 넘어 이어질 수 있다(빈 줄에서 끝난다). 줄마다 따로 보면
+    두 줄에 걸친 인용 안의 줄표와 끝맺음을 위반으로 센다(RL3D P114 에서 README · CHANGELOG 두 번).
+    """
+    out, i = [], 0
+    while i < len(line):
+        j = line.find("`", i)
+        if j < 0:
+            if not open_:
+                out.append(line[i:])
+            break
+        if not open_:
+            out.append(line[i:j])
+        open_ = not open_
+        i = j + 1
+    return "".join(out), open_
+
+
 def check_text(text):
     """→ (0 이어야 하는 위반 [(줄 번호, 내용)], 줄표 개수)"""
-    hard, dash, in_code = [], 0, False
-    for no, line in enumerate(text.splitlines(), 1):
+    hard, dash, in_code, in_tick = [], 0, False, False
+    # 짝 없는 백틱 하나가 문단의 나머지를 검사에서 통째로 빼면 관대해진다 → 문단이 끝날 때 열려 있으면 위반으로 센다
+    unclosed = "닫히지 않은 인라인 코드(짝 없는 백틱) → 문단의 나머지가 검사에서 빠집니다"
+    lines = text.splitlines()
+    for no, line in enumerate(lines, 1):
         if line.lstrip().startswith("```"):
+            if in_tick:
+                hard.append((no, unclosed))
             in_code = not in_code
+            in_tick = False
             continue
-        if in_code or IGNORE_MARK in line:
+        if not line.strip():
+            if in_tick:
+                hard.append((no, unclosed))
+            in_tick = False          # 빈 줄에서 문단이 끝나면 열린 인라인 코드도 끝난다
+        if in_code:
             continue
-        s = _URL.sub("", _INLINE_CODE.sub("", line))
+        stripped, in_tick = _strip_inline_code(line, in_tick)
+        if IGNORE_MARK in line:
+            continue
+        s = _URL.sub("", stripped)
         if not re.search("[가-힣]", s):
             continue
         dash += s.count("—")
@@ -57,6 +90,8 @@ def check_text(text):
                 hard.append((no, f"금지어 '{w}'"))
         if _DOT.search(s):
             hard.append((no, "문장 뒤 가운뎃점(·) → 문장을 끊습니다"))
+    if in_tick:
+        hard.append((len(lines), unclosed))
     return hard, dash
 
 
@@ -93,10 +128,22 @@ def selftest():
         "`코드 안 — 쓴다.` 는 안 본다\n"         # 안 셈
         "```\n블록 안 — 쓴다.\n```\n"           # 안 셈
         "나쁜 예: 쓴다. <!-- style-ignore -->\n"  # 안 셈
+        "예: `두 줄에 걸친 — 인용\n이어지는 줄도 쓴다.` 는 안 본다\n"   # 안 셈(줄을 넘는 인라인 코드)
+        "\n"
+        "`닫히지 않은 코드\n"
+        "\n"
+        "빈 줄 뒤는 다시 본다 — 여기.\n"
+        "`코드 블록 앞에서 닫히지 않은 코드\n"
+        "```\n블록\n```\n"
+        "블록 뒤도 다시 본다 — 여기.\n"            # 줄표 1 → 코드 블록 경계에서도 열린 인라인 코드를 닫는다           # 줄표 1 · 해라체 아님(마침표 앞이 '기') → 닫히지 않은 코드가 다음 문단까지 먹지 않는다
         "정상입니다. 됩니다. 승·무·패\n"          # 안 셈
     )
     hard, dash = check_text(planted)
-    ok = len(hard) == 4 and dash == 1
+    ok = len(hard) == 6 and dash == 3
+    eof_hard, _ = check_text("마지막 줄에서 `열린 채 끝남")   # 파일 끝에서 열린 코드도 위반
+    eof_ok = len(eof_hard) == 1
+    print(("[OK]" if eof_ok else "[FAIL]") + f" 파일 끝의 짝 없는 백틱: 위반 {len(eof_hard)}(기대 1)")
+    ok = ok and eof_ok
     # 상한 판정: 같으면 통과, 넘으면 실패, 위반과 줄표는 따로 본다
     cases = [((352, 0, 352, 0), False), ((353, 0, 352, 0), True), ((0, 2, 0, 1), True),
              ((0, 1, 0, 1), False), ((1, 0, 0, 5), True),
@@ -114,7 +161,7 @@ def selftest():
     path_ok = rc == 1
     print(("[OK]" if path_ok else "[FAIL]") + f" 실제 경로: 상한 밖 위반 1건 → 종료 코드 {rc}(기대 1)")
     ok = ok and path_ok
-    print(("[OK]" if ok else "[FAIL]") + f" 자체 검사: 위반 {len(hard)}(기대 4) · 줄표 {dash}(기대 1)")
+    print(("[OK]" if ok else "[FAIL]") + f" 자체 검사: 위반 {len(hard)}(기대 6, 닫히지 않은 코드 2 포함) · 줄표 {dash}(기대 3)")
     for no, msg in hard:
         print(f"       {no}: {msg}")
     return ok

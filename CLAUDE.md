@@ -34,7 +34,7 @@ pywebview + PyInstaller 로 만든 Windows exe. 내부는 웹 UI(HTML/JS + MapLi
 | `tools/cache_audit.js` | **실제 캐시로 그럴듯하게 틀린 화면을 찾는다**(P106) — 번역 빈칸 · 깨진 글자 · 발사 숫자 대조 · 위성 물리 · 재진입 예보 불변식을 `[OK]/[FAIL]` 과 **잰 개수**로. 데이터는 날마다 바뀌어 픽스처 테스트가 못 본다(하루에 세 번 값을 냈다: P95·P96·P103). 캐시가 PC 마다 달라 CI 밖. `--selftest` 는 카나리아를 심어 검사마다 FAIL 하는지 먼저 본다. **첫 줄의 캐시 나이를 먼저 읽는다** — 앱은 켠 그룹만 받고 올해 아카이브는 열어야 받아, 한 달 묵은 캐시로 전부 `[OK]` 였다가 받아 보니 57건이 나왔다(P109). 재감사 전에 `tools/refresh_cache.py` 로 전 그룹을 받는다 |
 | `tools/refresh_cache.py` | 발사·올해 아카이브·전 위성 그룹을 받는다(`--tle` 은 TLE 만). `force` 를 안 써서 TTL 안의 것은 요청하지 않는다. 네트워크라 CI 밖 |
 | `tools/tle_drift.js` | **TLE 가 묵으면 예보가 얼마나 어긋나는가**(P112). `snapshot` 으로 `%APPDATA%\RL3D\tle_history\` 에 찍고 `compare` 가 옛 TLE 를 새 TLE 의 에포크까지 전파해 시각 차이(초)를 낸다. 과거 TLE 는 나중에 못 구한다 — **스냅샷을 지우지 않는다**. `--selftest` 먼저 |
-| `tools/check_public_text.py` | README·CHANGELOG 말투 검사(P114 · 전역 공개 글 규칙). `DASH_MAX`(줄표) · `HARD_MAX`(해라체 등 — 큰 파일을 나눠 고칠 때만 쓰는 이 저장소의 추가. 지금은 비어 있다)가 파일별 상한이고 **실제 개수와 같아야** 통과한다(남아도 FAIL — 고친 만큼 그 자리에서 내린다). `--selftest` 먼저 |
+| `tools/check_public_text.py` | README·CHANGELOG 말투 검사(P114 · 전역 공개 글 규칙). `DASH_MAX`(줄표) · `HARD_MAX`(해라체 등 — 큰 파일을 나눠 고칠 때만 쓰는 이 저장소의 추가. 지금은 비어 있다)가 파일별 상한이고 **실제 개수와 같아야** 통과한다(남아도 FAIL — 고친 만큼 그 자리에서 내린다). 줄을 넘는 인라인 코드는 코드로 보고, 짝 없는 백틱은 위반이다. `--selftest` 먼저 |
 | `tools/audit_scan.py` | 정적 스캔 9종(전면 감사 2026-09-24). 허용 목록 `tools/audit_allow.json` 은 항목마다 `사유` 필수, innerHTML 은 파일별 상한 래칫. `--selftest` 먼저 |
 | `docs/audit/` | 전면 감사 산출물 — 대장(`FINDINGS.md`)·`COVERAGE.md`·프로브·백테스트·대장 검사기. **재개 지점은 대장의 `상태:`** |
 | `tests/` | 파싱 회귀(`test_parsing.py`) + 실제 응답 픽스처·골든, **캐시·폴백·아카이브·설정 회귀(`test_cache.py`)**, 프론트 회귀(`test_frontend.js` + `harness.js`) |
