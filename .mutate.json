@@ -1,5 +1,5 @@
 {
-  "_": "공용 변이 도구 설정 — node ~/.claude/tools/mutate.js 로 인자 없이 돈다. 프리셋을 바꿔 쓰려면 --preset if-js 처럼 덧붙인다.",
+  "_": "공용 변이 도구 설정 — node ~/.claude/tools/mutate.js 로 인자 없이 돈다. 다른 프리셋은 --preset 과 함께 --test · --files 도 준다(--preset 을 주면 이 파일을 읽지 않는다).",
   "label": "배선 변이",
   "preset": "wiring",
   "test": "node tests/test_frontend.js",
